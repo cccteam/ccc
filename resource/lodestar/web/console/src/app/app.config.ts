@@ -19,7 +19,6 @@ import {
   IDLE_KEEPALIVE_DURATION,
   IDLE_LOGOUT_ACTION,
   IDLE_SESSION_DURATION,
-  IDLE_TIMEOUT_REQUIRE_CONFIRMATION,
   IDLE_WARNING_DURATION,
   LOGOUT_ACTION,
   METHOD_META,
@@ -54,9 +53,9 @@ export const appConfig: ApplicationConfig = {
       },
     },
     // The idle session is the application's to configure. The three durations come from
-    // the build's environment (environment.ts shortens them for development), the warning
-    // holds until the stay-logged-in action in the header is taken rather than on the next
-    // mouse movement (IDLE_TIMEOUT_REQUIRE_CONFIRMATION), and the idle logout ends the
+    // the build's environment (environment.ts shortens them for development); the warning
+    // is the library's notice over the page, which any activity ends, so the console adds
+    // no button for it; and the idle logout ends the
     // server session before the service moves to the login page, so the sign-out is real
     // and not a stale cookie; a session the server already ended answers 401 there, which
     // is the same outcome. LOGOUT_ACTION, the hook the auth service runs after every
@@ -70,7 +69,6 @@ export const appConfig: ApplicationConfig = {
     { provide: IDLE_SESSION_DURATION, useValue: environment.idle.sessionSeconds },
     { provide: IDLE_WARNING_DURATION, useValue: environment.idle.warningSeconds },
     { provide: IDLE_KEEPALIVE_DURATION, useValue: environment.idle.keepAliveSeconds },
-    { provide: IDLE_TIMEOUT_REQUIRE_CONFIRMATION, useValue: true },
     {
       provide: IDLE_LOGOUT_ACTION,
       useFactory: (): (() => void) => {

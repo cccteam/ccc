@@ -1,4 +1,4 @@
-/** Demonstrates: impersonation.end, impersonation.max-duration, computed.user, idle.configured, @feature.field, @feature. */
+/** Demonstrates: impersonation.end, impersonation.max-duration, computed.user, @feature.field, @feature. */
 import { Component, computed, inject } from '@angular/core';
 import { MatButtonModule } from '@angular/material/button';
 import { MatDialog } from '@angular/material/dialog';
@@ -11,7 +11,6 @@ import { HasPermissionDirective } from '@cccteam/resource-angular/auth-has-permi
 import { AuthService } from '@cccteam/resource-angular/auth-service';
 import { openFeatureFlagsDialog } from '@cccteam/resource-angular/ccc-feature-flags';
 import { PermissionScope } from '@cccteam/resource-angular/types';
-import { IdleService } from '@cccteam/resource-angular/ui-idle-service';
 import { ImpersonationService } from '@components/sector/impersonation.service';
 import { grantedColumns, SectorService } from '@components/sector/sector.service';
 import { TopbarComponent } from '../topbar/topbar.component';
@@ -25,7 +24,6 @@ import { TopbarComponent } from '../topbar/topbar.component';
 export class HeaderComponent {
   private router = inject(Router);
   private dialog = inject(MatDialog);
-  idle = inject(IdleService);
   auth = inject(AuthService);
   impersonation = inject(ImpersonationService);
   private sectors = inject(SectorService);
