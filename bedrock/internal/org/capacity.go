@@ -93,8 +93,8 @@ func (c InstanceCapacity) Room() int {
 // Problem is the sentence for a placement past the instance: what is declared, what the
 // instance holds at its size, and the two ways out.
 func (c InstanceCapacity) Problem() string {
-	return fmt.Sprintf("the placement declares %d databases on %s (%d applications, one database each in %s), and the instance holds %d at %d processing units (ten for every hundred below a node): raise %s (100 or 200; beyond 200 is a change to the variable's validation, the decision of 2026-09-25 in JOURNAL.md), or bedrock destroy an application the organization no longer needs, which frees its databases",
-		c.Declared, c.Name(), c.Applications, strings.Join(c.Environments, " and "), c.Capacity, c.ProcessingUnits, c.Setting())
+	return fmt.Sprintf("the placement declares %d databases on %s (%d applications, one database each in %s), and the instance holds %d at %d processing units (%s): %s bedrock destroy an application the organization no longer needs, which frees its databases",
+		c.Declared, c.Name(), c.Applications, strings.Join(c.Environments, " and "), c.Capacity, c.ProcessingUnits, derive.SpannerCapacityRule(c.ProcessingUnits), derive.SpannerRaise(c.Setting(), c.ProcessingUnits))
 }
 
 // PullRequestRoom is the sentence for the instance that holds the integration

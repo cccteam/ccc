@@ -110,13 +110,13 @@ variable "edition" {
 }
 
 variable "processing_units" {
-  description = "Compute capacity of the instance in processing units (100 = a tenth of a node). 100 is the smallest a multi-region instance can be and is the organization's size. The cap of 200 is a decision (2026-09-25): never more without explicit agreement, and the validation is what enforces it, so raising the cap is a visible code change rather than a number in terraform.tfvars."
+  description = "Compute capacity of the instance in processing units (100 = a tenth of a node), by Spanner's own rule: at least 100, the smallest a multi-region instance can be and the size an organization starts at, in steps of 100 below a node and in whole nodes (multiples of 1000) from a node on. Two things raise it, and the larger wins: the databases the applications declare (ten for every hundred units below a node, a hundred from a node on; bedrock org register and bedrock org check count them and refuse a size too small) and load (Google: high-priority CPU at or below 45 percent per region on a multi-region instance, 65 percent on a regional one, the 24-hour smoothed aggregate under 90 percent). A raise is this value in terraform.tfvars, read in the pull request's plan (README.md, Capacity)."
   type        = number
   default     = 100
 
   validation {
-    condition     = var.processing_units >= 100 && var.processing_units <= 200 && var.processing_units % 100 == 0
-    error_message = "processing_units must be 100 or 200: at least 100, a multiple of 100 below 1000, and never above 200 without explicit agreement."
+    condition     = var.processing_units >= 100 && (var.processing_units < 1000 ? var.processing_units % 100 == 0 : var.processing_units % 1000 == 0)
+    error_message = "processing_units follows Spanner's rule: at least 100, a multiple of 100 below 1000, and a multiple of 1000 (whole nodes) from 1000 on."
   }
 }
 

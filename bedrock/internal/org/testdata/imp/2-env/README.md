@@ -75,8 +75,9 @@ null.
 
 - **tst only**, by default (`spanner_instances`): the Spanner instance
   `imp-tst-gbl-spanner`, regional in the primary region
-  (`regional-us-central1`), 100 processing units (validated at or below 200),
-  Standard edition, no autoscaler, default backup schedule `NONE`. stg and prd
+  (`regional-us-central1`), 100 processing units (Spanner's rule: steps of 100
+  below a node, whole nodes from 1,000; raised for databases or load, as
+  `2-spn/README.md` says under Capacity), Standard edition, no autoscaler, default backup schedule `NONE`. stg and prd
   share the instance `2-spn` creates. An environment's own instance is either
   regional in the primary region, where the primary service runs, or
   multi-region with its read-write replicas in the two regions
@@ -597,7 +598,7 @@ application's stack makes its release trigger once the version is pinned.
 | `environment` | `tst`, `stg`, or `prd`; passed as `-var` on every run. | `string` | n/a | yes |
 | `github_organization` | GitHub organization of the application repositories. | `string` | `"imp-example"` | no |
 | `team_groups` | The environments' team groups by code, a group's address each, from `placement.json` (`teamGroups`). | `map(string)` | rendered | no |
-| `spanner_instances` | Per environment, `own` (an instance in the environment project) or `shared` (2-spn's), with an own instance's `config` (unset for `regional-us-central1`; `regional-us-central1` or `nam10` and no other), `edition` and `processing_units` (100 or 200). | `map(object)` | tst `own`, stg and prd `shared` | no |
+| `spanner_instances` | Per environment, `own` (an instance in the environment project) or `shared` (2-spn's), with an own instance's `config` (unset for `regional-us-central1`; `regional-us-central1` or `nam10` and no other), `edition` and `processing_units` (steps of 100 below a node, whole nodes from 1,000). | `map(object)` | tst `own`, stg and prd `shared` | no |
 | `state_bucket` | State bucket, for the upstream layers' outputs. | `string` | n/a | yes |
 
 ## Outputs

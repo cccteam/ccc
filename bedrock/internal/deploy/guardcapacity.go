@@ -117,8 +117,8 @@ func guardSpannerCapacity(ctx context.Context, clients *Clients, t capacityTarge
 	if instance.Project == identityProject(identity) {
 		setting = "spanner_instances." + env + ".processing_units in 2-env/terraform.tfvars"
 	}
-	refusal = fmt.Sprintf("%s%s does not exist, and %s holds its maximum: %d databases%s, what its %d processing units allow (ten for every hundred below a node); %sraise %s (100 or 200; beyond 200 is a change to the variable's validation), or bedrock destroy an application the organization no longer needs, which frees its databases",
-		rejected, database, name, len(databases), pullRequestDatabases(databases), units, pullRequestWayOut(databases), setting)
+	refusal = fmt.Sprintf("%s%s does not exist, and %s holds its maximum: %d databases%s, what its %d processing units allow (%s); %s%s bedrock destroy an application the organization no longer needs, which frees its databases",
+		rejected, database, name, len(databases), pullRequestDatabases(databases), units, derive.SpannerCapacityRule(units), pullRequestWayOut(databases), derive.SpannerRaise(setting, units))
 	fmt.Fprintln(out, refusal)
 
 	return refusal, nil

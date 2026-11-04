@@ -118,15 +118,29 @@ it knows (its `spanner.tf`).
 
 ## Capacity
 
-100 processing units is the smallest a multi-region instance can be. The
-decision of 2026-09-25 is never more than 200 without explicit agreement, and
-`variables.tf` enforces it: `processing_units` must be 100 or 200. Raising the
-cap is a change to the validation, visible in review, not a number in
-`terraform.tfvars`. Google lets an instance hold ten databases for every hundred
-processing units below a node, so 100 holds five applications in stg and prd and
-200 ten: `bedrock org register` counts the registered applications against it and
-refuses one past it, `bedrock org check` says when the placement is past it, and
-a stack's plan counts the instance's databases before it creates one.
+`processing_units` follows Spanner's own rule, which `variables.tf` enforces:
+at least 100, the smallest a multi-region instance can be and the size an
+organization starts at, in steps of 100 below a node and in whole nodes
+(multiples of 1,000) from a node on. Two things raise it, and the larger wins.
+
+- **Databases.** Google lets an instance hold ten databases for every hundred
+  processing units below a node and a hundred from a node on, so 100 holds
+  five applications in stg and prd, 500 twenty-five, and a node fifty, the
+  most one instance holds. `bedrock org register` counts the registered
+  applications against the size and refuses one past it, `bedrock org check`
+  says when the placement is past it, and a stack's plan counts the instance's
+  databases before it creates one. Each refusal names this value as the way
+  out while a raise still adds databases.
+- **Load.** Google's guidance is to keep high-priority CPU at or below 45
+  percent per region on a multi-region instance such as this one, 65 percent
+  on a regional one, and the 24-hour smoothed aggregate under 90 percent, so
+  the instance keeps serving through the loss of a region or a zone. A
+  sustained average above the line is the other reason to raise the size,
+  read from the instance's monitoring; nothing here counts it.
+
+A raise is this value in `terraform.tfvars`, so the pull request that makes it
+shows the old and the new number in its plan, and the cost change is the diff
+a reviewer reads.
 
 ## Applying
 
@@ -155,7 +169,7 @@ tofu apply
 | `database_admins` | Members granted database admin on the instance, bounded to their own databases, and the grants of the metric writer role on the project. | `map(object)` | `{}` | no |
 | `database_planners` | Members granted the organization's `spannerPlanReader` role on the instance and the read of the project's IAM policy. | `list(string)` | `[]` | no |
 | `edition` | Spanner edition. | `string` | `"STANDARD"` | no |
-| `processing_units` | Compute capacity; 100 or 200. | `number` | `100` | no |
+| `processing_units` | Compute capacity; steps of 100 below a node, whole nodes from 1,000. | `number` | `100` | no |
 | `spanner_config` | Instance configuration. | `string` | `"nam10"` | no |
 
 Project ID, the boot project, and the prefix are read from `1-org`'s state
