@@ -311,25 +311,25 @@ func TestParser_Parse_Errors(t *testing.T) {
 		{
 			name:               "a decimal column refuses a non-numeric value",
 			filterString:       "fee:gt:abc",
-			wantErrMsgContains: "value 'abc' in condition 'fee:gt:abc' is not a valid decimal number",
+			wantErrMsgContains: "fee: 'abc' is not a number.",
 			isHTTPError:        true,
 		},
 		{
-			name:               "a timestamp column refuses a non-RFC 3339 value",
+			name:               "a timestamp column refuses a value that is not a date, naming the forms",
 			filterString:       "deadline:lt:yesterday",
-			wantErrMsgContains: "value 'yesterday' in condition 'deadline:lt:yesterday' is not a valid RFC 3339 timestamp",
+			wantErrMsgContains: "deadline: 'yesterday' is not a date. Write it as " + todayISO() + ", " + todayUS() + ", or " + todayISO() + "T09:30 with the time.",
 			isHTTPError:        true,
 		},
 		{
 			name:               "a date column refuses an impossible date",
 			filterString:       "released_on:eq:2026-13-01",
-			wantErrMsgContains: "value '2026-13-01' in condition 'released_on:eq:2026-13-01' is not a valid date (YYYY-MM-DD)",
+			wantErrMsgContains: "released_on: '2026-13-01' is not a date. Write it as " + todayISO() + " or " + todayUS() + ".",
 			isHTTPError:        true,
 		},
 		{
 			name:               "a UUID column refuses a malformed value",
 			filterString:       "ship_id:eq:nope",
-			wantErrMsgContains: "value 'nope' in condition 'ship_id:eq:nope' is not a valid UUID",
+			wantErrMsgContains: "ship_id: 'nope' is not an identifier like 0f8fad5b-d9cb-469f-a165-70867728950e.",
 			isHTTPError:        true,
 		},
 		{
@@ -743,4 +743,13 @@ func TestCondition_TypedValues(t *testing.T) {
 			}
 		})
 	}
+}
+
+// todayISO and todayUS write today's date in UTC the way a date refusal's example does.
+func todayISO() string {
+	return time.Now().UTC().Format("2006-01-02")
+}
+
+func todayUS() string {
+	return time.Now().UTC().Format("1/2/2006")
 }

@@ -223,6 +223,32 @@ none of them can be used as field names in filters:
 | `_v` | The live pages' version (section 14): a client holding a live row or list appends it so the browser's cache keys the answer by the change it last saw. 1 to 64 characters of `[A-Za-z0-9_.:-]`; accepted and skipped, never a filter. A list or read response to a request carrying it is the one response that carries `Cache-Control: private, max-age=300`. |
 | `capabilities` | Comma-separated write permissions (`Create`, `Update`, `Delete`, `Execute`) to evaluate per row — the §13 capability envelope. Each returned row gains the reserved `zzCapabilities` property: `Update` carries the positive list of editable JSON field names, every field the caller may write on the row whether or not the read projected it, in name order (a write-only `input_only` field, which no read returns, is named when the caller's Update grant covers it, so an edit form draws its blank input), `Delete` a boolean, `Execute` the positive list of `@target` methods that apply to the row — a declared `@transition` requires the row's pre-image state in its `from` set, a conditional Execute grant ANDs its condition into the same boolean (a plain `@target` method's is the condition alone; unconditional plain methods are structural, no SQL), and the user holds the method's Execute grant — and `Create` the positive list of workflow member resources the user may create beneath the row (§11): the members whose immediate `@stateRoot` hop is this resource, gated by the user's member Create grants, a conditional grant's state terms evaluated against this row's own uniform state binding while terms the parent row cannot answer count potentially-true (an unconditional member grant is structural, no SQL). Advisory hints computed from the same row image and decision instant as the read (conditions render as booleans in the same statement; pure RBAC adds no SQL; a `new.`-referencing term counts potentially-true while the rest of its condition still renders). Enforcement is unchanged. |
 
+**Dates and times.** A filter value on a date or timestamp column is read the way a
+person writes a date, and means the whole of what is written: `deadline:eq:2026-12-15`
+is that day, `deadline:lte:12/2026` is through the end of December, and
+`deadline:gte:2026-12-15T09:30` is from that minute. The forms are the day in ISO, US or
+eight-digit shape (`2026-12-15`, `12/15/2026`, `20261215`), the month (`2026-12`,
+`12/2026`), the year (`2026`), and an ISO day with a time of day to the minute or the
+second (`2026-12-15T09:30`, `"2026-12-15 09:30:15"`); an RFC 3339 timestamp with its
+zone, `2026-12-15T09:30:00Z`, stays the instant it names. Each operator reads the span as
+the person means it: `eq` inside it, `ne` outside, `lt` before its start, `lte` before
+its end, `gt` from its end, `gte` from its start; an `in` list ORs the spans and a
+`notin` list ANDs their outsides. The parse expands the condition into those
+comparisons, so the SQL and the in-memory evaluation see plain comparisons on typed
+parameters, `(Deadline >= @p1 AND Deadline < @p2)`. A value with no zone of its own is
+read in the person's zone, which the resource client sends on every request as the
+`Time-Zone` header (an IANA name, `America/New_York`), so the browser filters by the
+same day it shows; without the header, in the zone the column's date search fact
+declares (below), and in UTC where it declares none. A date column (`civil.Date`) reads
+the day, month and year forms with no zone, a month or a year being its days, and refuses
+a time of day. What cannot be read is refused in plain words naming the field as written
+and the forms with today's date, `deadline: 'tomorrow' is not a date. Write it as
+2026-11-03, 11/3/2026, or 2026-11-03T09:30 with the time.`, and the other types answer in
+the same shape: `age: 'ten' is not a whole number.`, `fee: 'abc' is not a number.`,
+`active: 'maybe' is not true or false.`, `shipId: 'nope' is not an identifier like
+0f8fad5b-d9cb-469f-a165-70867728950e.` A header naming no zone is refused in the
+header's name. Relative words (today, last week) are not read.
+
 **Search.** A text field answers `startswith`, `endswith` and `contains`, and a resource
 answers the search box, exactly where the schema states a fact for it; the generator
 derives the vocabulary, writes it onto the request structs as the `search` tag (section

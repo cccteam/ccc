@@ -27,7 +27,7 @@ type (
 	// index: the list binds the sector by equality, so a filter on
 	// ReleasedAt alone seeks that index, and its metadata says filterable: always.
 	//
-	// Demonstrates: allow_filter, @attribute.date, immutable, outlet.shared, paging.nullable-sort, @order, @page, index.tenant-second.
+	// Demonstrates: allow_filter, @attribute.date, immutable, outlet.shared, paging.nullable-sort, @order, @page, index.tenant-second, filter.written-dates.
 	//
 	// @resource
 	// @permissionScope(domain)
@@ -42,8 +42,11 @@ type (
 		BondCode    string   `spanner:"BondCode"    conditions:"immutable"`
 		Description string   `spanner:"Description"`
 		Mass        float64  `spanner:"Mass"        allow_filter:"true"`
+		// ExpiresOn is the hold's date column and filters beside an indexed one, so a
+		// filter on it takes a date as a person writes it, 2026-12-15 or 12/15/2026, and
+		// a month or a year as the whole of it.
 		// @attribute(expiresOn)
-		ExpiresOn civil.Date `spanner:"ExpiresOn"`
+		ExpiresOn civil.Date `spanner:"ExpiresOn" allow_filter:"true"`
 		// @attribute(releasedAt)
 		ReleasedAt *time.Time `spanner:"ReleasedAt"`
 	}

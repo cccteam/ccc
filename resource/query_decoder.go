@@ -339,7 +339,7 @@ func (d *QueryDecoder[Resource, Request]) decode(request *http.Request, boxPII b
 	filterString := queryParams.Get(filterParam)
 
 	hidden := d.hiddenFields()
-	parsedQuery, err := d.parseQuery(queryParams, hidden)
+	parsedQuery, err := d.parseQuery(queryParams, hidden, request.Header.Get(TimeZoneHeader))
 	if err != nil {
 		return nil, err
 	}
@@ -437,7 +437,10 @@ func (d *QueryDecoder[Resource, Request]) Decode(request *http.Request, userPerm
 	return qSet, nil
 }
 
-func (d *QueryDecoder[Resource, Request]) parseQuery(query url.Values, hidden map[accesstypes.Field]struct{}) (*parsedQueryParams, error) {
+// parseQuery reads the request's query parameters; zoneName is the person's time zone
+// as the request's Time-Zone header carries it, empty where it sent none, which the
+// filter's written dates are read in.
+func (d *QueryDecoder[Resource, Request]) parseQuery(query url.Values, hidden map[accesstypes.Field]struct{}, zoneName string) (*parsedQueryParams, error) {
 	var columnFields []accesstypes.Field
 	var sortFields []SortField
 	var filterParser func(DBType) (ExpressionNode, error)
@@ -475,7 +478,7 @@ func (d *QueryDecoder[Resource, Request]) parseQuery(query url.Values, hidden ma
 	}
 
 	if filterStr := query.Get(filterParam); filterStr != "" {
-		filterParser, err = d.filterExpressionParser(filterStr, hidden)
+		filterParser, err = d.filterExpressionParser(filterStr, hidden, zoneName)
 		if err != nil {
 			return nil, err
 		}
@@ -702,13 +705,22 @@ func (d *QueryDecoder[Resource, Request]) parseSortParam(sortParamValue string, 
 	return sortFields, nil
 }
 
-// filterExpressionParser returns a filter parser.
-func (d *QueryDecoder[Resource, Request]) filterExpressionParser(filterStr string, hidden map[accesstypes.Field]struct{}) (func(DBType) (ExpressionNode, error), error) {
+// filterExpressionParser returns a filter parser. zoneName, the person's time zone as
+// the request's Time-Zone header carries it, is the zone a written date in the filter is
+// read in; a name that is no zone is refused in the header's name.
+func (d *QueryDecoder[Resource, Request]) filterExpressionParser(filterStr string, hidden map[accesstypes.Field]struct{}, zoneName string) (func(DBType) (ExpressionNode, error), error) {
 	parser, err := NewFilterParser(NewFilterLexer(filterStr), d.visibleFilterFields(hidden))
 	if err != nil {
 		return nil, errors.Wrap(err, "failed to create filter expression parser")
 	}
 	parser.WithSearch(d.resourceSet.ResourceMetadata().searchBranches, d.searchKeys)
+	if zoneName = strings.TrimSpace(zoneName); zoneName != "" {
+		zone, err := loadZone(zoneName)
+		if err != nil {
+			return nil, httpio.NewBadRequestMessagef("%s: '%s' is not a time zone name. Write it as America/New_York.", TimeZoneHeader, zoneName)
+		}
+		parser.WithZone(zone)
+	}
 
 	return parser.Parse, nil
 }

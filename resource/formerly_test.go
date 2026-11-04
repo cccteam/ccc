@@ -171,7 +171,7 @@ func TestQueryDecoder_formerNames(t *testing.T) {
 			if err != nil {
 				t.Fatalf("NewQueryDecoder() error = %v", err)
 			}
-			parsed, err := decoder.parseQuery(tt.query, nil)
+			parsed, err := decoder.parseQuery(tt.query, nil, "")
 			if err != nil {
 				t.Fatalf("parseQuery() error = %v", err)
 			}

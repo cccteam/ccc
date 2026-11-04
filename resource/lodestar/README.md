@@ -396,12 +396,12 @@ indexed touch a companion-only column waits for, so on the
 [Missions page](web/console/src/app/configs/missions.config.ts), the board over two
 tables' indexes with filters on status, squadron, kind, deadline and days left, a
 days-left filter rides beside the box alone and leaves when the last indexed touch, the
-box or a status filter, is cleared; the deadline's menu takes what is typed, an RFC 3339
-timestamp, since the column is a timestamp. The filter is placed as a whole: on the
+box or a status filter, is cleared; the deadline's menu takes a date as a person writes
+it (below). The filter is placed as a whole: on the
 [Clients page](web/console/src/app/configs/clients.config.ts) headquarters, whose box
-reaches the contact fields, posts it with the trusted filter or a contact-name match
-beside the box, and a ClientBrowser persona, whose box searches the name alone, keeps the
-same shape in the URL and reads under the box which fields the role leaves out.
+reaches the contact fields, posts it with a name filter or a contact-name match beside
+the box, and a ClientBrowser persona, whose box searches the name alone, keeps the same
+shape in the URL and reads under the box which fields the role leaves out.
 
 The checks: the integration suite's `search_filters_test.go` sends both pages' requests
 in that wire form and pins the answers against the unfiltered lists, and a headless check
@@ -409,6 +409,24 @@ driven in Chrome (playwright-core and the system browser from a scratch project 
 the repository, as the console's other browser proofs are run) types in the box, commits
 filters from the column menus, clears the box, turns the page, and reads each request's
 method and filter beside the server's log, on the emulator and on a real instance.
+
+## Dates in a filter
+
+A filter value on a date or timestamp column is read as a person writes it. On the
+[Missions page](web/console/src/app/configs/missions.config.ts) the deadline's menu takes
+`2026-12-15` or `12/15/2026`, a month `2026-12` or a minute `2026-12-15T09:30`, and the
+server reads the whole span it names: `eq` inside it, `ne` outside, `lte` through its
+end, `gte` from its start, in the person's zone when the browser sends it as the
+`Time-Zone` header and in UTC otherwise. The hold's expiry date, a
+[date column](pkg/resources/consignments.go) filterable beside the indexed release
+date, reads a day as the day and a month or a year as its days, with no zone to read. A
+value that cannot be read is refused naming the forms, `deadline: 'yesterday' is not a
+date. Write it as 2026-11-03, 11/3/2026, or 2026-11-03T09:30 with the time.`, and a
+header naming no zone is refused in the header's name.
+
+The checks: the integration suite's `filter_dates_test.go` sends each form and operator
+on the board's deadline and on the consignments' expiry and release columns, with and
+without the header, and pins the rows against the unfiltered lists.
 
 ## One channel between instances
 

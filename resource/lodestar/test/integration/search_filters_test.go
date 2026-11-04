@@ -5,7 +5,7 @@ package integration
 // column filters and the box as conjuncts of one top-level AND, the first two
 // parenthesized and the box bare, (page),(columns),*:search:"…". Over the mission board,
 // as the Missions page sends it, the box narrows beside a status filter, beside a
-// deadline comparison (an RFC 3339 timestamp, what the grid sends when it is typed), and
+// deadline comparison (an RFC 3339 instant; the written forms are filter_dates_test.go's), and
 // beside the days-left companion, which the box alone admits as the filter's indexed
 // touch while days left alone stays refused; two parenthesized groups ride before the
 // box the way a page filter does; the count and the cursor pages carry the whole filter,

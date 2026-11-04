@@ -44,10 +44,11 @@ import { enumeratedConfig, field, listViewConfig, rootConfig, section } from '@c
 // two indexes and the filters' residual narrow the same page, with its count and its
 // declared order. The box counts as the indexed touch the days-left control waits for, so
 // a days-left filter rides beside the box alone and leaves when the last indexed touch,
-// the box or a status filter, is cleared; the deadline's menu takes what is typed, an RFC
-// 3339 timestamp, since the column is a timestamp.
+// the box or a status filter, is cleared. The deadline's menu takes a date as a person
+// writes it, 2026-12-15 or 12/15/2026, a month or a minute, and the server reads the
+// whole span it names in the person's zone, which the browser sends with the request.
 //
-// Demonstrates: picker.config-driven, picker.paged, picker.whole, @enumerate.plain-column, @enumerate.key-view, picker.read-disabled, @rowsOf.same-row, list.server-paged, metadata.filterable, search.beside-filters.
+// Demonstrates: picker.config-driven, picker.paged, picker.whole, @enumerate.plain-column, @enumerate.key-view, picker.read-disabled, @rowsOf.same-row, list.server-paged, metadata.filterable, search.beside-filters, filter.written-dates.
 export const missionsConfig = rootConfig({
   nav: { navItem: { label: 'Missions (config page)' }, group: 'Sector Ops' },
   routeData: { route: `${DomainRoutePath}/missions` },
