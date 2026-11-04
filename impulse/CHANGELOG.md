@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.18](https://github.com/cccteam/ccc/compare/impulse/v0.6.17...impulse/v0.6.18) (2026-11-04)
+
+
+### Bug Fixes
+
+* the skeleton's pins move to resource v0.16.10 and the browser libraries that read a date in a filter as a person writes it (@cccteam/resource 0.0.24, @cccteam/resource-angular 0.0.36, @cccteam/resource-firestore 0.0.23), Lodestar's web pins follow, and the v0.6.18 ledger step names them ([#1286](https://github.com/cccteam/ccc/issues/1286)) ([77d0426](https://github.com/cccteam/ccc/commit/77d0426f577c3f68c07324afecaa34a37386a6b6))
+
 ## [0.6.17](https://github.com/cccteam/ccc/compare/impulse/v0.6.16...impulse/v0.6.17) (2026-11-03)
 
 
