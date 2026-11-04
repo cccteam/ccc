@@ -50,6 +50,18 @@ func TestInstanceCapacities(t *testing.T) {
 			want:         []InstanceCapacity{shared(6, 200, "stg", "prd"), own(6, 100, "tst")},
 		},
 		{
+			name:         "a node holds a hundred databases, so thirty applications fit on the shared instance at 1000 units",
+			applications: 30,
+			spn:          "processing_units = 1000\n",
+			want:         []InstanceCapacity{shared(30, 1000, "stg", "prd"), own(30, 100, "tst")},
+		},
+		{
+			name:         "the same thirty applications are past the shared instance at 500 units",
+			applications: 30,
+			spn:          "processing_units = 500\n",
+			want:         []InstanceCapacity{shared(30, 500, "stg", "prd"), own(30, 100, "tst")},
+		},
+		{
 			name:         "every environment on the shared instance: one instance, three databases each",
 			applications: 3,
 			env:          "spanner_instances = {\n  tst = { placement = \"shared\" }\n  stg = { placement = \"shared\" }\n  prd = { placement = \"shared\" }\n}\n",
