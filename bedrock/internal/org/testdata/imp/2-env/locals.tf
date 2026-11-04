@@ -115,7 +115,7 @@ locals {
   # browser step has run; the connection then exists (cloud-build.tf) and
   # until then the environment applies without it.
   cloud_build_installation_id      = 12345678
-  cloud_build_token_secret_version = "projects/imp-boot-gbl-core-a1b2/locations/us-central1/secrets/github-github-oauthtoken-abcdef/versions/1"
+  cloud_build_token_secret_version = "projects/imr-boot-gbl-core-c3d4/locations/us-central1/secrets/github-github-oauthtoken-fedcba/versions/1"
   connected                        = local.cloud_build_installation_id != null && local.cloud_build_token_secret_version != null
 
   # The GitHub Apps' keys live in the root organization imr's boot

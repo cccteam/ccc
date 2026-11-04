@@ -1,14 +1,17 @@
 # ---------------------------------------------------------------------------
-# This repository's default branch
+# This repository's default branch, and the GitHub organization's own settings
 #
-# The one thing this layer configures on GitHub, with the GitHub provider: the
-# rule on this repository's default branch, from which alone the apply trigger
-# applies the layers. Changed by pull request alone, no force push, no
-# deletion, local.approving_reviews approving reviews, squash the only merge,
-# and the plan trigger's build (0-bootstrap/cloud-build.tf) passing on the
-# latest commit with the branch up to date with its base. The repository exists
+# What this layer configures on GitHub, with the GitHub provider: the rule on
+# this repository's default branch, from which alone the apply trigger applies
+# the layers (changed by pull request alone, no force push, no deletion,
+# local.approving_reviews approving reviews, squash the only merge, and the
+# plan trigger's build (0-bootstrap/cloud-build.tf) passing on the latest
+# commit with the branch up to date with its base; the repository exists
 # before 0-bootstrap and is adopted here, never destroyed; 1-org rules a
-# hosting organization's repository the same way.
+# hosting organization's repository the same way), and the GitHub
+# organization's one setting of its own, the larger runner the applications'
+# CI runs on, declared here once for every hosting organization in the GitHub
+# organization (below, "The larger runner").
 #
 # The approving reviews are placement.json's approvingReviews: one unless it
 # says otherwise, 0 for none (a writer merges alone once the checks pass).
@@ -108,4 +111,59 @@ resource "github_repository_ruleset" "infrastructure" {
       }
     }
   }
+}
+
+# ---------------------------------------------------------------------------
+# The larger runner
+#
+# The organization's one Actions variable, CI_LARGE_RUNNER, names the larger
+# runner every application's CI, in every hosting organization of this GitHub
+# organization, runs the jobs its //impulse:ci line chooses on (the two test
+# legs and the image build without a line): a runner's name, a runner label
+# or a runner group, var.ci_large_runner. While the variable is absent those
+# jobs run on GitHub's standard runner, as the other jobs do. When
+# var.ci_large_runner_size names a machine size, this layer creates the
+# runner itself: a GitHub-hosted runner of that name and size on GitHub's
+# current Ubuntu, in a runner group open to the organization's repositories
+# (a hosted runner belongs to one group, and the application repositories
+# are the hosting organizations' to make, so the group names none; a
+# workflow bills minutes on the runner only by naming it), at most
+# var.ci_large_runner_maximum running at once (the spend's ceiling). GitHub
+# bills a larger runner per minute by its size, never from the plan's
+# included minutes, and offers them on the Team and Enterprise plans; the
+# infrastructure GitHub App creates it through its Self-hosted runners
+# organization permission and sets the variable through its Variables
+# permission (0-bootstrap/README.md).
+# ---------------------------------------------------------------------------
+
+resource "github_actions_organization_variable" "ci_large_runner" {
+  count = var.ci_large_runner == "" ? 0 : 1
+
+  variable_name = "CI_LARGE_RUNNER"
+  visibility    = "all"
+  value         = var.ci_large_runner
+}
+
+resource "github_actions_runner_group" "applications" {
+  count = var.ci_large_runner_size == "" ? 0 : 1
+
+  name       = "applications"
+  visibility = "all"
+}
+
+# The larger runner this layer creates, named as the variable names it: GitHub's
+# current Ubuntu (image 2306, Ubuntu Latest, what ubuntu-latest names on the
+# standard runner) at the placement's size. The size changes in place; the
+# image cannot, and a change to it is a new runner.
+resource "github_actions_hosted_runner" "ci_large" {
+  count = var.ci_large_runner_size == "" ? 0 : 1
+
+  name = var.ci_large_runner
+  image {
+    id     = "2306"
+    source = "github"
+  }
+  size            = var.ci_large_runner_size
+  runner_group_id = github_actions_runner_group.applications[0].id
+  maximum_runners = var.ci_large_runner_maximum == 0 ? null : var.ci_large_runner_maximum
 }

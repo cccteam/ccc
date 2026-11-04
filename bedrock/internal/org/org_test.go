@@ -187,16 +187,11 @@ func TestPlacementValidate(t *testing.T) {
 			p.ProjectNumbers = map[string]string{"boot": "100000000001"}
 		}},
 		{name: "no infrastructure app yet", mutate: func(p *Placement) { p.GithubInfrastructureAppID, p.GithubInfrastructureKeyVersion = "", "" }},
-		{name: "a larger runner the organization already has", mutate: func(p *Placement) { p.CiLargeRunnerSize, p.CiLargeRunnerMaximum = "", 0 }},
-		{name: "no larger runner", mutate: func(p *Placement) { p.CiLargeRunner, p.CiLargeRunnerSize, p.CiLargeRunnerMaximum = "", "", 0 }},
-		{name: "a created runner with GitHub's default cap", mutate: func(p *Placement) { p.CiLargeRunnerMaximum = 0 }},
-		{name: "an arm size", mutate: func(p *Placement) { p.CiLargeRunnerSize = "arm-16-core" }},
-		{name: "a size without the runner's name", mutate: func(p *Placement) { p.CiLargeRunner = "" }, wantErr: "ciLargeRunnerSize 8-core names the runner 1-org creates, and ciLargeRunner, its name, is empty"},
-		{name: "a size that is not GitHub's", mutate: func(p *Placement) { p.CiLargeRunnerSize = "large" }, wantErr: `ciLargeRunnerSize "large" is not a GitHub machine size`},
-		{name: "a size in cores without the word", mutate: func(p *Placement) { p.CiLargeRunnerSize = "8" }, wantErr: `ciLargeRunnerSize "8" is not a GitHub machine size`},
-		{name: "a name a hosted runner cannot carry", mutate: func(p *Placement) { p.CiLargeRunner = "ci large" }, wantErr: `ciLargeRunner "ci large" cannot name a GitHub-hosted runner`},
-		{name: "a cap without a size", mutate: func(p *Placement) { p.CiLargeRunnerSize = "" }, wantErr: "ciLargeRunnerMaximum 10 caps the runner 1-org creates, and ciLargeRunnerSize is empty"},
-		{name: "a negative cap", mutate: func(p *Placement) { p.CiLargeRunnerMaximum = -1 }, wantErr: "ciLargeRunnerMaximum -1 is negative"},
+		{name: "a larger runner, which is the root organization's", mutate: func(p *Placement) { p.CiLargeRunner = "ci-large" }, wantErr: "ciLargeRunner, ciLargeRunnerSize and ciLargeRunnerMaximum are the GitHub organization's larger runner, declared once in the root organization imr's placement.json"},
+		{name: "a larger runner's cap alone", mutate: func(p *Placement) { p.CiLargeRunnerMaximum = 4 }, wantErr: "ciLargeRunner, ciLargeRunnerSize and ciLargeRunnerMaximum are the GitHub organization's larger runner"},
+		{name: "a token secret in this organization's boot project", mutate: func(p *Placement) {
+			p.CloudBuildTokenSecretVersion = "projects/imp-boot-gbl-core-a1b2/locations/us-central1/secrets/github-github-oauthtoken-abcdef/versions/1"
+		}, wantErr: "cloudBuildTokenSecretVersion names a secret in imp-boot-gbl-core-a1b2, and a hosting organization's connections read the token the root organization imr recorded once, in its boot project imr-boot-gbl-core-c3d4 (root.project)"},
 		{name: "the approving reviews left out", mutate: func(p *Placement) {
 			p.ApprovingReviews = nil
 		}},
@@ -222,7 +217,7 @@ func TestPlacementValidate(t *testing.T) {
 		}, wantErr: `is not a secret version's resource name (projects/<project>[/locations/<region>]/secrets/<secret>/versions/<number>, a number and never latest)`},
 		{name: "a token secret version that is a number alone", mutate: func(p *Placement) { p.CloudBuildTokenSecretVersion = "1" }, wantErr: `cloudBuildTokenSecretVersion "1" is not a secret version's resource name`},
 		{name: "a global token secret version", mutate: func(p *Placement) {
-			p.CloudBuildTokenSecretVersion = "projects/imp-boot-gbl-core-a1b2/secrets/github-token/versions/3"
+			p.CloudBuildTokenSecretVersion = "projects/imr-boot-gbl-core-c3d4/secrets/github-token/versions/3"
 		}},
 		{name: "the installation id without the token", mutate: func(p *Placement) { p.CloudBuildTokenSecretVersion = "" }, wantErr: "cloudBuildInstallationId and cloudBuildTokenSecretVersion are recorded together: the browser authorization in the boot project's Cloud Build console gives both (0-bootstrap/README.md, \"The Cloud Build GitHub authorization\")"},
 		{name: "the token without the installation id", mutate: func(p *Placement) { p.CloudBuildInstallationID = "" }, wantErr: "cloudBuildInstallationId and cloudBuildTokenSecretVersion are recorded together"},
@@ -2647,7 +2642,7 @@ func TestTriggers(t *testing.T) {
 			name:   "the connection and the repository link, from the placement's authorization",
 			mutate: func(*Placement) {},
 			want: []string{
-				"  cloud_build_installation_id      = 12345678\n  cloud_build_token_secret_version = \"projects/imp-boot-gbl-core-a1b2/locations/us-central1/secrets/github-github-oauthtoken-abcdef/versions/1\"\n  connected                        = local.cloud_build_installation_id != null && local.cloud_build_token_secret_version != null\n",
+				"  cloud_build_installation_id      = 12345678\n  cloud_build_token_secret_version = \"projects/imr-boot-gbl-core-c3d4/locations/us-central1/secrets/github-github-oauthtoken-fedcba/versions/1\"\n  connected                        = local.cloud_build_installation_id != null && local.cloud_build_token_secret_version != null\n",
 				"resource \"google_cloudbuildv2_connection\" \"github\" {\n  count = local.connected ? 1 : 0\n\n  project  = module.boot_project.project_id\n  location = local.region\n  name     = \"${var.prefix}-boot-${local.region_code}-github\"\n\n  github_config {\n    app_installation_id = local.cloud_build_installation_id\n\n    authorizer_credential {\n      oauth_token_secret_version = local.cloud_build_token_secret_version\n    }\n  }\n",
 				"resource \"google_cloudbuildv2_repository\" \"infrastructure\" {\n  count = local.connected ? 1 : 0\n\n  project           = module.boot_project.project_id\n  location          = local.region\n  name              = \"${var.prefix}-boot-${local.region_code}-infrastructure-repo\"\n  parent_connection = google_cloudbuildv2_connection.github[0].id\n  remote_uri        = \"https://github.com/${var.github_organization}/${var.infrastructure_repository}.git\"\n}\n",
 				"  environment_project_numbers = {\n    tst = \"100000000002\"\n    stg = \"100000000003\"\n    prd = \"100000000004\"\n  }\n  token_readers = local.connected ? merge(\n    { boot = module.boot_project.project_number },\n    local.environment_project_numbers,\n  ) : {}\n",

@@ -195,23 +195,30 @@ type Placement struct {
 	// organizations mints the token release-please cuts the releases with. A root
 	// organization's; empty until a version was pinned.
 	GithubReleaseKeyVersion string `json:"githubReleaseKeyVersion,omitempty"`
-	// Keys is where a hosting organization's pipelines read the GitHub Apps' private
-	// keys: the root organization that holds them for every organization in the Google
-	// Cloud organization, by its prefix (root.organization), and its boot project
-	// (root.project), where the three secrets live. Every reader names the alias current
-	// of a secret, which that organization's placement pins; nothing about the keys is
-	// recorded here. A root organization has none: the keys are its own.
+	// Root is the root organization a hosting organization stands under: the one that
+	// holds, for every organization in the Google Cloud organization, the GitHub Apps'
+	// private keys and the Cloud Build GitHub authorization's token, by its prefix
+	// (root.organization) and its boot project (root.project), where those secrets live.
+	// Every reader of a key names the alias current of its secret, which that
+	// organization's placement pins, and every connection names that organization's
+	// token (cloudBuildTokenSecretVersion, the same value as in its placement); nothing
+	// about either is recorded here beyond that. A root organization has none: they are
+	// its own.
 	Root *RootPlace `json:"root,omitempty"`
 	// KeyOperators are the members (user:..., group:...) a root organization grants the
 	// adding of a version of a GitHub App's key, and the read that proves one, for the
 	// rotation (0-bootstrap/README.md, "Rotating a GitHub App's key"). None for a hosting
 	// organization.
 	KeyOperators []string `json:"keyOperators,omitempty"`
-	// HostingOrganizations are the hosting organizations that read a root
-	// organization's keys, each by its prefix and its boot project: 0-bootstrap grants
-	// each one's boot identity the administration of the three secrets' policies
-	// (secretPolicyAdmin), which that organization's layers hand down to the identities
-	// that read a key. None for a hosting organization.
+	// HostingOrganizations are the hosting organizations under a root organization,
+	// each by its prefix and its boot project, and its folder once founded: the ones
+	// the root organization founds by pull request (bedrock org found, whose record is
+	// the organization's own placement under organizations/<prefix>/), and the ones that
+	// stood before it, recorded as they are. For each founded one, 0-bootstrap grants
+	// the boot identity the administration of the shared secrets' policies
+	// (secretPolicyAdmin: the three keys and the token), which that organization's
+	// layers hand down to the identities that read them. None for a hosting
+	// organization.
 	HostingOrganizations []HostingOrganization `json:"hostingOrganizations,omitempty"`
 	// CloudBuildInstallationID is the installation id of the Google Cloud Build GitHub
 	// App on the GitHub organization (digits, from the installation's settings page),
@@ -248,14 +255,17 @@ type Placement struct {
 	ApprovingReviews *int `json:"approvingReviews,omitempty"`
 	// CiLargeRunner names the larger runner the applications' CI runs the jobs its
 	// //impulse:ci line chooses on (the two test legs and the image build without a
-	// line): a runner's name, a runner label or a runner group of the organization, set
-	// once as the organization's Actions variable CI_LARGE_RUNNER, which every
-	// application's workflow reads. Empty for GitHub's standard runner, and no variable.
+	// line): a runner's name, a runner label or a runner group of the GitHub
+	// organization, set once as the organization's Actions variable CI_LARGE_RUNNER,
+	// which every application's workflow reads. The GitHub organization's own setting,
+	// so a root organization's (its 1-dns sets the variable), declared once for every
+	// hosting organization in it; a hosting organization's placement refuses it. Empty
+	// for GitHub's standard runner, and no variable.
 	CiLargeRunner string `json:"ciLargeRunner,omitempty"`
-	// CiLargeRunnerSize, when set, has 1-org create the larger runner itself: a
+	// CiLargeRunnerSize, when set, has 1-dns create the larger runner itself: a
 	// GitHub-hosted runner named CiLargeRunner, of this machine size as GitHub lists them
 	// (4-core, 8-core, 16-core, 32-core, 64-core, 96-core, or an arm- size), on GitHub's
-	// current Ubuntu, in a runner group of the application repositories alone. Empty
+	// current Ubuntu, in a runner group open to the organization's repositories. Empty
 	// when CiLargeRunner names a runner or a group the organization already has.
 	CiLargeRunnerSize string `json:"ciLargeRunnerSize,omitempty"`
 	// CiLargeRunnerMaximum caps how many of the created runner run at once (GitHub's
@@ -538,7 +548,7 @@ func (p *Placement) validateHosting() error {
 		return err
 	}
 	for _, validate := range []func() error{
-		p.validateReleaseApp, p.validateKeys, p.validateCiLargeRunner, p.validateTeamGroups, p.validateEntitlementDurations,
+		p.validateReleaseApp, p.validateKeys, p.validateTeamGroups, p.validateEntitlementDurations,
 		p.validateApplications, p.validateOutOfService, p.validateVanityDomains, p.validateHostnames,
 	} {
 		if err := validate(); err != nil {
@@ -682,7 +692,7 @@ var (
 func (p *Placement) validateCiLargeRunner() error {
 	if p.CiLargeRunnerSize == "" {
 		if p.CiLargeRunnerMaximum != 0 {
-			return errors.Newf("ciLargeRunnerMaximum %d caps the runner 1-org creates, and ciLargeRunnerSize is empty: set the size, or drop the cap", p.CiLargeRunnerMaximum)
+			return errors.Newf("ciLargeRunnerMaximum %d caps the runner 1-dns creates, and ciLargeRunnerSize is empty: set the size, or drop the cap", p.CiLargeRunnerMaximum)
 		}
 
 		return nil
@@ -691,7 +701,7 @@ func (p *Placement) validateCiLargeRunner() error {
 		return errors.Newf("ciLargeRunnerSize %q is not a GitHub machine size (4-core, 8-core, 16-core, 32-core, 64-core, 96-core, or arm-4-core and up; GET /orgs/<org>/actions/hosted-runners/machine-sizes lists them)", p.CiLargeRunnerSize)
 	}
 	if p.CiLargeRunner == "" {
-		return errors.Newf("ciLargeRunnerSize %s names the runner 1-org creates, and ciLargeRunner, its name, is empty", p.CiLargeRunnerSize)
+		return errors.Newf("ciLargeRunnerSize %s names the runner 1-dns creates, and ciLargeRunner, its name, is empty", p.CiLargeRunnerSize)
 	}
 	if !hostedRunnerNameRE.MatchString(p.CiLargeRunner) {
 		return errors.Newf("ciLargeRunner %q cannot name a GitHub-hosted runner (1 to 64 of letters, digits, '.', '-' and '_')", p.CiLargeRunner)

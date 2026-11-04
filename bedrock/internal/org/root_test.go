@@ -65,7 +65,22 @@ func TestRootPlacementValidate(t *testing.T) {
 			p.HostingOrganizations = []HostingOrganization{{Prefix: "rgb", BootProject: "RGB"}}
 		}, wantErr: `hostingOrganizations entry "rgb": bootProject "RGB" is not a project id`},
 		{name: "an infrastructure team", mutate: func(p *Placement) { p.GithubInfrastructureTeam = "platform" }, wantErr: "githubInfrastructureTeam is set, and a root organization has no use for it"},
-		{name: "a larger runner", mutate: func(p *Placement) { p.CiLargeRunnerSize = "8-core" }, wantErr: "ciLargeRunnerSize is set, and a root organization has no use for it"},
+		{name: "a larger runner the organization already has", mutate: func(p *Placement) { p.CiLargeRunnerSize, p.CiLargeRunnerMaximum = "", 0 }},
+		{name: "no larger runner", mutate: func(p *Placement) { p.CiLargeRunner, p.CiLargeRunnerSize, p.CiLargeRunnerMaximum = "", "", 0 }},
+		{name: "a created runner with GitHub's default cap", mutate: func(p *Placement) { p.CiLargeRunnerMaximum = 0 }},
+		{name: "an arm size", mutate: func(p *Placement) { p.CiLargeRunnerSize = "arm-16-core" }},
+		{name: "a size without the runner's name", mutate: func(p *Placement) { p.CiLargeRunner = "" }, wantErr: "ciLargeRunnerSize 8-core names the runner 1-dns creates, and ciLargeRunner, its name, is empty"},
+		{name: "a size that is not GitHub's", mutate: func(p *Placement) { p.CiLargeRunnerSize = "large" }, wantErr: `ciLargeRunnerSize "large" is not a GitHub machine size`},
+		{name: "a size in cores without the word", mutate: func(p *Placement) { p.CiLargeRunnerSize = "8" }, wantErr: `ciLargeRunnerSize "8" is not a GitHub machine size`},
+		{name: "a name a hosted runner cannot carry", mutate: func(p *Placement) { p.CiLargeRunner = "ci large" }, wantErr: `ciLargeRunner "ci large" cannot name a GitHub-hosted runner`},
+		{name: "a cap without a size", mutate: func(p *Placement) { p.CiLargeRunnerSize = "" }, wantErr: "ciLargeRunnerMaximum 10 caps the runner 1-dns creates, and ciLargeRunnerSize is empty"},
+		{name: "a negative cap", mutate: func(p *Placement) { p.CiLargeRunnerMaximum = -1 }, wantErr: "ciLargeRunnerMaximum -1 is negative"},
+		{name: "a founded hosting organization", mutate: func(p *Placement) {
+			p.HostingOrganizations = []HostingOrganization{{Prefix: "rgb", BootProject: "rgb-boot-gbl-core-e5f6", Folder: "987654321098765"}}
+		}},
+		{name: "a hosting organization with a folder that is not an id", mutate: func(p *Placement) {
+			p.HostingOrganizations = []HostingOrganization{{Prefix: "rgb", BootProject: "rgb-boot-gbl-core-e5f6", Folder: "folders/1"}}
+		}, wantErr: `hostingOrganizations entry "rgb": folder "folders/1" is not a folder's numeric id`},
 		{name: "an application", mutate: func(p *Placement) { p.Applications = []Application{{Code: "quill", Repository: "quill"}} }, wantErr: "applications is set, and a root organization has no use for it"},
 		{name: "team groups", mutate: func(p *Placement) { p.TeamGroups = map[string]string{"tst": "team-tst@imp.example"} }, wantErr: "teamGroups is set, and a root organization has no use for it"},
 		{name: "vanity domains", mutate: func(p *Placement) { p.VanityDomains = []string{"harborlights.example"} }, wantErr: "vanityDomains is set, and a root organization has no use for it"},

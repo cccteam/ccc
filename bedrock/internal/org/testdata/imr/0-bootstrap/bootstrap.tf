@@ -180,6 +180,31 @@ resource "google_project_iam_member" "org_tofu_dns" {
   member  = google_service_account.org_tofu.member
 }
 
+# ---------------------------------------------------------------------------
+# The founding identity
+#
+# bedrock org apply, in the apply trigger's run, founds each hosting
+# organization placement.json records without a folder yet (README,
+# "Founding a hosting organization") as this identity: it creates the
+# organization's folder at the organization node and the foundation under it,
+# applies that organization's 0-bootstrap the first time, pushes the rendered
+# repository, and takes its own creator grants off, so that nothing of it
+# stays under the new folder. For that it holds, granted by hand once by the
+# administrators (README, "The founding identity's grants"): Folder Creator at
+# the organization node and Billing Account User on the billing account, the
+# two roles the break-glass account held for the seed; here, the four shared
+# secrets' policy administration (github.tf), to grant the new organization's
+# identities their reads. Nothing else, and nothing on a folder it founded
+# once the founding is handed off.
+# ---------------------------------------------------------------------------
+
+resource "google_service_account" "found_tofu" {
+  project      = module.boot_project.project_id
+  account_id   = "${var.prefix}-found-gbl-tofu"
+  display_name = "Founding SA - ${var.prefix}-found-gbl"
+  description  = "Founding identity for ${var.prefix}. Founds a hosting organization from the infrastructure repository's apply trigger: the folder at the organization node, the foundation under it, the first apply of its 0-bootstrap, and the hand-off."
+}
+
 # A pull request plans 1-dns as its plan identity, which reads the zones and
 # their record sets: Cloud DNS's read, on this project alone.
 resource "google_project_iam_member" "dns_plan" {

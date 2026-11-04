@@ -31,9 +31,11 @@
 # the Cloud Build GitHub authorization (cloudBuildInstallationId,
 # cloudBuildTokenSecretVersion; README, "The Cloud Build GitHub
 # authorization"): the browser step, in this project's Cloud Build console,
-# before this layer's first apply. Until then the rest of the layer applies
-# and nothing runs. The token secret the browser step writes lives in this
-# project.
+# before this layer's first apply, made once for every organization in the
+# Google Cloud organization. Until then the rest of the layer applies and
+# nothing runs. The token secret the browser step writes lives in this
+# project; each founded hosting organization's boot identity administers its
+# policy (github.tf) and grants its own Cloud Build service agents the read.
 # ---------------------------------------------------------------------------
 
 locals {
@@ -220,6 +222,14 @@ resource "google_service_account_iam_member" "applier_boot_tofu" {
 
 resource "google_service_account_iam_member" "applier_org_tofu" {
   service_account_id = google_service_account.org_tofu.name
+  role               = "roles/iam.serviceAccountTokenCreator"
+  member             = google_service_account.applier.member
+}
+
+# The applier founds a hosting organization as the founding identity
+# (bootstrap.tf), in the same run as the layers' applies.
+resource "google_service_account_iam_member" "applier_found_tofu" {
+  service_account_id = google_service_account.found_tofu.name
   role               = "roles/iam.serviceAccountTokenCreator"
   member             = google_service_account.applier.member
 }

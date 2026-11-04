@@ -39,6 +39,24 @@ variable "domains" {
   }
 }
 
+variable "ci_large_runner" {
+  description = "The larger runner the applications' CI runs the jobs its //impulse:ci line chooses on (the two test legs and the image build without a line), in every hosting organization of the GitHub organization: a runner's name, a runner label or a runner group, set as the organization's Actions variable CI_LARGE_RUNNER. Empty for GitHub's standard runner and no variable."
+  type        = string
+  default     = "ci-large"
+}
+
+variable "ci_large_runner_size" {
+  description = "The machine size of the larger runner when this layer creates it as a GitHub-hosted runner named var.ci_large_runner (4-core, 8-core and up, as GitHub's machine sizes list them). Empty when var.ci_large_runner names a runner or a runner group the organization already has, or is empty."
+  type        = string
+  default     = "8-core"
+}
+
+variable "ci_large_runner_maximum" {
+  description = "How many of the created larger runner run at once, the spend's ceiling (GitHub's maximum_runners); 0 leaves GitHub's default."
+  type        = number
+  default     = 10
+}
+
 variable "github_default_branch" {
   description = "The default branch of this repository, from which alone the apply trigger applies the layers: the branch the ruleset rules (github.tf)."
   type        = string

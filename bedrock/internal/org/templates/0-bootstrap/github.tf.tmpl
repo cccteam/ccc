@@ -26,15 +26,20 @@
 #
 # A key is added by the key operators placement.json names (keyOperators: the
 # adding of a version, and the read that proves it before the alias moves),
-# never by a layer. Each hosting organization's boot identity
-# (hostingOrganizations) holds the three secrets' policy administration,
-# secretPolicyAdmin: a secret's IAM policy and nothing else, which that
-# organization's layers hand down to the identities that read a key. That
-# grant is the only reach a hosting organization has into this one. The dns
-# identity administers the two secrets it reads from (and reads the
-# infrastructure key for 1-dns's apply); 1-dns's plan identity (bootstrap.tf)
-# reads the infrastructure key too, since a plan of 1-dns reads the
-# repository. The runners' reads are cloud-build.tf's. No key reaches GitHub.
+# never by a layer. Each founded hosting organization's boot identity
+# (hostingOrganizations, the entries with a folder recorded) holds the policy
+# administration of the three secrets and of the Cloud Build token secret
+# (cloud-build.tf; recorded once here, read by every organization's
+# connections), secretPolicyAdmin: a secret's IAM policy and nothing else,
+# which that organization's layers hand down to the identities that read a
+# key or a connection's token. That grant is the only reach a hosting
+# organization has into this one. The founding identity (bootstrap.tf) holds
+# the same on the four, for the first apply of a hosting organization's
+# 0-bootstrap, which makes its grants. The dns identity administers the two
+# secrets it reads from (and reads the infrastructure key for 1-dns's apply);
+# 1-dns's plan identity (bootstrap.tf) reads the infrastructure key too, since
+# a plan of 1-dns reads the repository. The runners' reads are cloud-build.tf's.
+# No key reaches GitHub.
 # ---------------------------------------------------------------------------
 
 locals {
@@ -45,10 +50,11 @@ locals {
     release        = google_secret_manager_secret.github_release_key.secret_id
   }
 
-  # The hosting organizations that read the keys, each by its boot identity
-  # (placement.json, hostingOrganizations).
+  # The founded hosting organizations that read the keys and the token, each
+  # by its boot identity (placement.json, hostingOrganizations with a folder
+  # recorded; one without is not founded yet, and its identity does not exist).
   hosting_boot_identities = {
-{{- range .HostingOrganizations}}
+{{- range .FoundedHostingOrganizations}}
     {{.Prefix}} = "{{.BootIdentityMember}}"
 {{- end}}
   }
@@ -56,6 +62,11 @@ locals {
     for pair in setproduct(keys(local.hosting_boot_identities), keys(local.key_secrets)) :
     "${pair[0]}__${pair[1]}" => { organization = pair[0], key = pair[1] }
   }
+
+  # The policy administrators of the token secret (cloud-build.tf): the
+  # founded hosting organizations' boot identities and the founding identity,
+  # once the authorization is recorded.
+  token_policy_admins = local.connected ? merge(local.hosting_boot_identities, { founding = google_service_account.found_tofu.member }) : {}
 
   # The key operators (placement.json, keyOperators), each with the adding of
   # a version and the read of one, on each of the three secrets.
@@ -136,6 +147,39 @@ resource "google_secret_manager_secret_iam_member" "key_operators" {
   member    = each.value.member
 }
 
+# The founding identity grants on the three secrets while it applies a hosting
+# organization's 0-bootstrap the first time (bootstrap.tf).
+resource "google_secret_manager_secret_iam_member" "found_tofu_keys" {
+  for_each = local.key_secrets
+
+  project   = module.boot_project.project_id
+  secret_id = each.value
+  role      = google_project_iam_custom_role.secret_policy_admin.id
+  member    = google_service_account.found_tofu.member
+}
+
+# The token secret's policy administration, for the same reach: a hosting
+# organization grants its Cloud Build service agents the token's read
+# (cloud-build.tf there), as this layer does here.
+resource "google_secret_manager_regional_secret_iam_member" "token_policy_admin" {
+  for_each = local.token_regional ? local.token_policy_admins : {}
+
+  project   = local.token_project
+  location  = local.token_location
+  secret_id = local.token_secret
+  role      = google_project_iam_custom_role.secret_policy_admin.id
+  member    = each.value
+}
+
+resource "google_secret_manager_secret_iam_member" "token_policy_admin" {
+  for_each = local.token_regional ? {} : local.token_policy_admins
+
+  project   = local.token_project
+  secret_id = local.token_secret
+  role      = google_project_iam_custom_role.secret_policy_admin.id
+  member    = each.value
+}
+
 resource "google_secret_manager_secret_iam_member" "org_tofu_infrastructure_key" {
   project   = module.boot_project.project_id
   secret_id = google_secret_manager_secret.github_infrastructure_key.secret_id
@@ -193,18 +237,19 @@ resource "google_project_iam_member" "boot_tofu_secrets" {
 #     token from the key and runs release-please. 2-env carries the alias
 #     through its output and grants the release identities the read.
 #
-# This layer makes no secret. It grants on those three what its own
-# identities and 1-org's need, with the policy administration the root
-# organization gave this organization's boot identity (secretPolicyAdmin, a
-# role of that project: a secret's IAM policy and nothing else), which is the
-# only reach this organization has into that one: the org identity gets the
-# deployer and release secrets' policy administration, which 1-org hands to
-# each environment layer identity so 2-env can grant the applications'
+# This layer makes no secret. It grants on those three, and on the Cloud
+# Build token secret that organization recorded once (cloud-build.tf), what
+# its own identities and 1-org's need, with the policy administration the
+# root organization gave this organization's boot identity (secretPolicyAdmin,
+# a role of that project: a secret's IAM policy and nothing else), which is
+# the only reach this organization has into that one: the org identity gets
+# the deployer and release secrets' policy administration, which 1-org hands
+# to each environment layer identity so 2-env can grant the applications'
 # identities their read; 1-org's plan identity reads the infrastructure key,
 # since a plan of 1-org reads the repositories; both boot plan identities read
-# the three secrets' policies, which a plan of this layer or of 1-org
-# refreshes the grants through. The runners' reads are cloud-build.tf's. No
-# key reaches GitHub.
+# the four secrets' policies, which a plan of this layer or of 1-org refreshes
+# the grants through. The runners' reads are cloud-build.tf's. No key reaches
+# GitHub.
 # ---------------------------------------------------------------------------
 
 locals {
@@ -248,6 +293,27 @@ resource "google_secret_manager_secret_iam_member" "boot_plan_keys" {
   secret_id = local.key_secrets[each.value.key]
   role      = "roles/secretmanager.viewer"
   member    = google_service_account.boot_plan[each.value.plan].member
+}
+
+# The same read of the token secret's policy (cloud-build.tf), for a plan of
+# this layer, which refreshes the service agents' grants on it.
+resource "google_secret_manager_regional_secret_iam_member" "boot_plan_token" {
+  for_each = local.token_regional ? local.boot_plans : {}
+
+  project   = local.token_project
+  location  = local.token_location
+  secret_id = local.token_secret
+  role      = "roles/secretmanager.viewer"
+  member    = google_service_account.boot_plan[each.key].member
+}
+
+resource "google_secret_manager_secret_iam_member" "boot_plan_token" {
+  for_each = local.token_regional || !local.connected ? {} : local.boot_plans
+
+  project   = local.token_project
+  secret_id = local.token_secret
+  role      = "roles/secretmanager.viewer"
+  member    = google_service_account.boot_plan[each.key].member
 }
 
 # The boot identity manages the token secret's policy (cloud-build.tf) when

@@ -66,13 +66,54 @@ type RootPlace struct {
 	Project string `json:"project"`
 }
 
-// HostingOrganization is a hosting organization that reads a root organization's keys,
-// in the root organization's placement (hostingOrganizations).
+// HostingOrganization is a hosting organization under a root organization, in the root
+// organization's placement (hostingOrganizations): one the root organization founds by
+// pull request (bedrock org found; README.md, "Founding a hosting organization"), or one
+// recorded as it stands. Its folder is recorded once the organization is founded, and
+// the root organization's grants to its identities render from then on: a grant names
+// an identity that exists.
 type HostingOrganization struct {
 	// Prefix is the hosting organization's prefix.
 	Prefix string `json:"prefix"`
-	// BootProject is its boot project, where its boot identity lives.
+	// BootProject is its boot project, where its boot identity lives; chosen when the
+	// organization is recorded (bedrock org found picks the suffix), so the project's
+	// id is known before anything is made.
 	BootProject string `json:"bootProject"`
+	// Folder is the numeric id of the organization's folder at the organization node,
+	// recorded by the founding's hand-off (or by hand, for an organization that stood
+	// before the root organization). Empty while the organization is not founded yet.
+	Folder string `json:"folder,omitempty"`
+}
+
+// Founded reports whether the hosting organization's folder is recorded: the founding
+// has handed it off, and the root organization's grants to its identities render.
+func (h HostingOrganization) Founded() bool {
+	return h.Folder != ""
+}
+
+// FoundedHostingOrganizations are the hosting organizations whose folder is recorded,
+// the ones 0-bootstrap grants on the shared secrets.
+func (p *Placement) FoundedHostingOrganizations() []HostingOrganization {
+	var founded []HostingOrganization
+	for _, h := range p.HostingOrganizations {
+		if h.Founded() {
+			founded = append(founded, h)
+		}
+	}
+
+	return founded
+}
+
+// HostingOrganization is the record of the hosting organization with the prefix, nil
+// when there is none.
+func (p *Placement) HostingOrganization(prefix string) *HostingOrganization {
+	for i := range p.HostingOrganizations {
+		if p.HostingOrganizations[i].Prefix == prefix {
+			return &p.HostingOrganizations[i]
+		}
+	}
+
+	return nil
 }
 
 // BootIdentityMember is the hosting organization's boot identity as an IAM member, the
@@ -85,7 +126,10 @@ func (h HostingOrganization) BootIdentityMember() string {
 var memberPrefixes = []string{"user:", "group:", "serviceAccount:"}
 
 // validateKeys holds a hosting organization's placement to naming the root organization
-// that holds the keys, and to recording nothing of what that organization's does.
+// that holds the keys and the Cloud Build token, to reading the token from there, and to
+// recording nothing of what that organization's placement holds: no key version, no
+// key operators, no hosting organizations, and no larger runner, which is the GitHub
+// organization's and declared once in the root organization's placement.
 func (p *Placement) validateKeys() error {
 	if p.Root == nil || p.Root.Organization == "" || p.Root.Project == "" {
 		return errors.New("root is empty: a hosting organization reads the GitHub Apps' keys and the Cloud Build token from the root organization that holds them; record its prefix (root.organization) and its boot project (root.project)")
@@ -107,10 +151,27 @@ func (p *Placement) validateKeys() error {
 		}
 	}
 	if len(p.KeyOperators) > 0 || len(p.HostingOrganizations) > 0 {
-		return errors.New("keyOperators and hostingOrganizations are a root organization's, which holds the keys; a hosting organization names it (keys) and records neither")
+		return errors.New("keyOperators and hostingOrganizations are a root organization's, which holds the keys; a hosting organization names it (root) and records neither")
+	}
+	if p.CiLargeRunner != "" || p.CiLargeRunnerSize != "" || p.CiLargeRunnerMaximum != 0 {
+		return errors.Newf("ciLargeRunner, ciLargeRunnerSize and ciLargeRunnerMaximum are the GitHub organization's larger runner, declared once in the root organization %s's placement.json, whose 1-dns sets the variable and makes the runner; remove them here", p.Root.Organization)
+	}
+	if p.CloudBuildTokenSecretVersion != "" && p.TokenSecretProject() != p.Root.Project {
+		return errors.Newf("cloudBuildTokenSecretVersion names a secret in %s, and a hosting organization's connections read the token the root organization %s recorded once, in its boot project %s (root.project): record that organization's cloudBuildTokenSecretVersion (its placement.json), which its hostingOrganizations grant gives this organization's boot identity the policy of", p.TokenSecretProject(), p.Root.Organization, p.Root.Project)
 	}
 
 	return nil
+}
+
+// TokenSecretProject is the project of the secret cloudBuildTokenSecretVersion names
+// (projects/<project>/...), empty while unrecorded.
+func (p *Placement) TokenSecretProject() string {
+	parts := strings.Split(p.CloudBuildTokenSecretVersion, "/")
+	if len(parts) < 2 || parts[0] != "projects" {
+		return ""
+	}
+
+	return parts[1]
 }
 
 // validateKeyHolding holds a root organization's placement to what its keys' grants
@@ -139,6 +200,9 @@ func (p *Placement) validateKeyHolding() error {
 		seen[h.Prefix] = true
 		if !projectIDRE.MatchString(h.BootProject) {
 			return errors.Newf("hostingOrganizations entry %q: bootProject %q is not a project id", h.Prefix, h.BootProject)
+		}
+		if h.Folder != "" && !projectNumberRE.MatchString(h.Folder) {
+			return errors.Newf("hostingOrganizations entry %q: folder %q is not a folder's numeric id", h.Prefix, h.Folder)
 		}
 	}
 

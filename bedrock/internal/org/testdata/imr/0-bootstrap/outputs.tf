@@ -51,6 +51,11 @@ output "org_id" {
   value       = local.org_id
 }
 
+output "founding_service_account_email" {
+  description = "Email of the founding identity, which founds a hosting organization from the apply trigger's run; the administrators grant it Folder Creator at the organization node and Billing Account User on the billing account (README, \"The founding identity's grants\")."
+  value       = google_service_account.found_tofu.email
+}
+
 output "org_service_account_email" {
   description = "Email of the dns layer identity. The apply trigger's run applies 1-dns as it, after the first apply."
   value       = google_service_account.org_tofu.email

@@ -30,12 +30,15 @@
 # The connection and the repository link exist once placement.json records
 # the Cloud Build GitHub authorization (cloudBuildInstallationId,
 # cloudBuildTokenSecretVersion; README, "The Cloud Build GitHub
-# authorization"): the browser step, in this project's Cloud Build console,
-# before this layer's first apply. Until then the rest of the layer applies
-# and nothing runs. The token secret the browser step writes lives in this
-# project; the environment projects' Cloud Build service agents read it for
-# their 2-env connections, granted here by the numbers placement.json
-# records (projectNumbers).
+# authorization"),
+# which the root organization made once, in its boot project's Cloud Build
+# console, and this placement carries (the same two values as that
+# organization's). Until then the rest of the layer applies and nothing runs.
+# The token secret lives in that organization's boot project; this layer
+# grants this project's Cloud Build service agent its read, for the triggers'
+# connection, and each environment project's, for its 2-env connection, by
+# the numbers placement.json records (projectNumbers), with the policy
+# administration the root organization gave the boot identity (github.tf).
 # ---------------------------------------------------------------------------
 
 locals {
@@ -45,7 +48,7 @@ locals {
   # The Cloud Build GitHub App's installation on the organization and the
   # token secret's version, from placement.json; null until recorded.
   cloud_build_installation_id      = 12345678
-  cloud_build_token_secret_version = "projects/imp-boot-gbl-core-a1b2/locations/us-central1/secrets/github-github-oauthtoken-abcdef/versions/1"
+  cloud_build_token_secret_version = "projects/imr-boot-gbl-core-c3d4/locations/us-central1/secrets/github-github-oauthtoken-fedcba/versions/1"
   connected                        = local.cloud_build_installation_id != null && local.cloud_build_token_secret_version != null
 
   # The token secret's resource name without its version, in either of the

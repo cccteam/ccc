@@ -26,18 +26,19 @@
 #     token from the key and runs release-please. 2-env carries the alias
 #     through its output and grants the release identities the read.
 #
-# This layer makes no secret. It grants on those three what its own
-# identities and 1-org's need, with the policy administration the root
-# organization gave this organization's boot identity (secretPolicyAdmin, a
-# role of that project: a secret's IAM policy and nothing else), which is the
-# only reach this organization has into that one: the org identity gets the
-# deployer and release secrets' policy administration, which 1-org hands to
-# each environment layer identity so 2-env can grant the applications'
+# This layer makes no secret. It grants on those three, and on the Cloud
+# Build token secret that organization recorded once (cloud-build.tf), what
+# its own identities and 1-org's need, with the policy administration the
+# root organization gave this organization's boot identity (secretPolicyAdmin,
+# a role of that project: a secret's IAM policy and nothing else), which is
+# the only reach this organization has into that one: the org identity gets
+# the deployer and release secrets' policy administration, which 1-org hands
+# to each environment layer identity so 2-env can grant the applications'
 # identities their read; 1-org's plan identity reads the infrastructure key,
 # since a plan of 1-org reads the repositories; both boot plan identities read
-# the three secrets' policies, which a plan of this layer or of 1-org
-# refreshes the grants through. The runners' reads are cloud-build.tf's. No
-# key reaches GitHub.
+# the four secrets' policies, which a plan of this layer or of 1-org refreshes
+# the grants through. The runners' reads are cloud-build.tf's. No key reaches
+# GitHub.
 # ---------------------------------------------------------------------------
 
 locals {
@@ -81,6 +82,27 @@ resource "google_secret_manager_secret_iam_member" "boot_plan_keys" {
   secret_id = local.key_secrets[each.value.key]
   role      = "roles/secretmanager.viewer"
   member    = google_service_account.boot_plan[each.value.plan].member
+}
+
+# The same read of the token secret's policy (cloud-build.tf), for a plan of
+# this layer, which refreshes the service agents' grants on it.
+resource "google_secret_manager_regional_secret_iam_member" "boot_plan_token" {
+  for_each = local.token_regional ? local.boot_plans : {}
+
+  project   = local.token_project
+  location  = local.token_location
+  secret_id = local.token_secret
+  role      = "roles/secretmanager.viewer"
+  member    = google_service_account.boot_plan[each.key].member
+}
+
+resource "google_secret_manager_secret_iam_member" "boot_plan_token" {
+  for_each = local.token_regional || !local.connected ? {} : local.boot_plans
+
+  project   = local.token_project
+  secret_id = local.token_secret
+  role      = "roles/secretmanager.viewer"
+  member    = google_service_account.boot_plan[each.key].member
 }
 
 # The boot identity manages the token secret's policy (cloud-build.tf) when

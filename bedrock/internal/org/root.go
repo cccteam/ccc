@@ -173,7 +173,7 @@ func (p *Placement) validateKind() error {
 func (p *Placement) validateRoot() error {
 	for name, value := range map[string]string{
 		"appsDomain": p.AppsDomain, "spanner.config": p.Spanner.Config, "githubReleaseAppSlug": p.GithubReleaseAppSlug,
-		"githubInfrastructureTeam": p.GithubInfrastructureTeam, "ciLargeRunner": p.CiLargeRunner, "ciLargeRunnerSize": p.CiLargeRunnerSize,
+		"githubInfrastructureTeam": p.GithubInfrastructureTeam,
 	} {
 		if value != "" {
 			return errors.Newf("%s is set, and a root organization has no use for it: it holds DNS zones alone, no applications and no environments", name)
@@ -181,7 +181,7 @@ func (p *Placement) validateRoot() error {
 	}
 	for name, set := range map[string]bool{
 		"vanityDomains": len(p.VanityDomains) > 0, "teamGroups": len(p.TeamGroups) > 0, "entitlementDurations": len(p.EntitlementDurations) > 0,
-		"outlierDetection": p.OutlierDetection != nil, "cloudArmor": p.CloudArmor != nil, "ciLargeRunnerMaximum": p.CiLargeRunnerMaximum != 0,
+		"outlierDetection": p.OutlierDetection != nil, "cloudArmor": p.CloudArmor != nil,
 		"applications": len(p.Applications) > 0, "registration": len(p.Registration) > 0, "teardown": p.Teardown,
 		"outOfService": len(p.OutOfService) > 0, "hostnames": len(p.Hostnames) > 0,
 	} {
@@ -193,6 +193,9 @@ func (p *Placement) validateRoot() error {
 		return errors.Newf("regions has %d entries; a root organization runs in one, where its connection, its triggers and its state bucket are", len(p.Regions))
 	}
 	if err := p.validateKeyHolding(); err != nil {
+		return err
+	}
+	if err := p.validateCiLargeRunner(); err != nil {
 		return err
 	}
 
