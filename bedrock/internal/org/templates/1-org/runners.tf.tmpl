@@ -30,13 +30,13 @@
 locals {
   boot = data.terraform_remote_state.boot.outputs
 
-  # The GitHub Apps' keys live in the root organization {{.KeysOrganization}}'s boot
+  # The GitHub Apps' keys live in the root organization {{.RootOrganization}}'s boot
   # project (placement.json, keys), one secret per app, read by alias; this
   # layer hands their policy administration down with the role of that
   # project 0-bootstrap holds (0-bootstrap/github.tf).
-  keys_project           = "{{.KeysProject}}"
+  keys_project           = "{{.RootProject}}"
   key_secrets            = { deployer = "{{.DeployerKeySecret}}", release = "{{.ReleaseKeySecret}}" }
-  keys_policy_admin_role = "projects/{{.KeysProject}}/roles/secretPolicyAdmin"
+  keys_policy_admin_role = "projects/{{.RootProject}}/roles/secretPolicyAdmin"
 
   state_bucket_objects = "projects/_/buckets/${var.state_bucket}/objects"
 

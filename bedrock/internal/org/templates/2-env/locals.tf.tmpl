@@ -111,11 +111,11 @@ locals {
   cloud_build_token_secret_version = {{.CloudBuildTokenSecretVersionHCL}}
   connected                        = local.cloud_build_installation_id != null && local.cloud_build_token_secret_version != null
 
-  # The GitHub Apps' keys live in the root organization {{.KeysOrganization}}'s boot
+  # The GitHub Apps' keys live in the root organization {{.RootOrganization}}'s boot
   # project (placement.json, keys), one secret per app, and every reader
   # names a secret's alias current, which that organization pins
   # (github-apps.tf).
-  keys_project = "{{.KeysProject}}"
+  keys_project = "{{.RootProject}}"
 
   # The deployer GitHub App the pipelines talk back on a pull request as: its
   # App ID from placement.json (githubDeployerAppId; null until recorded) and

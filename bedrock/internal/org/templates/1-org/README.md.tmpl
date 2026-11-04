@@ -66,7 +66,7 @@ trigger plans it on a pull request as `{{.Prefix}}-org-gbl-plan`.
   the bucket's policy authority (`0-bootstrap`'s custom role), for the
   application identities `2-env` creates, the policy administration of the
   deployer and release GitHub Apps' key secrets in the root organization
-  `{{.KeysOrganization}}`'s boot project (`secretPolicyAdmin`, that
+  `{{.RootOrganization}}`'s boot project (`secretPolicyAdmin`, that
   organization's role, which `0-bootstrap` holds for the org identity), so
   `2-env` can grant those identities their read, and the environment layers'
   plan identities the read of the bucket's policy (`bucketPolicyReader`,

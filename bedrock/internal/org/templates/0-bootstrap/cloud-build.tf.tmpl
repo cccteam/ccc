@@ -33,7 +33,7 @@
 # authorization"): the browser step, in this project's Cloud Build console,
 # before this layer's first apply. Until then the rest of the layer applies
 # and nothing runs. The token secret the browser step writes lives in this
-# project{{if not .Root}}; the environment projects' Cloud Build service agents read it for
+# project{{if not .IsRoot}}; the environment projects' Cloud Build service agents read it for
 # their 2-env connections, granted here by the numbers placement.json
 # records (projectNumbers){{end}}.
 # ---------------------------------------------------------------------------
@@ -60,7 +60,7 @@ locals {
   token_secret   = local.connected ? local.token_parts[local.token_regional ? 5 : 3] : null
 
   # The Cloud Build service agents that read the token: this project's, for
-  # the triggers' connection{{if .Root}}, and no other, since a root organization has no
+  # the triggers' connection{{if .IsRoot}}, and no other, since a root organization has no
   # environment project{{else}}, and each environment project's placement.json
   # records a number for (projectNumbers), for the environment's 2-env
   # connection. A project not recorded yet is granted once it is{{end}}.
@@ -151,7 +151,7 @@ resource "google_cloudbuildv2_repository" "infrastructure" {
 # The plan trigger's builds run as the planner, the apply trigger's as the
 # applier. Neither holds a layer's roles: each impersonates the layer
 # identities of its kind for that layer's tofu (roles/iam.serviceAccountTokenCreator
-# on each, granted here for the four identities this layer owns{{if not .Root}} and in 1-org
+# on each, granted here for the four identities this layer owns{{if not .IsRoot}} and in 1-org
 # for the ones it creates{{end}}), so a plan runs with a plan identity's reads and an
 # apply with the apply identity's writes, as before. What each holds itself:
 # the build logs (Cloud Logging, which a build as a user-specified service
@@ -217,7 +217,7 @@ resource "google_service_account_iam_member" "runner_boot_tofu_user" {
 
 # The applier applies this layer as the boot identity and {{.SecondLayer}} as the {{.SecondIdentity}}
 # identity; the planner plans them as the two plan identities (bootstrap.tf).
-{{- if not .Root}}
+{{- if not .IsRoot}}
 # 1-org grants the same on the identities it creates.
 {{- end}}
 resource "google_service_account_iam_member" "applier_boot_tofu" {
@@ -274,7 +274,7 @@ resource "google_secret_manager_secret_iam_member" "runner_keys" {
   member    = local.runners[each.value.runner].member
 }
 
-# The markers: one object per layer run under applied/ (applied/<layer>{{if not .Root}},
+# The markers: one object per layer run under applied/ (applied/<layer>{{if not .IsRoot}},
 # applied/2-env/<env>{{end}}), holding the commit of the run's last successful
 # apply, which bedrock org apply reads to decide what a push changed and
 # writes after each apply. The applier reaches nothing else in the bucket.
@@ -312,7 +312,7 @@ locals {
   run_env      = ["BUILD_ID=$BUILD_ID", "PROJECT_ID=$PROJECT_ID", "LOCATION=$LOCATION"]
   substitutions = {
     _LAYER         = "" # a layer to apply again by hand, with no change check; empty for the push's changes
-    _ENVIRONMENT   = "" # {{if .Root}}unused here: a root organization has no environment layer{{else}}with _LAYER=2-env, one environment; empty for the three in order{{end}}
+    _ENVIRONMENT   = "" # {{if .IsRoot}}unused here: a root organization has no environment layer{{else}}with _LAYER=2-env, one environment; empty for the three in order{{end}}
     _BEDROCK_STEPS = "{{.StepsVersion}}" # the shape of these steps, which bedrock org plan and apply compare with their own
   }
 

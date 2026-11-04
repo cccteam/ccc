@@ -12,7 +12,7 @@
   "githubDefaultBranch": "master",
   "githubInfrastructureAppId": "5080700",
   "githubDeployerAppId": "5080800",
-  "keys": {"organization": "imr", "project": "imr-boot-gbl-core-c3d4"},
+  "root": {"organization": "imr", "project": "imr-boot-gbl-core-c3d4"},
   "cloudBuildInstallationId": "12345678",
   "cloudBuildTokenSecretVersion": "projects/imp-boot-gbl-core-a1b2/locations/us-central1/secrets/github-github-oauthtoken-abcdef/versions/1",
   "bedrockVersion": "v0.5.0",

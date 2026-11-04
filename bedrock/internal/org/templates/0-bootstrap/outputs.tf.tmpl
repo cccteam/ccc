@@ -1,5 +1,5 @@
 # Read by hand when substituting values into {{.SecondLayer}}/terraform.tfvars and
-# placement.json{{if not .Root}}, and by 1-org through data "terraform_remote_state" on the
+# placement.json{{if not .IsRoot}}, and by 1-org through data "terraform_remote_state" on the
 # state bucket (prefix 0-bootstrap){{end}}. Nothing here is a secret; keep it that way.
 
 output "boot_project_id" {
@@ -23,12 +23,12 @@ output "boot_plan_service_accounts" {
 }
 
 output "planner_member" {
-  description = "The plan trigger's runner identity as an IAM member{{if .Root}}, which impersonates the two plan identities{{else}}; 1-org lets it impersonate the plan identities it creates (roles/iam.serviceAccountTokenCreator){{end}}."
+  description = "The plan trigger's runner identity as an IAM member{{if .IsRoot}}, which impersonates the two plan identities{{else}}; 1-org lets it impersonate the plan identities it creates (roles/iam.serviceAccountTokenCreator){{end}}."
   value       = google_service_account.planner.member
 }
 
 output "applier_member" {
-  description = "The apply trigger's runner identity as an IAM member{{if .Root}}, which impersonates the two apply identities{{else}}; 1-org lets it impersonate the apply identities it creates{{end}}."
+  description = "The apply trigger's runner identity as an IAM member{{if .IsRoot}}, which impersonates the two apply identities{{else}}; 1-org lets it impersonate the apply identities it creates{{end}}."
   value       = google_service_account.applier.member
 }
 
@@ -58,7 +58,7 @@ output "org_service_account_email" {
 }
 
 output "state_bucket_policy_admin_role" {
-  description = "Full name of the custom role in the boot project that reads and sets a bucket's IAM policy{{if .Root}}, held on the state bucket by the boot identity{{else}}; 1-org grants it on the state bucket to the environment layer identities, which grant the application identities their slots{{end}}."
+  description = "Full name of the custom role in the boot project that reads and sets a bucket's IAM policy{{if .IsRoot}}, held on the state bucket by the boot identity{{else}}; 1-org grants it on the state bucket to the environment layer identities, which grant the application identities their slots{{end}}."
   value       = google_project_iam_custom_role.state_bucket_policy_admin.id
 }
 
@@ -68,6 +68,6 @@ output "terraform_folder_id" {
 }
 
 output "organization_folder_id" {
-  description = "Folder ID of the organization's folder, named after the prefix{{if .Root}}, which holds the terraform folder{{else}}, under which 1-org creates the environment folders{{end}}."
+  description = "Folder ID of the organization's folder, named after the prefix{{if .IsRoot}}, which holds the terraform folder{{else}}, under which 1-org creates the environment folders{{end}}."
   value       = google_folder.organization.folder_id
 }

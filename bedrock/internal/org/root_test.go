@@ -53,7 +53,7 @@ func TestRootPlacementValidate(t *testing.T) {
 		{name: "a Spanner configuration", mutate: func(p *Placement) { p.Spanner.Config = "nam6" }, wantErr: "spanner.config is set, and a root organization has no use for it"},
 		{name: "a release app's slug", mutate: func(p *Placement) { p.GithubReleaseAppSlug = "imp-release" }, wantErr: "githubReleaseAppSlug is set, and a root organization has no use for it"},
 		{name: "the release app and its key's version", mutate: func(p *Placement) { p.GithubReleaseAppID, p.GithubReleaseKeyVersion = "5080645", "3" }},
-		{name: "keys of another organization", mutate: func(p *Placement) { p.Keys = &KeysPlace{Organization: "imq", Project: "imq-boot-gbl-core-0a0b"} }, wantErr: "keys is set, and a root organization holds the GitHub Apps' keys itself"},
+		{name: "the root of another organization", mutate: func(p *Placement) { p.Root = &RootPlace{Organization: "imq", Project: "imq-boot-gbl-core-0a0b"} }, wantErr: "root is set, and a root organization holds the GitHub Apps' keys itself"},
 		{name: "a key operator that is not a member", mutate: func(p *Placement) { p.KeyOperators = []string{"ops@imp.example"} }, wantErr: `keyOperators entry "ops@imp.example" is not an IAM member (user:, group:, serviceAccount:)`},
 		{name: "a hosting organization twice", mutate: func(p *Placement) {
 			p.HostingOrganizations = append(p.HostingOrganizations, HostingOrganization{Prefix: "imp", BootProject: "imp-boot-gbl-core-a1b2"})

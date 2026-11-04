@@ -546,8 +546,8 @@ The pipeline talks back on a pull request as the organization's deployer
 GitHub App (`github-apps.tf`): a deployment carrying the environment's URL, a
 comment, the guard's refusals. Its App ID is in `placement.json`
 (`githubDeployerAppId`); its key is a secret in the root organization
-`{{.KeysOrganization}}`'s boot project (`{{.DeployerKeySecret}}`, in
-`{{.KeysProject}}`; `keys` in `placement.json`), held there for every
+`{{.RootOrganization}}`'s boot project (`{{.DeployerKeySecret}}`, in
+`{{.RootProject}}`; `root` in `placement.json`), held there for every
 organization and read by its alias `current`, which that organization pins
 and moves (`0-bootstrap/README.md`, "The GitHub Apps' keys"). This layer
 carries the alias's resource name to the applications' pipelines through its

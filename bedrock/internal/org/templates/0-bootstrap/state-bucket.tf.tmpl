@@ -14,7 +14,7 @@
 # This layer grants for its own four, the boot identity the seed made and the
 # {{.SecondIdentity}} identity and the two boot layers' plan identities made here
 # (bootstrap.tf), all of which exist by the time the grant applies, and gives
-{{- if .Root}}
+{{- if .IsRoot}}
 # the boot identity the bucket's policy authority (the custom role below),
 # because it applies this layer through the workflow; 1-dns creates no identity
 # and grants nothing on the bucket. The first-time order holds by itself: the
@@ -43,7 +43,7 @@ locals {
   # The two identities this layer owns, with the state prefix each one applies.
   own_identities = {
     boot = { member = google_service_account.boot_tofu.member, prefix = "0-bootstrap" }
-{{- if .Root}}
+{{- if .IsRoot}}
     dns  = { member = google_service_account.org_tofu.member, prefix = "1-dns" }
 {{- else}}
     org  = { member = google_service_account.org_tofu.member, prefix = "1-org" }
@@ -70,7 +70,7 @@ resource "google_project_iam_custom_role" "state_bucket_policy_admin" {
 }
 
 resource "google_storage_bucket_iam_member" "policy_admin" {
-  for_each = {{if .Root}}{ boot = local.own_identities.boot }{{else}}local.own_identities{{end}}
+  for_each = {{if .IsRoot}}{ boot = local.own_identities.boot }{{else}}local.own_identities{{end}}
 
   bucket = var.state_bucket
   role   = google_project_iam_custom_role.state_bucket_policy_admin.id
@@ -99,7 +99,7 @@ resource "google_storage_bucket_iam_member" "state_own" {
   }
 }
 
-{{- if not .Root}}
+{{- if not .IsRoot}}
 
 # 1-org reads this layer's state: the runner identities it grants on and the
 # policy role it grants.

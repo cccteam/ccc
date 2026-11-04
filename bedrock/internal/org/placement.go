@@ -197,11 +197,11 @@ type Placement struct {
 	GithubReleaseKeyVersion string `json:"githubReleaseKeyVersion,omitempty"`
 	// Keys is where a hosting organization's pipelines read the GitHub Apps' private
 	// keys: the root organization that holds them for every organization in the Google
-	// Cloud organization, by its prefix (keys.organization), and its boot project
-	// (keys.project), where the three secrets live. Every reader names the alias current
+	// Cloud organization, by its prefix (root.organization), and its boot project
+	// (root.project), where the three secrets live. Every reader names the alias current
 	// of a secret, which that organization's placement pins; nothing about the keys is
 	// recorded here. A root organization has none: the keys are its own.
-	Keys *KeysPlace `json:"keys,omitempty"`
+	Root *RootPlace `json:"root,omitempty"`
 	// KeyOperators are the members (user:..., group:...) a root organization grants the
 	// adding of a version of a GitHub App's key, and the read that proves one, for the
 	// rotation (0-bootstrap/README.md, "Rotating a GitHub App's key"). None for a hosting
@@ -504,7 +504,7 @@ func (p *Placement) Validate() error {
 			return errors.Newf("label %q = %q is not a lowercase key with a value", k, v)
 		}
 	}
-	if p.Root() {
+	if p.IsRoot() {
 		return p.validateRoot()
 	}
 

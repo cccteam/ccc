@@ -129,7 +129,7 @@ is missing or refused on any domain.`,
 // in the boot project with the labels its zone hands onward. It refuses a placement that
 // does not record the project yet.
 func checkRequests(p *org.Placement, dir string) ([]domain.CheckRequest, error) {
-	if p.Root() {
+	if p.IsRoot() {
 		project := p.ZoneProject()
 		if project == "" {
 			return nil, errors.New("placement.json records no boot project (projects.boot): record the seed's value there, then check again")

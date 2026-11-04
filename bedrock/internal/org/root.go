@@ -76,15 +76,15 @@ type Delegation struct {
 	NameServers  []string `json:"nameServers"`
 }
 
-// Root reports whether the placement is a root organization's.
-func (p *Placement) Root() bool {
+// IsRoot reports whether the placement is a root organization's.
+func (p *Placement) IsRoot() bool {
 	return p.Kind == RootKind
 }
 
 // Layers are the organization's layers in apply order, by its kind: the six layers of
 // the hosting model, or the bootstrap and 1-dns.
 func (p *Placement) Layers() []string {
-	if p.Root() {
+	if p.IsRoot() {
 		return RootLayers
 	}
 
@@ -95,7 +95,7 @@ func (p *Placement) Layers() []string {
 // whose GitHub provider takes the infrastructure GitHub App's token: 1-org, or 1-dns for
 // a root organization.
 func (p *Placement) SecondLayer() string {
-	if p.Root() {
+	if p.IsRoot() {
 		return dnsLayer
 	}
 
@@ -105,7 +105,7 @@ func (p *Placement) SecondLayer() string {
 // SecondIdentity is the name 0-bootstrap gives the second layer's identities
 // (<prefix>-org-gbl-tofu, <prefix>-dns-gbl-tofu).
 func (p *Placement) SecondIdentity() string {
-	if p.Root() {
+	if p.IsRoot() {
 		return dnsIdentity
 	}
 
@@ -116,7 +116,7 @@ func (p *Placement) SecondIdentity() string {
 // boot project, the shared projects and the environment projects, or the boot project
 // alone.
 func (p *Placement) ProjectKeys() []string {
-	if p.Root() {
+	if p.IsRoot() {
 		return rootProjectKeys
 	}
 
@@ -127,7 +127,7 @@ func (p *Placement) ProjectKeys() []string {
 // the READMEs and the triggers' comments show them: 2-env for one environment in the
 // hosting model, 1-dns for a root organization.
 func (p *Placement) RerunExample() string {
-	if p.Root() {
+	if p.IsRoot() {
 		return "_LAYER=" + dnsLayer
 	}
 

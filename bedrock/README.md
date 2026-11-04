@@ -1507,7 +1507,7 @@ refuses a project that lacks the secret rather than creating it, because the sec
 0-bootstrap's own and its apply makes it. The project comes from `placement.json`
 (`projects.boot`); `--project` and `--container` override. Neither takes an environment.
 A hosting organization's repository refuses both, naming the root organization its
-placement records (`keys`); in an application's repository these names are refused, and in
+placement records (`root`); in an application's repository these names are refused, and in
 an infrastructure repository an application's `[env] [VARIABLE]` is. The rotation, in one
 place for every organization, is the root organization's `0-bootstrap/README.md`,
 "Rotating a GitHub App's key".
@@ -2466,7 +2466,7 @@ and the rendered root README ("How the layers are applied", "The two GitHub Apps
 8. In `placement.json`: the infrastructure, deployer and release apps' App IDs
    (`githubInfrastructureAppId`, `githubDeployerAppId`, `githubReleaseAppId`), then `org
    render`. Their keys are the root organization's, held in its boot project for every
-   organization (`keys` in the placement names it) and read through each secret's alias
+   organization (`root` in the placement names it) and read through each secret's alias
    `current`; they are added, checked and pinned there (`bedrock secret add`, `bedrock org
    secrets check`, `bedrock secret pin`), never here.
 9. In each environment project's Google Cloud console: the consent screen, with the
@@ -2660,7 +2660,7 @@ read of the token), the Cloud Build GitHub authorization (`cloudBuildInstallatio
 `cloudBuildTokenSecretVersion`), the infrastructure GitHub App whose token 1-org's GitHub
 provider takes (`githubInfrastructureAppId`), the deployer app the plans are posted as
 (`githubDeployerAppId`), the root organization whose boot project holds the apps' keys
-(`keys`: its prefix and that project, where every reader names each secret's alias
+(`root`: its prefix and that project, where every reader names each secret's alias
 `current`) and the bedrock pin;
 `0-bootstrap/README.md` has the person's steps. A run of the triggers that plans or
 applies a layer whose project the placement does not record yet (REPLACEME) stops and says

@@ -1,7 +1,7 @@
 # ---------------------------------------------------------------------------
 # The GitHub Apps' keys
 #
-{{- if .Root}}
+{{- if .IsRoot}}
 # The three GitHub Apps' private keys live here, in this organization's boot
 # project, for every bedrock organization in the Google Cloud organization:
 # one secret per app, each version a key, and on each secret the alias
@@ -169,7 +169,7 @@ resource "google_project_iam_member" "boot_tofu_secrets" {
 }
 {{- else}}
 # The three GitHub Apps' private keys live in the root organization
-# {{.KeysOrganization}}'s boot project ({{.KeysProject}}; keys in placement.json), one
+# {{.RootOrganization}}'s boot project ({{.RootProject}}; root in placement.json), one
 # secret per app for every bedrock organization in the Google Cloud
 # organization, and every reader here names a secret's alias "current", which
 # that organization's placement pins and its apply moves: a key is never added
@@ -208,13 +208,13 @@ resource "google_project_iam_member" "boot_tofu_secrets" {
 # ---------------------------------------------------------------------------
 
 locals {
-  keys_project = "{{.KeysProject}}"
+  keys_project = "{{.RootProject}}"
   key_secrets = {
     infrastructure = "{{.InfrastructureKeySecret}}"
     deployer       = "{{.DeployerKeySecret}}"
     release        = "{{.ReleaseKeySecret}}"
   }
-  keys_policy_admin_role = "projects/{{.KeysProject}}/roles/secretPolicyAdmin"
+  keys_policy_admin_role = "projects/{{.RootProject}}/roles/secretPolicyAdmin"
   boot_plan_key_reads = {
     for pair in setproduct(keys(local.boot_plans), keys(local.key_secrets)) :
     "${pair[0]}__${pair[1]}" => { plan = pair[0], key = pair[1] }

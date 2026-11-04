@@ -231,7 +231,7 @@ the place it happens.
    its private key and its installation. Then in a terminal, in this
    repository: its App ID recorded in `placement.json`
    (`githubInfrastructureAppId`) and `bedrock org render`. Its key lives in
-   the root organization `imr`'s boot project (`keys` in
+   the root organization `imr`'s boot project (`root` in
    `placement.json`), added, proven and pinned there; nothing is added here.
    Until the App ID is recorded and the alias names a version, a run of the
    triggers that plans or applies `1-org` says so and stops.

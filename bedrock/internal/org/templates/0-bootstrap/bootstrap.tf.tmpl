@@ -28,7 +28,7 @@ locals {
 # Everything else in this layer is created normally.
 # ---------------------------------------------------------------------------
 
-{{- if .Root}}
+{{- if .IsRoot}}
 
 # The terraform folder holds nothing but the automation plane. A root
 # organization makes no other folder: its zones live in the boot project.
@@ -42,7 +42,7 @@ locals {
 {{- end}}
 
 # The organization's folder, named after its prefix, holds everything the
-# layers make under the GCP organization: the terraform folder here{{if not .Root}}, the
+# layers make under the GCP organization: the terraform folder here{{if not .IsRoot}}, the
 # environment folders 1-org creates{{end}}. Sibling folders must differ in name, so
 # two bedrock organizations in one GCP organization each keep their own tree.
 # It is also the whole of this organization's reach: every role a layer
@@ -74,7 +74,7 @@ import {
 
 # The boot project hosts the layer identities, the state bucket, the Cloud
 # Build connection and triggers that plan and apply the layers (cloud-build.tf),
-# {{if .Root}}the three GitHub Apps' keys for every organization (github.tf), and the zones 1-dns makes, its one
+# {{if .IsRoot}}the three GitHub Apps' keys for every organization (github.tf), and the zones 1-dns makes, its one
 # downstream layer, which it is the quota and billing project for{{else}}acts as the quota and billing
 # project for every downstream layer{{end}}.
 #
@@ -103,7 +103,7 @@ module "boot_project" {
   deletion_policy             = var.destroy ? "DELETE" : "PREVENT"
   labels                      = local.labels
 
-{{- if .Root}}
+{{- if .IsRoot}}
 
   activate_apis = [
     "cloudbuild.googleapis.com",           # the connection and the triggers that plan and apply the layers (cloud-build.tf)
@@ -112,7 +112,7 @@ module "boot_project" {
     "iam.googleapis.com",                  # service accounts
     "iamcredentials.googleapis.com",       # the short-lived tokens a trigger's run impersonates a layer identity with
     "logging.googleapis.com",              # the triggers' build logs
-    "secretmanager.googleapis.com",        # {{if .Root}}the three GitHub Apps' key secrets (github.tf){{else}}the Cloud Build token secret (cloud-build.tf){{end}}
+    "secretmanager.googleapis.com",        # {{if .IsRoot}}the three GitHub Apps' key secrets (github.tf){{else}}the Cloud Build token secret (cloud-build.tf){{end}}
     "serviceusage.googleapis.com",         # API enablement
     "storage.googleapis.com",              # the state bucket
   ]
@@ -199,7 +199,7 @@ resource "google_billing_account_iam_member" "boot_tofu" {
   member             = google_service_account.boot_tofu.member
 }
 
-{{- if .Root}}
+{{- if .IsRoot}}
 
 # ---------------------------------------------------------------------------
 # DNS layer identity
@@ -226,7 +226,7 @@ resource "google_service_account" "org_tofu" {
   display_name = "OpenTofu SA - ${local.org_layer_name}"
   description  = "Layer identity for ${local.org_layer_name}. Applies the {{.SecondLayer}} layer from the infrastructure repository's apply trigger."
 }
-{{- if .Root}}
+{{- if .IsRoot}}
 
 resource "google_project_iam_member" "org_tofu_dns" {
   project = module.boot_project.project_id
@@ -269,7 +269,7 @@ locals {
   # state prefixes each one reads (state-bucket.tf).
   boot_plans = {
     boot = { layer = "0-bootstrap", reads = ["0-bootstrap"] }
-{{- if .Root}}
+{{- if .IsRoot}}
     dns  = { layer = "1-dns", reads = ["1-dns"] }
 {{- else}}
     org  = { layer = "1-org", reads = ["0-bootstrap", "1-org"] }
@@ -315,7 +315,7 @@ resource "google_project_iam_member" "boot_plan_quota" {
 # every organization under it and held after a delete). The boot identity
 # manages the boot project's labels and metadata through the project module
 # when this layer runs through the apply trigger; the break-glass account's
-# Owner covered the first apply.{{if not .Root}} 1-org makes the same role in each project
+# Owner covered the first apply.{{if not .IsRoot}} 1-org makes the same role in each project
 # it creates, for the org layer identity.{{end}}
 resource "google_project_iam_custom_role" "project_updater" {
   project     = module.boot_project.project_id
@@ -331,7 +331,7 @@ resource "google_project_iam_member" "boot_tofu_project_updater" {
   member  = google_service_account.boot_tofu.member
 }
 
-{{- if not .Root}}
+{{- if not .IsRoot}}
 
 # 1-org declares on this project each environment's layer state entitlement:
 # the environment layer identity's slot in the state bucket and this project as

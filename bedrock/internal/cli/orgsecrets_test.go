@@ -176,7 +176,7 @@ func TestOrgSecretsCheck(t *testing.T) {
 			name:    "a hosting organization is sent to the root organization",
 			hosting: true,
 			args:    []string{"github-deployer-key", "2"},
-			wantErr: "the GitHub Apps' keys live in the root organization imr (keys.organization in placement.json), in its boot project imr-boot-gbl-core-c3d4: add, check and pin a key in that organization's infrastructure repository",
+			wantErr: "the GitHub Apps' keys live in the root organization imr (root.organization in placement.json), in its boot project imr-boot-gbl-core-c3d4: add, check and pin a key in that organization's infrastructure repository",
 		},
 	}
 	for _, tt := range tests {
@@ -236,7 +236,7 @@ func TestOrgSecretInHosting(t *testing.T) {
 			}
 			d := deps{domains: noCloudDomains, secrets: noSecretManager, projects: noProjects, interactive: never}
 			out, err := execute(d, "pem", append([]string{secretCommand}, append(args, "--dir", dir)...)...)
-			want := "the GitHub Apps' keys live in the root organization imr (keys.organization in placement.json), in its boot project imr-boot-gbl-core-c3d4: add, check and pin a key in that organization's infrastructure repository; this organization reads each secret's alias current, which that organization's placement pins"
+			want := "the GitHub Apps' keys live in the root organization imr (root.organization in placement.json), in its boot project imr-boot-gbl-core-c3d4: add, check and pin a key in that organization's infrastructure repository; this organization reads each secret's alias current, which that organization's placement pins"
 			if err == nil || !strings.Contains(err.Error(), want) {
 				t.Fatalf("Execute() error = %v, want %q; output:\n%s", err, want, out)
 			}

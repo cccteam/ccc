@@ -60,7 +60,7 @@ Build triggers" below).
   request into `master` and `imp-boot-uc1-layers-apply` on a push
   to it, whose steps are the trigger's own ("The Cloud Build triggers").
 - The grants on the three GitHub Apps' key secrets, which live in the root
-  organization `imr`'s boot project (`keys` in
+  organization `imr`'s boot project (`root` in
   `placement.json`; `github.tf`): the org identity's policy administration of
   the deployer and release secrets, the org plan identity's read of the
   infrastructure key, and both boot plan identities' read of the three
@@ -616,7 +616,7 @@ application pipeline those rights. Once, by a person:
 3. On the same page: Install App, on the organization, for all repositories.
 4. In `placement.json`: the App ID as `githubInfrastructureAppId`, then
    `bedrock org render`. The key itself lives in the root organization
-   `imr`'s boot project (`keys` in `placement.json`), added,
+   `imr`'s boot project (`root` in `placement.json`), added,
    proven and pinned there by its key operators; a run of the triggers here
    reads the alias `current` of `imr-boot-gbl-github-infrastructure-key`, which that
    organization pins, and nothing is added in this repository.
@@ -629,7 +629,7 @@ own token (`1-org/README.md`).
 ## The GitHub Apps' keys
 
 The three GitHub Apps' private keys live in the root organization
-`imr`'s boot project (`imr-boot-gbl-core-c3d4`; `keys` in
+`imr`'s boot project (`imr-boot-gbl-core-c3d4`; `root` in
 `placement.json`), one secret per app for every bedrock organization in the
 Google Cloud organization: `imr-boot-gbl-github-infrastructure-key`,
 `imr-boot-gbl-github-deployer-key` and `imr-boot-gbl-github-release-key`. Every reader here names

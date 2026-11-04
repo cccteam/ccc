@@ -547,7 +547,7 @@ GitHub App (`github-apps.tf`): a deployment carrying the environment's URL, a
 comment, the guard's refusals. Its App ID is in `placement.json`
 (`githubDeployerAppId`); its key is a secret in the root organization
 `imr`'s boot project (`imr-boot-gbl-github-deployer-key`, in
-`imr-boot-gbl-core-c3d4`; `keys` in `placement.json`), held there for every
+`imr-boot-gbl-core-c3d4`; `root` in `placement.json`), held there for every
 organization and read by its alias `current`, which that organization pins
 and moves (`0-bootstrap/README.md`, "The GitHub Apps' keys"). This layer
 carries the alias's resource name to the applications' pipelines through its

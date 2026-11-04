@@ -534,11 +534,11 @@ func TestGithubAppSteps(t *testing.T) {
 			name: "0-bootstrap: the infrastructure app's id recorded here and its key the root organization's, the budget beside the billing grants",
 			path: "0-bootstrap/README.md",
 			want: []string{
-				"4. In `placement.json`: the App ID as `githubInfrastructureAppId`, then\n   `bedrock org render`. The key itself lives in the root organization\n   `imr`'s boot project (`keys` in `placement.json`), added,\n   proven and pinned there by its key operators",
+				"4. In `placement.json`: the App ID as `githubInfrastructureAppId`, then\n   `bedrock org render`. The key itself lives in the root organization\n   `imr`'s boot project (`root` in `placement.json`), added,\n   proven and pinned there by its key operators",
 				"### 5. Billing grants and the budget, by a billing administrator\n",
 				"In the Billing console, as the same billing administrator, set the spend\nbudget",
 				"## The GitHub Apps' keys\n",
-				"`imr-boot-gbl-core-c3d4`; `keys` in\n`placement.json`), one secret per app for every bedrock organization in the\nGoogle Cloud organization: `imr-boot-gbl-github-infrastructure-key`,\n`imr-boot-gbl-github-deployer-key` and `imr-boot-gbl-github-release-key`.",
+				"`imr-boot-gbl-core-c3d4`; `root` in\n`placement.json`), one secret per app for every bedrock organization in the\nGoogle Cloud organization: `imr-boot-gbl-github-infrastructure-key`,\n`imr-boot-gbl-github-deployer-key` and `imr-boot-gbl-github-release-key`.",
 				"`bedrock secret\nadd` and `pin` refuse here and name that organization",
 				"the root organization gives this\norganization's boot identity `secretPolicyAdmin` on the three secrets",
 			},
@@ -549,7 +549,7 @@ func TestGithubAppSteps(t *testing.T) {
 			path: "2-env/README.md",
 			want: []string{
 				"## The deployer and release GitHub Apps' keys\n",
-				"its key is a secret in the root organization\n`imr`'s boot project (`imr-boot-gbl-github-deployer-key`, in\n`imr-boot-gbl-core-c3d4`; `keys` in `placement.json`), held there for every\norganization and read by its alias `current`, which that organization pins\nand moves (`0-bootstrap/README.md`, \"The GitHub Apps' keys\")",
+				"its key is a secret in the root organization\n`imr`'s boot project (`imr-boot-gbl-github-deployer-key`, in\n`imr-boot-gbl-core-c3d4`; `root` in `placement.json`), held there for every\norganization and read by its alias `current`, which that organization pins\nand moves (`0-bootstrap/README.md`, \"The GitHub Apps' keys\")",
 				"This layer\ncarries the alias's resource name to the applications' pipelines through its\noutput `github_deployer_key_secret_version` and grants their identities its\nread: every application's deploy identity, and in tst its apply identity too,",
 			},
 			absent: []string{"gcloud secrets versions add", "github-deployer-key <env>", "github_deployer_key_secret_versions", "pinned version", "bedrock secret pin github-", "key container"},
@@ -1780,7 +1780,7 @@ func TestViewPhrases(t *testing.T) {
 		},
 		{
 			name:      "the boot project, the repository and two of the root organization's key secrets",
-			placement: Placement{Prefix: "acme", GithubOrganization: "acme", SourceRepo: "acme-infrastructure", Projects: map[string]string{"boot": "acme-boot-gbl-core-1a2b"}, Keys: &KeysPlace{Organization: "zo", Project: "zo-boot-gbl-core-9f8e"}},
+			placement: Placement{Prefix: "acme", GithubOrganization: "acme", SourceRepo: "acme-infrastructure", Projects: map[string]string{"boot": "acme-boot-gbl-core-1a2b"}, Root: &RootPlace{Organization: "zo", Project: "zo-boot-gbl-core-9f8e"}},
 			check: func(v *view) string {
 				return v.BootProject() + " " + v.InfrastructureRepository() + " " + v.InfrastructureKeySecret() + " " + v.DeployerKeySecret()
 			},
@@ -1800,7 +1800,7 @@ func TestViewPhrases(t *testing.T) {
 			placement: Placement{
 				Prefix: "acme", Projects: map[string]string{"boot": "acme-boot-gbl-core-1a2b"}, ProjectNumbers: map[string]string{"boot": "42", "tst": "43", "prd": "45"},
 				CloudBuildInstallationID: "12345678", CloudBuildTokenSecretVersion: "projects/acme-boot-gbl-core-1a2b/locations/us-central1/secrets/github-token/versions/1",
-				GithubDeployerAppID: "5080800", Keys: &KeysPlace{Organization: "zo", Project: "zo-boot-gbl-core-9f8e"},
+				GithubDeployerAppID: "5080800", Root: &RootPlace{Organization: "zo", Project: "zo-boot-gbl-core-9f8e"},
 			},
 			check: func(v *view) string {
 				return v.CloudBuildInstallationIDHCL() + " " + v.CloudBuildTokenSecretVersionHCL() + " " + v.GithubDeployerAppIDHCL() + " " + v.DeployerKeyVersionNameHCL() + " " + v.EnvironmentProjectNumbersHCL()

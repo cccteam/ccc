@@ -87,7 +87,7 @@ var BootstrapRoles = []BootstrapRole{
 // kind: the table for a hosting organization; for a root organization the same roles,
 // each with what needs it there, since 1-dns declares no folder, project, policy or tag.
 func (p *Placement) BootstrapRoles() []BootstrapRole {
-	if !p.Root() {
+	if !p.IsRoot() {
 		return BootstrapRoles
 	}
 	var roles []BootstrapRole

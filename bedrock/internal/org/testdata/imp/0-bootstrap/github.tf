@@ -2,7 +2,7 @@
 # The GitHub Apps' keys
 #
 # The three GitHub Apps' private keys live in the root organization
-# imr's boot project (imr-boot-gbl-core-c3d4; keys in placement.json), one
+# imr's boot project (imr-boot-gbl-core-c3d4; root in placement.json), one
 # secret per app for every bedrock organization in the Google Cloud
 # organization, and every reader here names a secret's alias "current", which
 # that organization's placement pins and its apply moves: a key is never added

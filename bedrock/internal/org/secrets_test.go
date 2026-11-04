@@ -9,7 +9,7 @@ import (
 
 // TestSecretPlace: each key's secret is named as the root organization's 0-bootstrap
 // names it, in the project that holds the keys: a root organization's own boot project,
-// a hosting organization's keys.project; a boot project not recorded yet is refused with
+// a hosting organization's root.project; a boot project not recorded yet is refused with
 // the key to record.
 func TestSecretPlace(t *testing.T) {
 	t.Parallel()
@@ -46,7 +46,7 @@ func TestSecretPlace(t *testing.T) {
 		{
 			name:          "a hosting organization names the root organization's",
 			secret:        DeployerKey,
-			placement:     Placement{Prefix: "hs", Projects: map[string]string{"boot": "hs-boot-gbl-core-1111"}, Keys: &KeysPlace{Organization: "ex", Project: "ex-boot-gbl-core-a1b2"}},
+			placement:     Placement{Prefix: "hs", Projects: map[string]string{"boot": "hs-boot-gbl-core-1111"}, Root: &RootPlace{Organization: "ex", Project: "ex-boot-gbl-core-a1b2"}},
 			wantProject:   "ex-boot-gbl-core-a1b2",
 			wantContainer: "ex-boot-gbl-github-deployer-key",
 		},
@@ -104,7 +104,7 @@ func TestSecretVersionNames(t *testing.T) {
 		{name: "a root organization, nothing pinned", placement: Placement{Kind: RootKind, Prefix: "ex", Projects: map[string]string{"boot": "ex-boot-gbl-core-a1b2"}}, want: rootProject + "infrastructure-key/versions/current|" + rootProject + "deployer-key/versions/current", release: rootProject + "release-key/versions/current"},
 		{name: "a root organization, versions pinned: the alias all the same", placement: Placement{Kind: RootKind, Prefix: "ex", Projects: map[string]string{"boot": "ex-boot-gbl-core-a1b2"}, GithubInfrastructureKeyVersion: "2", GithubDeployerKeyVersion: "1", GithubReleaseKeyVersion: "3"}, want: rootProject + "infrastructure-key/versions/current|" + rootProject + "deployer-key/versions/current", release: rootProject + "release-key/versions/current"},
 		{name: "a root organization before its boot project is recorded", placement: Placement{Kind: RootKind, Prefix: "ex", GithubInfrastructureKeyVersion: "2"}, want: "|"},
-		{name: "a hosting organization names the root organization's", placement: Placement{Prefix: "hs", Projects: map[string]string{"boot": "hs-boot-gbl-core-1111"}, Keys: &KeysPlace{Organization: "ex", Project: "ex-boot-gbl-core-a1b2"}}, want: rootProject + "infrastructure-key/versions/current|" + rootProject + "deployer-key/versions/current", release: rootProject + "release-key/versions/current"},
+		{name: "a hosting organization names the root organization's", placement: Placement{Prefix: "hs", Projects: map[string]string{"boot": "hs-boot-gbl-core-1111"}, Root: &RootPlace{Organization: "ex", Project: "ex-boot-gbl-core-a1b2"}}, want: rootProject + "infrastructure-key/versions/current|" + rootProject + "deployer-key/versions/current", release: rootProject + "release-key/versions/current"},
 		{name: "a hosting organization without keys", placement: Placement{Prefix: "hs", Projects: map[string]string{"boot": "hs-boot-gbl-core-1111"}}, want: "|"},
 	}
 	for _, tt := range tests {
@@ -150,9 +150,9 @@ func TestKeyAliasHCL(t *testing.T) {
 func TestKeysElsewhere(t *testing.T) {
 	t.Parallel()
 
-	hosting := Placement{Prefix: "hs", Keys: &KeysPlace{Organization: "ex", Project: "ex-boot-gbl-core-a1b2"}}
+	hosting := Placement{Prefix: "hs", Root: &RootPlace{Organization: "ex", Project: "ex-boot-gbl-core-a1b2"}}
 	err := hosting.KeysElsewhere()
-	want := "the GitHub Apps' keys live in the root organization ex (keys.organization in placement.json), in its boot project ex-boot-gbl-core-a1b2: add, check and pin a key in that organization's infrastructure repository; this organization reads each secret's alias current, which that organization's placement pins"
+	want := "the GitHub Apps' keys live in the root organization ex (root.organization in placement.json), in its boot project ex-boot-gbl-core-a1b2: add, check and pin a key in that organization's infrastructure repository; this organization reads each secret's alias current, which that organization's placement pins"
 	if err == nil || !strings.Contains(err.Error(), want) {
 		t.Errorf("KeysElsewhere() = %v, want %q", err, want)
 	}
@@ -172,11 +172,11 @@ func TestKeysValidate(t *testing.T) {
 		wantErr string
 	}{
 		{name: "the fixture", mutate: func(*Placement) {}},
-		{name: "no keys", mutate: func(p *Placement) { p.Keys = nil }, wantErr: "keys is empty: a hosting organization reads the GitHub Apps' keys from the root organization that holds them; record its prefix (keys.organization) and its boot project (keys.project)"},
-		{name: "a project alone", mutate: func(p *Placement) { p.Keys.Organization = "" }, wantErr: "keys is empty"},
-		{name: "a prefix that is not one", mutate: func(p *Placement) { p.Keys.Organization = "Zones" }, wantErr: `keys.organization "Zones" is not an organization's prefix`},
-		{name: "its own prefix", mutate: func(p *Placement) { p.Keys.Organization = "imp" }, wantErr: `keys.organization "imp" is this organization's own prefix: a hosting organization holds no key`},
-		{name: "a project that is not one", mutate: func(p *Placement) { p.Keys.Project = "IMZ" }, wantErr: `keys.project "IMZ" is not a project id`},
+		{name: "no root", mutate: func(p *Placement) { p.Root = nil }, wantErr: "root is empty: a hosting organization reads the GitHub Apps' keys and the Cloud Build token from the root organization that holds them; record its prefix (root.organization) and its boot project (root.project)"},
+		{name: "a project alone", mutate: func(p *Placement) { p.Root.Organization = "" }, wantErr: "root is empty"},
+		{name: "a prefix that is not one", mutate: func(p *Placement) { p.Root.Organization = "Zones" }, wantErr: `root.organization "Zones" is not an organization's prefix`},
+		{name: "its own prefix", mutate: func(p *Placement) { p.Root.Organization = "imp" }, wantErr: `root.organization "imp" is this organization's own prefix: a hosting organization holds no key`},
+		{name: "a project that is not one", mutate: func(p *Placement) { p.Root.Project = "IMZ" }, wantErr: `root.project "IMZ" is not a project id`},
 		{name: "a version pinned", mutate: func(p *Placement) { p.GithubDeployerKeyVersion = "2" }, wantErr: "githubDeployerKeyVersion is set, and a hosting organization pins no key: the root organization imr pins the version in its own placement.json, and every reader here names the alias current; remove it"},
 		{name: "key operators", mutate: func(p *Placement) { p.KeyOperators = []string{"group:keys@imp.example"} }, wantErr: "keyOperators and hostingOrganizations are a root organization's, which holds the keys"},
 		{name: "hosting organizations", mutate: func(p *Placement) {
