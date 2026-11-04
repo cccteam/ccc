@@ -9,7 +9,7 @@ func TestRetire(t *testing.T) {
 	t.Parallel()
 
 	p := testPlacement(t)
-	p.Registration = map[string]string{"harbor": RegistrationGrants}
+	p.Registration = map[string]RegistrationSteps{"harbor": EveryEnvironment(RegistrationGrants)}
 	p.OutOfService = map[string][]string{"harbor": {"tst", "stg", "prd"}}
 	p.Hostnames = map[string]map[string]map[string]string{"harbor": {"prd": {"harbor.impulseframework.dev": "projects/p/global/backendServices/b"}}}
 	if err := p.Retire("harbor"); err != nil {

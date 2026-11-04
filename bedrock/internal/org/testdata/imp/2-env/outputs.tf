@@ -5,7 +5,7 @@
 output "applications" {
   description = "Per application: the apply, deploy, plan and operations identities (email, member, and the deploy identity's full resource name for Cloud Build triggers) and the Cloud Build repository link (ID and name)."
   value = {
-    for app in var.applications : app => {
+    for app in local.applications : app => {
       apply_identity_email       = google_service_account.apply[app].email
       apply_identity_member      = google_service_account.apply[app].member
       deploy_identity_email      = google_service_account.deploy[app].email

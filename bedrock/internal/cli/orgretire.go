@@ -185,7 +185,7 @@ func retireOutOfService(p *org.Placement, app string) error {
 		return nil
 	}
 	var served []string
-	for _, env := range org.Environments {
+	for _, env := range p.PlacedEnvironments(app) {
 		if !slices.Contains(p.OutOfService[app], env) {
 			served = append(served, env)
 		}
@@ -205,7 +205,7 @@ func (d deps) retireUnrouted(ctx context.Context, p *org.Placement, app string) 
 		return err
 	}
 	var routed []string
-	for _, env := range org.Environments {
+	for _, env := range p.PlacedEnvironments(app) {
 		for _, host := range p.ApplicationHostnames(app, env) {
 			if _, ok := hosts[host]; ok {
 				routed = append(routed, host)
@@ -223,7 +223,8 @@ func (d deps) retireUnrouted(ctx context.Context, p *org.Placement, app string) 
 // destroy from its checkout takes the final backups and the data with it, and retire
 // touches no data.
 func (d deps) retireDestroyed(ctx context.Context, dir string, p *org.Placement, app string, out io.Writer) error {
-	standings, err := deploy.ApplicationStanding(ctx, d.deploy, p.StateBucket, app, org.Environments)
+	placed := p.PlacedEnvironments(app)
+	standings, err := deploy.ApplicationStanding(ctx, d.deploy, p.StateBucket, app, placed)
 	if err != nil {
 		return err
 	}
@@ -241,7 +242,7 @@ func (d deps) retireDestroyed(ctx context.Context, dir string, p *org.Placement,
 
 		return errors.Newf("%s's stack stands in %s: run bedrock destroy --all from %s first, which takes the final backups and the data down, then retire", app, strings.Join(standing, ", "), from)
 	}
-	fmt.Fprintf(out, "%s: out of service everywhere, 2-net routes nothing to it, and no stack stands in %s.\n", app, strings.Join(org.Environments, ", "))
+	fmt.Fprintf(out, "%s: out of service everywhere, 2-net routes nothing to it, and no stack stands in %s.\n", app, strings.Join(placed, ", "))
 
 	return nil
 }
@@ -253,8 +254,8 @@ func (d deps) retireDestroyed(ctx context.Context, dir string, p *org.Placement,
 func retireNotice(p *org.Placement) string {
 	var b strings.Builder
 	for _, app := range p.Codes() {
-		if len(p.OutOfService[app]) == len(org.Environments) {
-			fmt.Fprintf(&b, "%s is out of service in every environment (outOfService in placement.json): once bedrock destroy --all has taken its stacks down from its checkout, bedrock org retire %s archives its repository, takes it out of 1-org's state and removes the entry; until then the entry stays, since 1-org never deletes a repository (prevent_destroy).\n", app, app)
+		if len(p.OutOfService[app]) == len(p.PlacedEnvironments(app)) {
+			fmt.Fprintf(&b, "%s is out of service in every environment it is placed in (outOfService in placement.json): once bedrock destroy --all has taken its stacks down from its checkout, bedrock org retire %s archives its repository, takes it out of 1-org's state and removes the entry; until then the entry stays, since 1-org never deletes a repository (prevent_destroy).\n", app, app)
 		}
 	}
 

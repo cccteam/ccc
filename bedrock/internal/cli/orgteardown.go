@@ -181,15 +181,15 @@ func (d deps) teardownOrgApplication(cmd *cobra.Command, dir, app string, envs [
 	if err := appendJournalLine(dir, line); err != nil {
 		return err
 	}
-	fmt.Fprintf(out, "A line went into %s.\n\nNext: commit placement.json, %s and the rendered files, open the pull request and merge it; the plan run shows %s's host rules removed from 2-net and the apply trigger applies it. Then, from %s's checkout: bedrock teardown %s (or bedrock destroy).\n", orgJournal, orgJournal, app, app, teardownArgument(p.OutOfService[app]))
+	fmt.Fprintf(out, "A line went into %s.\n\nNext: commit placement.json, %s and the rendered files, open the pull request and merge it; the plan run shows %s's host rules removed from 2-net and the apply trigger applies it. Then, from %s's checkout: bedrock teardown %s (or bedrock destroy).\n", orgJournal, orgJournal, app, app, teardownArgument(p.OutOfService[app], p.PlacedEnvironments(app)))
 
 	return nil
 }
 
 // teardownArgument is how bedrock teardown names the environments taken out: --all for
-// every one, else each environment's run.
-func teardownArgument(envs []string) string {
-	if len(envs) == len(org.Environments) {
+// every one the application is placed in, else each environment's run.
+func teardownArgument(envs, placed []string) string {
+	if len(envs) == len(placed) {
 		return "--" + allFlag
 	}
 
@@ -284,7 +284,7 @@ func (d deps) teardownOrgLayers(cmd *cobra.Command, dir string, p *org.Placement
 func (d deps) teardownOrgAccount(ctx context.Context, dir string, p *org.Placement, out io.Writer) error {
 	standing := 0
 	for _, app := range p.Codes() {
-		standings, err := deploy.ApplicationStanding(ctx, d.deploy, p.StateBucket, app, org.Environments)
+		standings, err := deploy.ApplicationStanding(ctx, d.deploy, p.StateBucket, app, p.PlacedEnvironments(app))
 		if err != nil {
 			return err
 		}

@@ -1,0 +1,316 @@
+locals {
+  # The application code, fixed for this stack. It is the key 2-env registered
+  # the identities and the repository link under, and the segment every name
+  # below carries.
+  app = "beacon"
+  # The site's hostname label under the apps domain, the first label of every hostname
+  # and of a pull-request stack's service: the one placement.json declares for the site
+  # (hostnames), the code by default. The code names every resource; the label names
+  # the site on the network.
+  label = "beacon"
+
+  org = data.terraform_remote_state.org.outputs
+  env = data.terraform_remote_state.env.outputs
+
+  prefix     = local.env.prefix
+  project_id = local.env.project_id
+  name       = "${local.prefix}-${var.environment}"
+
+  is_prd = var.environment == "prd"
+
+  # The promotion order, and for each environment the plan identity a pull-request
+  # build plans that environment's stack as (env=identity), read from its 2-env
+  # state; empty until 2-env there makes it. The triggers pass both to every build.
+  environments    = ["tst"]
+  plan_identities = join(",", [for env in local.environments : "${env}=${try(data.terraform_remote_state.envs[env].outputs.applications[local.app].plan_identity_email, "")}"])
+  # Each environment's deployment-records bucket (_RECORDS_BUCKETS): a pull-request
+  # build against a patch line reads each environment's live record as that
+  # environment's plan identity, to say where the patch release will be refused.
+  records_buckets = join(",", [for env in local.environments : "${env}=${try(data.terraform_remote_state.envs[env].outputs.records_bucket, "")}"])
+
+  # The application's database in every other environment, env=resource name, under the
+  # first generation's name (a restore puts a database into the next generation, -2, -3,
+  # which the reader probes). The migration guard reads each environment's migration
+  # version from it on a consolidation pull request, through the migrations_reader
+  # database role the application's first migration creates, which 2-env (an
+  # environment's own instance) and 2-spn (the shared instance) grant tst's
+  # deploy identity on the application's databases; the tag build's migrate step reads
+  # its own environment's the same way, as database admin.
+  migration_databases = join(",", [for env in local.environments : "${env}=projects/${try(data.terraform_remote_state.envs[env].outputs.spanner_instance.project, "")}/instances/${try(data.terraform_remote_state.envs[env].outputs.spanner_instance.name, "")}/databases/${local.prefix}-${env}-gbl-${local.app}-db" if env != var.environment])
+
+  # A pull-request stack: this code in tst with var.pull_request set, into
+  # its own state. Its resources carry the short name beacon-pr<N>, the pull request's
+  # name, which the pr-stack trigger's plan guard holds every one of them to, and it
+  # shares tst's secret containers, identity registration and registry.
+  is_pr   = var.pull_request != 0
+  pr_name = "${local.app}-pr${var.pull_request}"
+  # The pull-request stack's hostname label and Cloud Run service name, the same word,
+  # the pull request's name: 2-env's pull-request backend picks the service by the
+  # hostname's first label, so the pull request's name serves there, not the site's
+  # label, which names an environment's hostnames alone.
+  pr_host = local.pr_name
+
+  # The runtime accounts' IDs: by the convention, or the short name. The
+  # migration has none: the pipeline runs the migrate command on the build
+  # worker as the deploy identity from 2-env (local.identities).
+  app_account = local.is_pr ? "${local.pr_name}-app" : "${local.name}-gbl-${local.app}-app"
+
+  # The same accounts as members and as resource names, spelled out rather than
+  # read from the account resources, so a plan knows every membership before
+  # the accounts exist: the pull-request build's guard reads the pull request's
+  # name off each planned change, and a member known only after apply would
+  # stop the first build of every pull request.
+  app_email        = "${local.app_account}@${local.project_id}.iam.gserviceaccount.com"
+  app_member       = "serviceAccount:${local.app_email}"
+  app_account_name = "projects/${local.project_id}/serviceAccounts/${local.app_email}"
+
+  # The environment before this one in the promotion order (tst) and
+  # its deployment-records bucket: the pipeline runs a release here only after
+  # that environment holds a live record of it. The first environment has none.
+  previous_environment    = { tst = "" }[var.environment]
+  previous_records_bucket = try(data.terraform_remote_state.previous_env[0].outputs.records_bucket, "")
+
+  # The service runs in the organization's two regions. Keyed by
+  # region code because the code is what names the regional resources.
+  regions = {
+    (local.env.region_code)           = local.env.region
+    (local.env.secondary_region_code) = local.env.secondary_region
+  }
+  primary_region_code = local.env.region_code
+  primary_region      = local.env.region
+
+  # What 2-env registered for this application.
+  identities = local.env.applications[local.app]
+  instance   = local.env.spanner_instance
+
+  # The image path prefix 2-shr publishes for this application
+  # (image_paths: <registry hostname>/<shr project>/<repository>); the
+  # pipeline appends /<image>:<tag>. Null until 2-shr knows the application.
+  registry = try(data.terraform_remote_state.shr.outputs.image_paths[local.app], null)
+
+  hostnames = local.is_pr ? ["${local.pr_host}.impulseframework.dev"] : var.hostnames[var.environment]
+  # The next revision's hostnames, the first label with -next: what the hook before
+  # traffic calls while the old revision still serves. None for a pull-request stack.
+  next_hostnames = local.is_pr ? [] : [for host in local.hostnames : replace(host, "/^([^.]+)\\./", "$1-next.")]
+
+  # The keepers auth's persona registration is the persona method, the sign-in of the
+  # test environments through the persona provider placement.json names (persona): the issuer in a
+  # pull-request stack and in tst, where the method is registered, and empty
+  # beyond them, where it is not and the login page never offers it; the deployment's
+  # client ID at the provider, the placement's client ID root with the pull request or
+  # the environment appended; and the callback, the route the generated router
+  # (pkg/router) registers as GET /api/user/persona/callback, on the environment's canonical host.
+  keepers_persona_issuer       = local.is_pr || var.environment == "tst" ? "https://persona.impulseframework.dev/persona" : ""
+  keepers_persona_client_id    = local.is_pr ? "beacon-pr${var.pull_request}" : var.environment == "tst" ? "beacon-tst" : ""
+  keepers_persona_redirect_url = "https://${local.hostnames[0]}/api/user/persona/callback"
+
+  # The database the site opens: the environment's own, a pull request's own,
+  # or in shared mode (var.shared_database) tst's, which the pull-request
+  # stack then only reads by name and grants its app identity on.
+  own_database = !(local.is_pr && var.shared_database)
+  # The database by generation (var.database_generation): the first is named
+  # for the environment and the application, and each rollback restores a
+  # backup into the next, "-2", then "-3" (spanner.tf). The current one is what
+  # the site, the migrate command and the grants use.
+  database_base = local.own_database && local.is_pr ? "${local.pr_name}-db" : "${local.name}-gbl-${local.app}-db"
+  database_name = var.database_generation == 1 ? local.database_base : "${local.database_base}-${var.database_generation}"
+  # How far back Spanner keeps the database's row versions, from
+  # placement.json (spannerRetention; seven days, the most Spanner allows,
+  # unless it says otherwise): how far back a backup as of a moment and a
+  # point-in-time rollback reach.
+  spanner_retention = { tst = "7d" }
+
+  # ---------------------------------------------------------------------------
+  # What the code declares, read from pkg/config by bedrock render; each entry
+  # names the field it comes from.
+  # ---------------------------------------------------------------------------
+
+  # Secrets: the fields of pkg/config tagged secret:"true" or secret:"generated".
+  # One container per variable per environment, named
+  # imp-<env>-gbl-beacon-<kebab of the variable without its APP_ prefix>. No
+  # versions here: someone adds the value (Secret Version Adder) and
+  # var.secret_versions pins which one runs, or, for a generated secret, the
+  # pipeline adds the first version and derives the pin at each build
+  # (var.generated_secret_versions; secret-manager.tf, "Generated secrets").
+  #
+  # readers: which runtime identity mounts it. The service; and the migrate
+  # command, which also constructs the data level, reads the generated password
+  # of each auth's first administrator (migrate_secrets, below), which it seeds
+  # the administrator user with while the auth's users table holds no rows, and
+  # the mailbox's app password, which the data level opens the mail sender with.
+  # So the deploy identity, which runs the migrate command, holds accessor on
+  # those containers alone and on no other runtime secret: the session library
+  # reads the cookie key (falling back to an ephemeral one), the client secrets
+  # and the people's credentials only when a browser signs in, which a
+  # migration never does.
+  secrets = {
+    APP_COOKIE_KEY = {
+      name    = "cookie-key"
+      level   = "data"
+      source  = "pkg/config/data.go dataConfig.CookieKey"
+      purpose = "Signs session cookies and seals list cursors: Base64 of 32+ random bytes. Rotating it ends every session and cursor."
+      # generated: the tooling makes the value (secret:"generated"); nobody types it.
+      generated = true
+    }
+    APP_MAIL_APP_PASSWORD = {
+      name    = "mail-app-password"
+      level   = "data"
+      source  = "pkg/config/data.go dataConfig.MailAppPassword"
+      purpose = "A credential dataConfig.MailAppPassword reads."
+      # generated: the tooling makes the value (secret:"generated"); nobody types it.
+      generated = false
+    }
+    APP_KEEPERS_ADMINISTRATOR_PASSWORD = {
+      name    = "keepers-administrator-password"
+      level   = "data"
+      source  = "pkg/config/data.go dataConfig.KeepersAdministratorPassword"
+      purpose = "KeepersAdministratorPassword is the password of the keepers auth's first administrator, administrator, which the migrate command seeds while the auth's users table holds no rows."
+      # generated: the tooling makes the value (secret:"generated"); nobody types it.
+      generated = true
+    }
+  }
+
+  # The container each secret lives in, by the naming convention: this
+  # environment's, which a pull-request stack shares with tst and never creates.
+  secret_ids = { for key, s in local.secrets : key => "${local.name}-gbl-${local.app}-${s.name}" }
+
+  # The secrets the tooling makes (secret:"generated"): their entry in
+  # var.secret_versions is the word generated, and their version the number the
+  # pipeline's plan step derived and passed as var.generated_secret_versions.
+  generated_secrets = { for key, s in local.secrets : key => s if s.generated }
+
+  # The secrets the migrate command reads (readers, above): the generated
+  # password of each auth's first administrator and the mailbox's app password,
+  # by variable, and the pinned version of each the command runs with, read
+  # back by the pipeline from the applied stack (cloud-build.tf,
+  # _MIGRATE_SECRETS). A secret with no version yet (a plan by hand) is left
+  # out, and the command runs without it.
+  migrate_secrets = toset(["APP_MAIL_APP_PASSWORD", "APP_KEEPERS_ADMINISTRATOR_PASSWORD"])
+
+  # The versions this environment runs: the placement's pins (a number, or
+  # latest) for the secrets someone puts in place, and the derived numbers for
+  # the generated ones. A generated secret the build passed no number for (a plan
+  # run by hand) is not mounted, as a secret with no pin is not.
+  declared_versions = lookup(var.secret_versions, var.environment, {})
+  secret_versions = merge(
+    { for key, v in local.declared_versions : key => v if v != "generated" },
+    { for key, v in var.generated_secret_versions : key => v if contains(keys(local.generated_secrets), key) },
+  )
+
+  # Only a secret with a pinned version is mounted.
+  mounted_secrets = {
+    for key, s in local.secrets : key => merge(s, { version = local.secret_versions[key] })
+    if contains(keys(local.secret_versions), key)
+  }
+
+  # Build-time secrets (var.build_secrets): what the image build reads in this
+  # environment, NAME = pinned version, their containers named like the runtime
+  # secrets' (the variable without its APP_ prefix, in kebab case). A
+  # pull-request stack reads tst's and creates none.
+  build_secrets    = lookup(var.build_secrets, var.environment, {})
+  build_secret_ids = { for name in keys(local.build_secrets) : name => "${local.name}-gbl-${local.app}-${lower(replace(trimprefix(name, "APP_"), "_", "-"))}" }
+
+  # Environment variables the infrastructure knows, by configuration level
+  # (pkg/config/config.go: core, every process; data.go: every process that
+  # opens the database; site.go: the served site). A process receives the
+  # levels it constructs and nothing above them.
+  core_env = {
+    # coreConfig.ServiceName (required): the name the process reports in logs.
+    APP_SERVICE_NAME = local.app
+    # coreConfig.LoggingProjectID: request logs ship to Cloud Logging here.
+    GOOGLE_CLOUD_LOGGING_PROJECT = local.project_id
+    # coreConfig.AppVersion is not set here: the pipeline bakes APP_VERSION
+    # into the image at build (a Dockerfile ENV from the tag), so a deploy
+    # never edits the template's variables and this stack stays their owner.
+  }
+
+  data_env = {
+    # SpannerSettings, all required: the database identity.
+    GOOGLE_CLOUD_SPANNER_PROJECT       = local.instance.project
+    GOOGLE_CLOUD_SPANNER_INSTANCE_ID   = local.instance.name
+    GOOGLE_CLOUD_SPANNER_DATABASE_NAME = local.database_name
+    # dataConfig.PublicURL: the application's address as a browser reaches it, the
+    # canonical hostname; every link the auths mail opens the login page under it.
+    APP_PUBLIC_URL = "https://${local.hostnames[0]}"
+    # dataConfig.MailMailbox: the Google Workspace mailbox the auths' mail is sent as
+    # (var.mail_mailbox), empty until the organization names one, when the
+    # application writes its mail to the log and sends nothing.
+    APP_MAIL_MAILBOX = var.mail_mailbox
+    # dataConfig.MailFrom: the address the auths' mail is from when it is not the
+    # mailbox (var.mail_from), an alias of the mailbox's account; empty sends from
+    # the mailbox.
+    APP_MAIL_FROM = var.mail_from
+    # dataConfig.SessionTimeout is left to its code default (10m).
+  }
+
+  # The persona registrations' settings the served site reads and a migration does
+  # not: the issuer, set where the method is registered, the deployment's client ID
+  # and the callback (the locals above).
+  site_persona_env = {
+    APP_KEEPERS_PERSONA_ISSUER       = local.keepers_persona_issuer
+    APP_KEEPERS_PERSONA_CLIENT_ID    = local.keepers_persona_client_id
+    APP_KEEPERS_PERSONA_REDIRECT_URL = local.keepers_persona_redirect_url
+  }
+
+  # What the pipeline registers with the persona provider after traffic (deploy
+  # persona register) and removes at a teardown (deploy persona remove), per persona
+  # method: the provider, the application's client ID root (the deployment's client
+  # ID is the root with the pull request or the environment appended), the site whose
+  # canonical hostname the callback is on, the callback's path and the cast in the
+  # checkout. The triggers carry it as _PERSONA (persona_substitution) in tst, where
+  # the method is registered, and as nothing elsewhere; the pipeline reads it back from the
+  # stack as applied (the substitutions output), so a release that adds or removes the method
+  # registers what it carries in that very run, where the trigger lags by one.
+  persona_registrations = [
+    {
+      auth         = "keepers"
+      registration = "persona"
+      issuer       = "https://persona.impulseframework.dev/persona"
+      clientIdRoot = "beacon"
+      site         = "beacon"
+      callbackPath = "/api/user/persona/callback"
+      castFile     = "pkg/auth/keepers/cast.json"
+    },
+  ]
+  persona_substitution = var.environment == "tst" ? jsonencode(local.persona_registrations) : ""
+
+  # site.go: PORT is set by Cloud Run itself (reserved; setting it is an
+  # error) and APP_CONSOLE_DIST is where the image put the bundle, a build
+  # detail the Dockerfile owns. Neither is set here.
+  service_env = merge(local.core_env, local.data_env, local.site_persona_env)
+
+  # cmd/deployment/migrate reads core and data and nothing above them: what the pipeline
+  # runs the migrate command with on the build worker (cloud-build.tf,
+  # _MIGRATE_ENV). The release's own variable is the image's, which the
+  # pipeline sets from the build.
+  migrate_env = merge(local.core_env, local.data_env, {
+    APP_SERVICE_NAME = "${local.app}-migrate"
+  })
+
+  # The databases the migrate command reaches, by resource name (cloud-build.tf,
+  # _MIGRATE_DATABASES): deploy migrate reads each as the deploy identity until its
+  # grants above are in effect, since IAM makes a grant this build's apply created
+  # effective seconds to minutes later.
+  migrate_databases = concat(
+    ["projects/${local.instance.project}/instances/${local.instance.name}/databases/${local.database_name}"],
+    [],
+  )
+
+  # Every resource carries these. terraform_source_path is the stack's state slot
+  # in the organization's bucket (3-app/beacon) written as a label value, which
+  # admits no slash (Secret Manager and Cloud Run refuse it); source_repo is the
+  # application repository's name, from the placement; organization is the
+  # bedrock organization's prefix, which tells its projects from another's in
+  # the same GCP organization.
+  base_labels = {
+    terraform             = "true"
+    terraform_source_path = "3-app-beacon"
+    source_repo           = "beacon"
+    organization          = "imp"
+    environment           = var.environment
+    application           = local.app
+    bedrock-lab           = "true"
+  }
+  # A pull-request stack also carries its number, for the sweep and the bill.
+  labels = merge(local.base_labels, local.is_pr ? { pull_request = tostring(var.pull_request) } : {})
+}

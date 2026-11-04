@@ -146,10 +146,11 @@ func (d deps) serveOrg(cmd *cobra.Command, dir string) error {
 }
 
 // servedEnvironments are the environments 2-net serves the application in once the
-// placement is back in service: every one not out of service on its own.
+// placement is back in service: every one it is placed in and not out of service on its
+// own.
 func servedEnvironments(p *org.Placement, app string) []string {
 	var envs []string
-	for _, env := range org.Environments {
+	for _, env := range p.PlacedEnvironments(app) {
 		if !slices.Contains(p.OutOfService[app], env) {
 			envs = append(envs, env)
 		}

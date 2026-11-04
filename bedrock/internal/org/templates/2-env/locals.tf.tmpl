@@ -35,7 +35,7 @@ locals {
   # from tst's 2-env state; in tst they are this layer's own. An application tst's
   # state still lists and this environment no longer has (one retired on this pull
   # request, until tst applies) is left out: its plan identity is gone here.
-  tst_apply_members = local.is_tst ? { for app in var.applications : app => google_service_account.apply[app].member } : try({ for app, a in data.terraform_remote_state.tst_env[0].outputs.applications : app => a.apply_identity_member if contains(var.applications, app) }, {})
+  tst_apply_members = local.is_tst ? { for app in local.applications : app => google_service_account.apply[app].member } : try({ for app, a in data.terraform_remote_state.tst_env[0].outputs.applications : app => a.apply_identity_member if contains(local.applications, app) }, {})
 
   # tst's deploy identities (by application): a consolidation pull request's build runs
   # the migration guard as them, which reads this environment's migration version
@@ -43,7 +43,7 @@ locals {
   # creates (select on the SchemaMigrations table alone), on this environment's database
   # of the same application (identities.tf, migration_reader_*). Read from tst's 2-env
   # state; in tst the guard reads its own database as database admin, so none here.
-  tst_deploy_members = local.is_tst ? {} : try({ for app, a in data.terraform_remote_state.tst_env[0].outputs.applications : app => a.deploy_identity_member if contains(var.applications, app) }, {})
+  tst_deploy_members = local.is_tst ? {} : try({ for app, a in data.terraform_remote_state.tst_env[0].outputs.applications : app => a.deploy_identity_member if contains(local.applications, app) }, {})
 
   # The upstream states an application stack reads outputs from (its
   # initialize.tf): the foundation, every environment (the plan identities the
@@ -58,7 +58,12 @@ locals {
 
 {{.LabelsBlock "2-env" "var.environment"}}
 
-  apps = toset(var.applications)
+  # The applications placed in this environment (var.application_environments): what this
+  # run makes identities, grants, a repository link and triggers for. An application placed
+  # in a prefix of the promotion order that ends before this environment has nothing here.
+  applications = [for app in var.applications : app if contains(var.application_environments[app], var.environment)]
+
+  apps = toset(local.applications)
 
   # The Spanner instance every application in this environment puts its
   # database on: tst has its own (spanner.tf), stg and prd share the one 2-spn
@@ -221,16 +226,16 @@ locals {
 
   # app x role pairs, so for_each can grant several roles per identity.
   apply_grants = {
-    for pair in setproduct(var.applications, local.apply_project_roles) :
+    for pair in setproduct(local.applications, local.apply_project_roles) :
     "${pair[0]}__${pair[1]}" => { app = pair[0], role = pair[1] }
   }
   plan_grants = {
-    for pair in setproduct(var.applications, local.plan_project_roles) :
+    for pair in setproduct(local.applications, local.plan_project_roles) :
     "${pair[0]}__${pair[1]}" => { app = pair[0], role = pair[1] }
   }
 
   deploy_grants = {
-    for pair in setproduct(var.applications, local.deploy_project_roles) :
+    for pair in setproduct(local.applications, local.deploy_project_roles) :
     "${pair[0]}__${pair[1]}" => { app = pair[0], role = pair[1] }
   }
 

@@ -5,7 +5,7 @@
 state_bucket = "imp-boot-gbl-state-REPLACEME"
 
 # Placement per environment, filled as each environment is set up. Every map
-# is keyed by environment so one file serves all three applies.
+# is keyed by environment so one file serves every environment's apply.
 
 # The Google Workspace mailbox the auths' mail is sent as, once for the
 # organization (README, "Hand steps"); empty, the application writes its mail

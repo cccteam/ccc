@@ -26,6 +26,22 @@ variable "application_repositories" {
   }
 }
 
+variable "application_environments" {
+  description = "The environments each application is placed in, by code, a prefix of the promotion order (the first environment; the first two; every one): the repository's GitHub Environments and their deployment policies are made for those alone (github.tf). Rendered into applications.auto.tfvars from placement.json's applications."
+  type        = map(list(string))
+  default     = {}
+
+  validation {
+    condition     = toset(keys(var.application_environments)) == toset(var.applications)
+    error_message = "application_environments names every application code and no other."
+  }
+
+  validation {
+    condition     = alltrue([for app, envs in var.application_environments : length(envs) > 0 && try(envs == slice(["tst", "stg", "prd"], 0, length(envs)), false)])
+    error_message = "Each application's environments are a prefix of the promotion order (`tst`, `stg` and `prd`)."
+  }
+}
+
 variable "applied_applications" {
   description = "The applications whose stacks have had their first apply in every environment (registered in full in placement.json): their repositories' rulesets require the stack's check trigger, which the first apply made, beside the CI jobs every application's require. Rendered into applications.auto.tfvars by bedrock org register <app> --next."
   type        = list(string)

@@ -248,6 +248,20 @@ default), `2-net`'s host rules render from the record, and a hostname another
 application serves is refused. After a label change, `bedrock org hostnames
 <app>` records them again.
 
+An application is placed in every environment unless `bedrock org register
+--environments` names a prefix of the promotion order (`tst`; `tst,stg`), as a
+proof application that stays in the first environment is. Its entry records the
+list (`environments`); registration creates its things there alone, the layers
+render for it there alone (2-env's identities, 1-org's GitHub Environments, the
+grants, the hostnames), the capacity count counts the databases it has there,
+and its release line ends at the last of them, so no version build exists
+beyond it. `bedrock org place <app> <env>...` changes the list later. An
+environment added goes through the registration's steps there (`register
+--next`), with the application's own placement listing the same environments.
+An environment dropped must be out of service first (`bedrock org teardown
+<app> <env>`, its pull request applied, the stack torn down there), so that
+nothing the layers own is left behind.
+
 Each layer's `terraform.tfvars` is committed. It holds IDs, not secrets, and
 the values a layer runs with belong in the repository.
 

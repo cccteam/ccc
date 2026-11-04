@@ -66,7 +66,7 @@ func (d deps) recordApplicationHostnames(cmd *cobra.Command, dir, app string) er
 	if p.Step(app) != "" {
 		return errors.Newf("%s is at the %s step of its registration: its hostnames are recorded when the registration completes (bedrock org register %s --next)", repository, p.Step(app), app)
 	}
-	changed, err := d.recordHostnames(ctx, p, app, repository)
+	changed, err := d.recordHostnames(ctx, p, app, repository, p.PlacedEnvironments(app))
 	if err != nil {
 		return err
 	}

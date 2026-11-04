@@ -694,7 +694,7 @@ func TestOrgCommands(t *testing.T) {
 				if strings.Contains(string(hosts), "quill") {
 					t.Errorf("2-net/applications.auto.tfvars carries quill's hosts at its identities:\n%s", hosts)
 				}
-				if !strings.Contains(string(placement), "\"registration\": {\n    \"quill\": \"identities\"\n  }") {
+				if !strings.Contains(string(placement), "\"registration\": {\n    \"quill\": {\n      \"prd\": \"identities\",\n      \"stg\": \"identities\",\n      \"tst\": \"identities\"\n    }\n  }") {
 					t.Errorf("placement.json does not record quill at its identities:\n%s", placement)
 				}
 				if code, out := runOrg(t, "org", "check", "--dir", dir); code != 0 {
@@ -704,9 +704,9 @@ func TestOrgCommands(t *testing.T) {
 				return code, out
 			},
 			wantOut: []string{
-				"Registered quill-service under the code quill in", "at its identities; rendered", "1-org/public-invokers.auto.tfvars among them", "Register through the Cloud Build triggers, as pull requests into master",
+				"Registered quill-service under the code quill in", "at its identities, placed in tst, stg, prd; rendered", "1-org/public-invokers.auto.tfvars among them", "Register through the Cloud Build triggers, as pull requests into master",
 				"1. This render, quill-service at its identities: its repository",
-				"2. The apply trigger by hand with 2-env, in a terminal:\n     gcloud builds triggers run imp-boot-uc1-layers-apply --region=us-central1 --project=imp-boot-gbl-core-a1b2 --branch=master --substitutions=_LAYER=2-env\n     tst and stg grant the next environment's deploy identity read on their records\n     bucket, from state the first pass did not have.",
+				"2. The apply trigger by hand with 2-env, in a terminal:\n     gcloud builds triggers run imp-boot-uc1-layers-apply --region=us-central1 --project=imp-boot-gbl-core-a1b2 --branch=master --substitutions=_LAYER=2-env\n     each environment but the last of them grants the next environment's deploy identity\n     read on its records bucket, from state the first pass did not have.",
 				"3. bedrock org register quill --next, then the pull request it renders: the public-invoker\n     tag (1-org), the registry grants (2-shr) and the database admins (2-spn)",
 				"5. bedrock org register quill --next once more, then the pull request it renders: the\n     hostnames (2-net)",
 				"\n  6. After 2-net's apply: bedrock domain check, which passes when the apps domain and each vanity domain resolve to their zones.\n",
@@ -1065,7 +1065,7 @@ func TestOrgRegisterPlacement(t *testing.T) {
 				t.Fatalf("derive.ReadPlacement() error = %v", err)
 			}
 			want := &derive.Placement{
-				Prefix: "imp", Environments: []string{"tst", "stg", "prd"},
+				Prefix: "imp", Environments: []string{"tst", "stg", "prd"}, ProductionEnvironment: "prd",
 				Regions:    []derive.Region{{Name: "us-central1", Code: "uc1"}, {Name: "us-west3", Code: "uw3"}},
 				AppsDomain: "apps.imp.example", HostedDomain: "imp.example", StateBucket: "imp-boot-gbl-state-a1b2",
 				PlaceholderImage: derive.PlaceholderImage, DefaultBranch: "master", Code: "quill", Repository: "quill-service", ReleaseApp: "imp-release",
@@ -1285,7 +1285,7 @@ func TestOrgRegisterNext(t *testing.T) {
 						"Moved quill-portal's registration to its grants in", "The pull request now carries 1-org/public-invokers.auto.tfvars, 2-shr/applications.auto.tfvars\nand 2-spn/applications.auto.tfvars",
 						"After its merge and apply: quill-portal's own stack,\napplied for the first time in each environment through its operations workflow, which GitHub lists: Actions,\noperations, Run workflow, with the action apply and the environment, tst, stg, prd in that order (or\ngh workflow run operations.yml --repo imp-example/quill-portal -f action=apply -f environment=<env>; its\ninfrastructure/README.md, Applying). Then\nbedrock org register quill --next.\n",
 					},
-					wantFiles:  map[string][]string{"1-org/public-invokers.auto.tfvars": {invoker}, "placement.json": {"\"quill\": \"grants\""}},
+					wantFiles:  map[string][]string{"1-org/public-invokers.auto.tfvars": {invoker}, "placement.json": {"\"quill\": {\n      \"prd\": \"grants\",\n      \"stg\": \"grants\",\n      \"tst\": \"grants\"\n    }"}},
 					wantAbsent: map[string][]string{"2-net/applications.auto.tfvars": {host}},
 				},
 				{
@@ -1328,7 +1328,7 @@ func TestOrgRegisterNext(t *testing.T) {
 					"Moved quill-portal's registration to its grants in",
 					"After its merge and apply: quill-portal's own stack,\napplied for the first time in each environment. GitHub does not list its operations workflow yet: the push to master that adds or\nchanges the workflow's file (the merge of the stack rendered at this bedrock) runs the\nworkflow's registered job, which lists it, and the first apply then starts through the\nworkflow's apply action: Actions,\noperations, Run workflow, with the action apply and the environment, tst, stg, prd in that order (or\ngh workflow run operations.yml --repo imp-example/quill-portal -f action=apply -f environment=<env>; its\ninfrastructure/README.md, Applying). Then\nbedrock org register quill --next.\n",
 				},
-				wantFiles: map[string][]string{"placement.json": {"\"quill\": \"grants\""}},
+				wantFiles: map[string][]string{"placement.json": {"\"quill\": {\n      \"prd\": \"grants\",\n      \"stg\": \"grants\",\n      \"tst\": \"grants\"\n    }"}},
 			}},
 		},
 		{
@@ -1340,7 +1340,7 @@ func TestOrgRegisterNext(t *testing.T) {
 					"Moved quill-portal's registration to its grants in",
 					"After its merge and apply: quill-portal's own stack,\napplied for the first time in each environment. The repository is empty: the application's first push comes first, to master, the default\nbranch the stack trigger builds, with its stack rendered there (bedrock render) from its\nfirst placement.json. That push runs the operations workflow's registered job, which lists\nthe workflow, and the stack's first apply then starts through the workflow's apply action:\nActions,\noperations, Run workflow, with the action apply and the environment, tst, stg, prd in that order (or\ngh workflow run operations.yml --repo imp-example/quill-portal -f action=apply -f environment=<env>; its\ninfrastructure/README.md, Applying). Then\nbedrock org register quill --next.\n",
 				},
-				wantFiles: map[string][]string{"placement.json": {"\"quill\": \"grants\""}},
+				wantFiles: map[string][]string{"placement.json": {"\"quill\": {\n      \"prd\": \"grants\",\n      \"stg\": \"grants\",\n      \"tst\": \"grants\"\n    }"}},
 			}},
 		},
 		{
@@ -1350,7 +1350,7 @@ func TestOrgRegisterNext(t *testing.T) {
 				objects: map[string]string{"2-env/tst/default.tfstate": envState("quill"), "2-env/stg/default.tfstate": envState("quill"), "2-env/prd/default.tfstate": envState("quill")},
 				args:    []string{"org", "register", "quill", "--next"}, wantCode: 1,
 				wantOut:   []string{"reading imp-example/quill-portal's workflows, which decide how the stack's first apply starts; nothing moved", "answered 404: Not Found"},
-				wantFiles: map[string][]string{"placement.json": {"\"quill\": \"identities\""}},
+				wantFiles: map[string][]string{"placement.json": {"\"quill\": {\n      \"prd\": \"identities\",\n      \"stg\": \"identities\",\n      \"tst\": \"identities\"\n    }"}},
 			}},
 		},
 		{
@@ -1591,7 +1591,7 @@ func TestOrgDestroy(t *testing.T) {
 func TestOrgRegisterCapacity(t *testing.T) {
 	t.Parallel()
 
-	const refused = "register sixth: the placement declares 12 databases on the shared Spanner instance (6 applications, one database each in stg and prd), and the instance holds 10 at 100 processing units (ten for every hundred below a node): raise processing_units in 2-spn/terraform.tfvars (every hundred units below a node hold ten more databases; a node, 1000 units, holds a hundred), or bedrock destroy an application the organization no longer needs, which frees its databases"
+	const refused = "register sixth: the placement declares 12 databases on the shared Spanner instance (6 applications, a database for each of stg and prd an application is placed in), and the instance holds 10 at 100 processing units (ten for every hundred below a node): raise processing_units in 2-spn/terraform.tfvars (every hundred units below a node hold ten more databases; a node, 1000 units, holds a hundred), or bedrock destroy an application the organization no longer needs, which frees its databases"
 	tests := []struct {
 		name string
 		// spn is 2-spn/terraform.tfvars, none when empty (the variable's default).
@@ -1652,7 +1652,7 @@ func TestOrgRegisterCapacity(t *testing.T) {
 func TestOrgCheckCapacity(t *testing.T) {
 	t.Parallel()
 
-	const notice = "Spanner capacity: the placement declares 12 databases on the shared Spanner instance (6 applications, one database each in stg and prd), and the instance holds 10 at 100 processing units"
+	const notice = "Spanner capacity: the placement declares 12 databases on the shared Spanner instance (6 applications, a database for each of stg and prd an application is placed in), and the instance holds 10 at 100 processing units"
 	tests := []struct {
 		name         string
 		applications int

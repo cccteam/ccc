@@ -72,8 +72,8 @@ resource "google_storage_bucket" "records" {
 # been applied (locals.tf), which is why a registration applies this layer
 # twice.
 locals {
-  records_deploy_members = [for app in var.applications : google_service_account.deploy[app].member]
-  records_plan_members   = [for app in var.applications : google_service_account.plan[app].member]
+  records_deploy_members = [for app in local.applications : google_service_account.deploy[app].member]
+  records_plan_members   = [for app in local.applications : google_service_account.plan[app].member]
   # The apply identities read the records too: the stack's pr-stack and check
   # triggers run as the application's apply identity, and the pull request's
   # stack job reads the pull request's newest record before its plan (the
@@ -81,7 +81,7 @@ locals {
   # still in the tree as applied). A list is a request on the bucket, which the
   # objectUser binding under <app>/stacks/ (below) does not admit, so the read
   # is a binding of the bucket, as the deploy identities' is.
-  records_apply_members = [for app in var.applications : google_service_account.apply[app].member]
+  records_apply_members = [for app in local.applications : google_service_account.apply[app].member]
   # The operations identities read the records too: a rollback asked for with
   # no release or backup named takes the live release's predecessor and the live
   # release's pre-release backup from them (operations.tf, the workflow). In
@@ -90,9 +90,9 @@ locals {
   # production's live release, which the workflow reads from here as that
   # environment's operations identity. Their emails follow the model's naming
   # and 1-org's project ids; the identities exist once each 2-env has applied.
-  records_ops_members = [for app in var.applications : google_service_account.operations[app].member]
+  records_ops_members = [for app in local.applications : google_service_account.operations[app].member]
   records_lower_ops_members = local.next_environment != "" ? [] : [
-    for pair in setproduct([for env, next in var.next_environment : env if next != ""], var.applications) :
+    for pair in setproduct([for env, next in var.next_environment : env if next != ""], local.applications) :
     "serviceAccount:${local.prefix}-${pair[0]}-gbl-${pair[1]}-ops@${local.org.project_ids[pair[0]]}.iam.gserviceaccount.com"
   ]
   # In production, the deploy identities of the environment before it (the one
@@ -102,7 +102,7 @@ locals {
   # database from production's newest backup first when it does (bedrock deploy
   # resolve). Named the way the lower operations identities are.
   records_rehearsal_members = local.next_environment != "" || local.previous_environment == null ? [] : [
-    for app in var.applications :
+    for app in local.applications :
     "serviceAccount:${local.prefix}-${local.previous_environment}-gbl-${app}-deploy@${local.org.project_ids[local.previous_environment]}.iam.gserviceaccount.com"
   ]
   # What each application's stack writes itself, under <app>/stacks/: the
@@ -116,7 +116,7 @@ locals {
   # id object with the stack; through the pipeline (the operations workflow's
   # teardown and destroy actions, the stack trigger's build), the apply
   # identity writes the same record.
-  records_stack_prefix = { for app in var.applications : app => "projects/_/buckets/${google_storage_bucket.records.name}/objects/${app}/stacks/" }
+  records_stack_prefix = { for app in local.applications : app => "projects/_/buckets/${google_storage_bucket.records.name}/objects/${app}/stacks/" }
   records_creator_condition = length(local.records_stack_prefix) == 0 ? null : {
     title       = "${local.name}-records-not-stacks"
     description = "Every object but what the applications' stacks write themselves (their id objects, the stack jobs' outputs), which their apply identities write."

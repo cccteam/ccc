@@ -97,7 +97,7 @@ locals {
 }
 
 resource "google_spanner_instance_iam_member" "apply_database_creator" {
-  for_each = { for app in var.applications : app => app if local.own_instance }
+  for_each = { for app in local.applications : app => app if local.own_instance }
 
   project  = local.instance_project
   instance = local.instance_name
@@ -106,7 +106,7 @@ resource "google_spanner_instance_iam_member" "apply_database_creator" {
 }
 
 resource "google_spanner_instance_iam_member" "apply_database_admin" {
-  for_each = { for app in var.applications : app => app if local.own_instance }
+  for_each = { for app in local.applications : app => app if local.own_instance }
 
   project  = local.instance_project
   instance = local.instance_name
@@ -165,7 +165,7 @@ resource "google_spanner_instance_iam_member" "migration_reader_role" {
 }
 
 resource "google_spanner_instance_iam_member" "apply_backup_admin" {
-  for_each = { for app in var.applications : app => app if local.own_instance }
+  for_each = { for app in local.applications : app => app if local.own_instance }
 
   project  = local.instance_project
   instance = local.instance_name
@@ -185,7 +185,7 @@ resource "google_spanner_instance_iam_member" "apply_backup_admin" {
 # backup, which restoreAdmin alone carries, bounded to the application's own
 # backups in this environment (2-spn grants the same on the shared instance).
 resource "google_spanner_instance_iam_member" "apply_restore_admin" {
-  for_each = { for app in var.applications : app => app if local.own_instance }
+  for_each = { for app in local.applications : app => app if local.own_instance }
 
   project  = local.instance_project
   instance = local.instance_name
@@ -264,7 +264,7 @@ resource "google_project_iam_member" "apply_security_policy_admin" {
 # service to it needs the apply identity to use the network. This organization runs
 # without one (no connector, no NAT), so this is normally empty.
 resource "google_project_iam_member" "apply_network_user" {
-  for_each = { for app in var.applications : app => app if local.shared_vpc != null }
+  for_each = { for app in local.applications : app => app if local.shared_vpc != null }
 
   project = local.project_id
   role    = "roles/compute.networkUser"
@@ -289,7 +289,7 @@ resource "google_project_iam_member" "deploy" {
 # does not know the application at all.
 check "repositories_registered" {
   assert {
-    condition     = alltrue([for app in var.applications : contains(keys(local.repositories), app)])
+    condition     = alltrue([for app in local.applications : contains(keys(local.repositories), app)])
     error_message = "An application has no image repository in 2-shr's repository_names output yet. Add it to 2-shr's applications, and its deploy identity member to 2-shr's pushers."
   }
 }
@@ -451,7 +451,7 @@ resource "google_project_iam_member" "plan" {
 # spannerPlanReader role; on the shared instance the same grant is 2-spn's,
 # from its database_planners.
 resource "google_spanner_instance_iam_member" "plan_spanner_reader" {
-  for_each = { for app in var.applications : app => app if local.own_instance }
+  for_each = { for app in local.applications : app => app if local.own_instance }
 
   project  = local.instance_project
   instance = local.instance_name

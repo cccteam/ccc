@@ -5,8 +5,8 @@
 # environment's GitHub connection. Two run cloudbuild.yaml from the
 # repository as the deploy identity:
 #
-#   version   a tag v<major>.<minor>.<patch>, in every environment; {{.SharedInstanceEnvs}}
-#             wait for an approval in Cloud Build.
+#   version   a tag v<major>.<minor>.<patch>, in every environment{{if .SharedInstanceEnvs}}; {{.SharedInstanceEnvs}}
+#             wait for an approval in Cloud Build{{end}}.
 #   pr        {{.Integration}} only: the preview of a pull request against {{.P.DefaultBranch}}, run
 #             only when a collaborator comments /gcbrun (COMMENTS_ENABLED), so a
 #             pull-request build is a command, not a side effect of a push. It

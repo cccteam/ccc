@@ -59,8 +59,10 @@ func TestOrgHostnames(t *testing.T) {
 			wantErr: `application "quill" is not registered (bedrock org register quill)`,
 		},
 		{
-			name:    "an application in its registration is refused",
-			edit:    func(p *org.Placement) { p.Registration = map[string]string{"harbor": org.RegistrationGrants} },
+			name: "an application in its registration is refused",
+			edit: func(p *org.Placement) {
+				p.Registration = map[string]org.RegistrationSteps{"harbor": org.EveryEnvironment(org.RegistrationGrants)}
+			},
 			args:    []string{"harbor"},
 			wantErr: "harbor is at the grants step of its registration: its hostnames are recorded when the registration completes (bedrock org register harbor --next)",
 		},

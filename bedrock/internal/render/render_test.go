@@ -76,6 +76,7 @@ func TestRenderGolden(t *testing.T) {
 		{name: "beacon, a password auth", fixture: "beacon", placement: "placement-beacon.json", golden: "beacon"},
 		{name: "lantern, two sites behind one image", fixture: "lantern", placement: "placement-lantern.json", golden: "lantern"},
 		{name: "lantern on a vanity domain: the apex for one site, a label of it for the other", fixture: "lantern", placement: "placement-lantern-vanity.json", golden: "lantern-vanity"},
+		{name: "beacon placed in the first environment alone, production elsewhere: one release line, no bare label", fixture: "beacon", placement: "placement-beacon-tst.json", golden: "beacon-tst"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
