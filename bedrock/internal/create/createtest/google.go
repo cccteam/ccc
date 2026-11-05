@@ -20,18 +20,20 @@ import (
 // Buckets by name; Grants are the bindings made, "resource role member", in order;
 // Calls every call, in order; Identities the identities the seam was opened as.
 type FakeGoogle struct {
-	mu         sync.Mutex
-	Folders    map[string]string
-	Projects   map[string]bool
-	Numbers    map[string]string
-	Accounts   map[string]bool
-	Buckets    map[string]bool
-	Enabled    map[string][]string
-	Billing    map[string]string
-	Grants     []string
-	Revoked    []string
-	Calls      []string
-	Identities []string
+	mu       sync.Mutex
+	Folders  map[string]string
+	Projects map[string]bool
+	// ProjectFolders is each project's folder (numeric id), as CreateProject was told.
+	ProjectFolders map[string]string
+	Numbers        map[string]string
+	Accounts       map[string]bool
+	Buckets        map[string]bool
+	Enabled        map[string][]string
+	Billing        map[string]string
+	Grants         []string
+	Revoked        []string
+	Calls          []string
+	Identities     []string
 	// Refuse names a call (its method name) to answer with the error, for a creation
 	// that stops halfway.
 	Refuse map[string]error
@@ -124,6 +126,31 @@ func (g *FakeGoogle) ProjectExists(_ context.Context, id string) (bool, error) {
 	return g.Projects[id], nil
 }
 
+// FindProject is the one active project under the folder whose id starts with idPrefix, or
+// empty; several are an error, as Google's are told apart no better.
+func (g *FakeGoogle) FindProject(_ context.Context, folder, idPrefix string) (string, error) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	if err := g.call("FindProject", folder, idPrefix); err != nil {
+		return "", err
+	}
+	var found []string
+	for id, in := range g.ProjectFolders {
+		if in == folder && strings.HasPrefix(id, idPrefix) && g.Projects[id] {
+			found = append(found, id)
+		}
+	}
+	sort.Strings(found)
+	switch len(found) {
+	case 0:
+		return "", nil
+	case 1:
+		return found[0], nil
+	default:
+		return "", errors.Newf("folder %s holds %d projects named %s<suffix>: %s", folder, len(found), idPrefix, strings.Join(found, ", "))
+	}
+}
+
 // CreateProject makes the project, numbered in order of creation.
 func (g *FakeGoogle) CreateProject(_ context.Context, id, displayName, folder string, labels map[string]string) error {
 	g.mu.Lock()
@@ -142,6 +169,10 @@ func (g *FakeGoogle) CreateProject(_ context.Context, id, displayName, folder st
 	}
 	g.Projects[id] = true
 	g.Numbers[id] = fmt.Sprintf("1000000%05d", len(g.Projects))
+	if g.ProjectFolders == nil {
+		g.ProjectFolders = map[string]string{}
+	}
+	g.ProjectFolders[id] = folder
 
 	return nil
 }

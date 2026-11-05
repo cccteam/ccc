@@ -108,6 +108,9 @@ func Bootstrap(ctx context.Context, clients *Clients, req *BootstrapRequest, out
 	if err != nil {
 		return nil, err
 	}
+	if err := b.save(); err != nil {
+		return nil, err
+	}
 	if err := b.tokenSecret(ctx); err != nil {
 		return nil, err
 	}
@@ -228,11 +231,22 @@ func (b *bootstrap) seed(ctx context.Context) (string, error) {
 		p.Projects = map[string]string{}
 	}
 	if p.Projects[org.RootProjectKey] == "" {
-		suffix, err := org.RandomSuffix()
+		// A run that stopped before the placement was saved left its project under the
+		// folder; the next run takes it up rather than making a second one.
+		found, err := b.google.FindProject(ctx, folder, p.Prefix+"-"+org.RootProjectKey+"-gbl-core-")
 		if err != nil {
 			return "", err
 		}
-		p.Projects[org.RootProjectKey] = p.Prefix + "-" + org.RootProjectKey + "-gbl-core-" + suffix
+		if found != "" {
+			p.Projects[org.RootProjectKey] = found
+			fmt.Fprintf(b.out, "Found the root project %s under the folder, which an earlier run made; recorded.\n", found)
+		} else {
+			suffix, err := org.RandomSuffix()
+			if err != nil {
+				return "", err
+			}
+			p.Projects[org.RootProjectKey] = p.Prefix + "-" + org.RootProjectKey + "-gbl-core-" + suffix
+		}
 	}
 	project := p.Projects[org.RootProjectKey]
 	exists, err := b.google.ProjectExists(ctx, project)

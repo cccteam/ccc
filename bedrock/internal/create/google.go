@@ -46,6 +46,10 @@ type Google interface {
 	RevokeFolder(ctx context.Context, folder, member string, roles []string) error
 	// ProjectExists reports whether the project exists (and is readable).
 	ProjectExists(ctx context.Context, id string) (bool, error)
+	// FindProject is the id of the active project directly under the folder (its numeric
+	// id) whose id starts with idPrefix, empty when there is none; two or more are an
+	// error, since the one meant cannot be told.
+	FindProject(ctx context.Context, folder, idPrefix string) (string, error)
 	// CreateProject makes the project under the folder (folders/N), with the display
 	// name and the labels.
 	CreateProject(ctx context.Context, id, displayName, folder string, labels map[string]string) error
@@ -294,6 +298,31 @@ func (g *google) ProjectExists(ctx context.Context, id string) (bool, error) {
 	}
 
 	return true, nil
+}
+
+func (g *google) FindProject(ctx context.Context, folder, idPrefix string) (string, error) {
+	var found []string
+	it := g.projects.ListProjects(ctx, &resourcemanagerpb.ListProjectsRequest{Parent: "folders/" + folder})
+	for {
+		project, err := it.Next()
+		if errors.Is(err, iterator.Done) {
+			break
+		}
+		if err != nil {
+			return "", errors.Wrapf(err, "resourcemanager.ProjectsClient.ListProjects(): folders/%s", folder)
+		}
+		if project.GetState() == resourcemanagerpb.Project_ACTIVE && strings.HasPrefix(project.GetProjectId(), idPrefix) {
+			found = append(found, project.GetProjectId())
+		}
+	}
+	switch len(found) {
+	case 0:
+		return "", nil
+	case 1:
+		return found[0], nil
+	default:
+		return "", errors.Newf("folder %s holds %d projects named %s<suffix> (%s), and the one meant cannot be told: record it in placement.json (projects), or delete the others", folder, len(found), idPrefix, strings.Join(found, ", "))
+	}
 }
 
 func (g *google) CreateProject(ctx context.Context, id, displayName, folder string, labels map[string]string) error {

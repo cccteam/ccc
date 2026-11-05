@@ -67,10 +67,12 @@ type Fake struct {
 	// Projects, Numbers, Accounts (by email) and Buckets by name.
 	Folders  map[string]string
 	Projects map[string]bool
-	Numbers  map[string]string
-	Accounts map[string]bool
-	Buckets  map[string]bool
-	next     int64
+	// ProjectFolders is each project's folder (numeric id), as CreateProject was told.
+	ProjectFolders map[string]string
+	Numbers        map[string]string
+	Accounts       map[string]bool
+	Buckets        map[string]bool
+	next           int64
 }
 
 // New makes an empty stand-in.
@@ -869,6 +871,31 @@ func (f *Fake) ProjectExists(_ context.Context, id string) (bool, error) {
 	return f.Projects[id], nil
 }
 
+// FindProject is the one active project under the folder whose id starts with idPrefix, or
+// empty; several are an error, as Google's are told apart no better.
+func (f *Fake) FindProject(_ context.Context, folder, idPrefix string) (string, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if err := f.call("FindProject", folder, idPrefix); err != nil {
+		return "", err
+	}
+	var found []string
+	for id, in := range f.ProjectFolders {
+		if in == folder && strings.HasPrefix(id, idPrefix) && f.Projects[id] {
+			found = append(found, id)
+		}
+	}
+	sort.Strings(found)
+	switch len(found) {
+	case 0:
+		return "", nil
+	case 1:
+		return found[0], nil
+	default:
+		return "", errors.Newf("folder %s holds %d projects named %s<suffix>: %s", folder, len(found), idPrefix, strings.Join(found, ", "))
+	}
+}
+
 // CreateProject makes the project under the folder.
 func (f *Fake) CreateProject(_ context.Context, id, displayName, folder string, _ map[string]string) error {
 	f.mu.Lock()
@@ -878,6 +905,10 @@ func (f *Fake) CreateProject(_ context.Context, id, displayName, folder string, 
 	}
 	f.Projects[id] = true
 	f.Numbers[id] = fmt.Sprintf("1000000%05d", len(f.Projects))
+	if f.ProjectFolders == nil {
+		f.ProjectFolders = map[string]string{}
+	}
+	f.ProjectFolders[id] = folder
 
 	return nil
 }

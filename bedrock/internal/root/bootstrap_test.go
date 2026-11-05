@@ -302,6 +302,45 @@ func TestBootstrapNotServingYet(t *testing.T) {
 	}
 }
 
+// TestBootstrapTakesUpTheProject: a run that stopped after making the folder and the
+// project, before the placement was saved, left both; the next run takes the project up
+// instead of making a second one, and records it.
+func TestBootstrapTakesUpTheProject(t *testing.T) {
+	t.Parallel()
+
+	fake, srv, clients := bootstrapWorld(t)
+	p := draft()
+	brought := map[org.AppRole]root.BroughtApp{}
+	for i, m := range p.AppManifests() {
+		brought[m.Role] = root.BroughtApp{ID: fmt.Sprint(5000 + i), Key: registerApp(t, srv, m, int64(5000+i), true)}
+	}
+	ctx := context.Background()
+	folder, err := fake.CreateFolder(ctx, "organizations/"+p.OrganizationID, p.Prefix)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := fake.CreateProject(ctx, "imr-root-gbl-core-54b1", "imr-root-gbl-core", folder, nil); err != nil {
+		t.Fatal(err)
+	}
+	var out bytes.Buffer
+	res, err := root.Bootstrap(ctx, clients, &root.BootstrapRequest{Placement: p, Dir: t.TempDir(), Token: []byte("test-token"), Brought: brought}, &out)
+	if err != nil {
+		t.Fatalf("Bootstrap() error = %v\n%s", err, out.String())
+	}
+	if res.Placement.Projects[org.RootProjectKey] != "imr-root-gbl-core-54b1" || res.Placement.StateBucket != "imr-root-gbl-state-54b1" {
+		t.Errorf("project %q, bucket %q: want the project made before", res.Placement.Projects[org.RootProjectKey], res.Placement.StateBucket)
+	}
+	for _, want := range []string{
+		"The folder imr exists at the organization node: " + folder + ".",
+		"Found the root project imr-root-gbl-core-54b1 under the folder, which an earlier run made; recorded.",
+		"The project imr-root-gbl-core-54b1 exists.",
+	} {
+		if !strings.Contains(out.String(), want) {
+			t.Errorf("output lacks %q:\n%s", want, out.String())
+		}
+	}
+}
+
 // TestBootstrapRefusals: a token an app was issued, a token of a member who is not an
 // owner, an app brought that is not as declared, and the Cloud Build app not installed
 // are each refused with what to do, before or after what was made (which a run again
