@@ -277,12 +277,22 @@ func get(t *testing.T, url string) string {
 	return string(body)
 }
 
-// TestBootstrapRefusals: a token of a member who is not an owner, an app brought that is
-// not as declared, and the Cloud Build app not installed are each refused with what to
-// do, before or after what was made (which a run again finds).
+// TestBootstrapRefusals: a token an app was issued, a token of a member who is not an
+// owner, an app brought that is not as declared, and the Cloud Build app not installed
+// are each refused with what to do, before or after what was made (which a run again
+// finds).
 func TestBootstrapRefusals(t *testing.T) {
 	t.Parallel()
 
+	t.Run("the token is a GitHub App's, not a personal access token", func(t *testing.T) {
+		t.Parallel()
+
+		_, _, clients := bootstrapWorld(t)
+		_, err := root.Bootstrap(context.Background(), clients, &root.BootstrapRequest{Placement: draft(), Dir: t.TempDir(), Token: []byte("ghu_ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijkl")}, &bytes.Buffer{})
+		if want := "the token passed is a GitHub App's user access token, which a GitHub App issued to the account that authorized it (Cloud Build's console leaves one in a secret of the connection it makes), not a personal access token: the Bot Account's token is a classic personal access token with the repo, read:user and read:org scopes"; err == nil || !strings.Contains(err.Error(), want) {
+			t.Errorf("error = %v, want %q", err, want)
+		}
+	})
 	t.Run("the token is a member's, not an owner's", func(t *testing.T) {
 		t.Parallel()
 

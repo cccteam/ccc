@@ -188,8 +188,12 @@ func (b *bootstrap) save() error {
 }
 
 // botAccount reads whose the token is and that the account owns the organization, and
-// records the login.
+// records the login. A token an app was issued (GitHub's prefixes say so) is refused
+// first: it is not a personal access token, whatever account it names.
 func (b *bootstrap) botAccount(ctx context.Context) (string, error) {
+	if kind := github.IssuedByApp(string(b.req.Token)); kind != "" {
+		return "", errors.Newf("the token passed is %s, not a personal access token: the Bot Account's token is a classic personal access token with the repo, read:user and read:org scopes, made in the Bot Account's settings (Developer settings, Personal access tokens, Tokens (classic))", kind)
+	}
 	gh := b.clients.GitHub(string(b.req.Token))
 	login, err := gh.User(ctx)
 	if err != nil {
