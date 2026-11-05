@@ -12,9 +12,9 @@ import (
 )
 
 const (
-	infraKey    = "imr-root-gbl-github-infrastructure-key"
-	deployerKey = "imr-root-gbl-github-deployer-key"
-	keysProject = "imr-root-gbl-core-c3d4"
+	infraKey            = "imr-root-gbl-github-infrastructure-key"
+	deployerKey         = "imr-root-gbl-github-deployer-key"
+	keysProject         = "imr-root-gbl-core-c3d4"
 	botAccountContainer = "imr-root-gbl-github-token"
 )
 
@@ -23,8 +23,8 @@ const (
 // the Bot Account's token at three.
 func orgSecrets() labSecrets {
 	return labSecrets{containers: map[string][]string{
-		infraKey:    {secret.Enabled, secret.Enabled, "DISABLED"},
-		deployerKey: {secret.Enabled, secret.Enabled},
+		infraKey:            {secret.Enabled, secret.Enabled, "DISABLED"},
+		deployerKey:         {secret.Enabled, secret.Enabled},
 		botAccountContainer: {secret.Enabled, secret.Enabled, secret.Enabled},
 	}}
 }
