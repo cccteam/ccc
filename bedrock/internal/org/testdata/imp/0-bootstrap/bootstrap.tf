@@ -87,7 +87,10 @@ module "boot_project" {
   source  = "terraform-google-modules/project-factory/google"
   version = "18.3.0"
 
-  name                       = var.boot_project_id
+  # The display name carries no suffix; the id does, and the seed gave the
+  # project both.
+  name                       = "${var.prefix}-boot-gbl-core"
+  project_id                 = var.boot_project_id
   folder_id                  = var.terraform_folder_id
   billing_account            = var.billing_account_id
   random_project_id          = false

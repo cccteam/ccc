@@ -63,9 +63,12 @@ locals {
   # (projects/P/secrets/N) added by hand works the same way.
   token_parts    = local.connected ? split("/", local.cloud_build_token_secret_version) : []
   token_regional = length(local.token_parts) == 8
-  token_project  = local.connected ? local.token_parts[1] : null
-  token_location = local.token_regional ? local.token_parts[3] : null
-  token_secret   = local.connected ? local.token_parts[local.token_regional ? 5 : 3] : null
+  # Until the authorization is recorded the three stand in and are never used:
+  # the grants on the secret have no instance then, and a required argument
+  # set to null fails the configuration's validation even so.
+  token_project  = local.connected ? local.token_parts[1] : module.boot_project.project_id
+  token_location = local.token_regional ? local.token_parts[3] : local.region
+  token_secret   = local.connected ? local.token_parts[local.token_regional ? 5 : 3] : "unrecorded"
 
   # The Cloud Build service agents that read the token: this project's, for
   # the triggers' connection{{if .IsRoot}}, and no other, since a root organization has no
