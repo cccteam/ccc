@@ -73,9 +73,9 @@ Build triggers" below).
   its layer's plan reads, and the custom role `stateBucketPolicyAdmin` in
   the boot project (reads and sets a bucket's IAM policy, nothing else) on
   the bucket for the two apply identities, so each layer can
-  grant for the identities it creates; and for the applier, the markers under `applied/`
-  that record each layer's last successful apply and the read of the organization's
-  folder's and its projects' IAM policies for the check's leftover report
+  grant for the identities it creates; for both runners, the read of the organization's
+  folder's and its projects' IAM policies for the check's leftover report; and for the
+  applier, the markers under `applied/` that record each layer's last successful apply
   (`cloud-build.tf`).
 
 Not created here, on purpose: the state bucket. It is seeded and left outside
@@ -310,9 +310,9 @@ Who runs what, and why the first time works in order:
   apply with the apply identity's writes. What each holds itself: the build
   logs, the read of its own build (its substitutions, the pull request, the
   commit), the connection's read token (the changed files are read through
-  it), the two apps' keys, and, for the applier, the markers under
-  `applied/` in the state bucket and the read of the folder's and the projects'
-  IAM policies for the check's leftover report.
+  it), the two apps' keys, the read of the folder's and the projects' IAM
+  policies for the check's leftover report, and, for the applier, the markers
+  under `applied/` in the state bucket.
 - IAM refuses a binding for a service account that does not exist, so each
   layer grants for the identities it creates. This layer grants for the boot
   identity, the org identity and the two boot layers' plan identities

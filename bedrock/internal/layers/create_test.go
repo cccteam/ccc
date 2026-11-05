@@ -138,7 +138,7 @@ func TestPlanPreviewsCreation(t *testing.T) {
 	t.Parallel()
 
 	f := newFlow(t, pullRequestSubs(), deployerAppID, map[string]tofuRun{})
-	f.srv.AddRepo(owner, rootRepo, &githubtest.Repo{
+	repo := f.srv.AddRepo(owner, rootRepo, &githubtest.Repo{
 		Refs:     map[string]github.Object{"refs/heads/master": {Type: "commit", SHA: baseSHA}},
 		Ancestry: map[string][]string{headSHA: {headSHA, baseSHA}, baseSHA: {baseSHA}},
 		Changed:  map[string][]string{headSHA: {"organizations/rgb/placement.json", "placement.json"}},
@@ -150,7 +150,22 @@ func TestPlanPreviewsCreation(t *testing.T) {
 		t.Fatalf("Plan() error = %v; output:\n%s", err, out.String())
 	}
 	want := "The merge creates rgb: folder rgb at the organization node, boot project rgb-boot-gbl-core-e5f6, repository imp-example/rgb-infrastructure or as its record names it (organizations/rgb/placement.json), as " + root.CreatingIdentity() + ", with the first applies of its two foundation layers and the push of its repository; then the hand-off pull request.\n"
-	if !strings.Contains(out.String(), want) || !strings.Contains(out.String(), "No layer changes in this pull request: nothing to plan.") {
-		t.Errorf("output lacks the preview:\n%s", out.String())
+	for _, line := range []string{want, "No layer changes in this pull request: nothing to plan.\n", "Posted what the merge creates on pull request #7 as the deployer app.\n"} {
+		if !strings.Contains(out.String(), line) {
+			t.Errorf("output lacks %q:\n%s", line, out.String())
+		}
+	}
+	// The preview is on the pull request too, as one comment a later push updates, so a
+	// reviewer reads it there and not in the build's log.
+	comments := repo.Comments[7]
+	if len(comments) != 1 || !strings.HasPrefix(comments[0].Body, "<!-- layers: creations -->\n### what the merge creates\n\n") || !strings.Contains(comments[0].Body, want) {
+		t.Fatalf("pull request comments = %+v, want one with the preview", comments)
+	}
+	err = Plan(t.Context(), f.clients(), &Request{BuildID: "build-2", Project: "imr-boot-gbl-core-c3d4", Location: "us-central1", Dir: dir}, &out)
+	if err != nil {
+		t.Fatalf("second Plan() error = %v; output:\n%s", err, out.String())
+	}
+	if n := len(repo.Comments[7]); n != 1 {
+		t.Errorf("a second plan left %d comments, want the one updated", n)
 	}
 }

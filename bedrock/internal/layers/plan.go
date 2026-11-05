@@ -44,10 +44,11 @@ func Plan(ctx context.Context, clients *Clients, req *Request, out io.Writer) er
 		return err
 	}
 	fmt.Fprint(out, r.creationPreview())
+	posts := r.previewPosts()
 	if len(runs) == 0 {
 		fmt.Fprintln(out, "No layer changes in this pull request: nothing to plan.")
 
-		return nil
+		return r.comment(ctx, number, posts)
 	}
 	if err := r.recorded(runs); err != nil {
 		return err
@@ -61,7 +62,10 @@ func Plan(ctx context.Context, clients *Clients, req *Request, out io.Writer) er
 	for i, v := range verdicts {
 		fmt.Fprintf(out, "%s: %s\n", results[i].run.Name, v.summary)
 	}
-	if err := r.comment(ctx, number, results, verdicts); err != nil {
+	for i, res := range results {
+		posts = append(posts, post{marker: markerOf(res.run.Name), body: commentBody(res, verdicts[i].summary, r.subs[commitSub])})
+	}
+	if err := r.comment(ctx, number, posts); err != nil {
 		return err
 	}
 	var failed []string
@@ -248,10 +252,20 @@ func (r *run) stateAbsent(ctx context.Context, lr org.LayerRun) (bool, error) {
 	return false, nil
 }
 
-// comment posts each plan on the pull request as the deployer app: one comment per
-// run, found by its marker line and updated when it is there, created when not. The
-// plans stay in the log when the deployer app is not recorded.
-func (r *run) comment(ctx context.Context, number int, results []*planResult, verdicts []verdict) error {
+// post is one comment on the pull request: the marker line it starts with, by which a
+// later push finds and updates it, and its body.
+type post struct {
+	marker, body string
+}
+
+// comment posts the plans, and what the merge creates, on the pull request as the
+// deployer app: one comment per run and one for the creations, each found by its marker
+// line and updated when it is there, created when not. The plans stay in the log when
+// the deployer app is not recorded.
+func (r *run) comment(ctx context.Context, number int, posts []post) error {
+	if len(posts) == 0 {
+		return nil
+	}
 	token, reason, err := r.deployerToken(ctx)
 	if err != nil {
 		return err
@@ -266,20 +280,23 @@ func (r *run) comment(ctx context.Context, number int, results []*planResult, ve
 	if err != nil {
 		return err
 	}
-	for i, res := range results {
-		body := commentBody(res, verdicts[i].summary, r.subs[commitSub])
-		if id, ok := findComment(existing, markerOf(res.run.Name)); ok {
-			if err := gh.UpdateComment(ctx, r.owner, r.repo, id, body); err != nil {
+	for _, p := range posts {
+		if id, ok := findComment(existing, p.marker); ok {
+			if err := gh.UpdateComment(ctx, r.owner, r.repo, id, p.body); err != nil {
 				return err
 			}
 
 			continue
 		}
-		if err := gh.CreateComment(ctx, r.owner, r.repo, number, body); err != nil {
+		if err := gh.CreateComment(ctx, r.owner, r.repo, number, p.body); err != nil {
 			return err
 		}
 	}
-	fmt.Fprintf(r.out, "Posted the plans on pull request #%d as the deployer app.\n", number)
+	what := "the plans"
+	if len(posts) == 1 && posts[0].marker == markerOf(creationsName) {
+		what = "what the merge creates"
+	}
+	fmt.Fprintf(r.out, "Posted %s on pull request #%d as the deployer app.\n", what, number)
 
 	return nil
 }

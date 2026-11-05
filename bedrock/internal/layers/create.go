@@ -64,3 +64,18 @@ func (r *run) creationPreview() string {
 
 	return preview
 }
+
+// creationsName is the pseudo-run name of the pull request comment that says what the
+// merge creates, found by its marker like a layer's plan.
+const creationsName = "creations"
+
+// previewPosts is the creation preview as a pull request comment, when the merge
+// creates anything: a reviewer reads it on the pull request, not in the build's log.
+func (r *run) previewPosts() []post {
+	preview := r.creationPreview()
+	if preview == "" {
+		return nil
+	}
+
+	return []post{{marker: markerOf(creationsName), body: markerOf(creationsName) + "\n### what the merge creates\n\n" + preview}}
+}
