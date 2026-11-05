@@ -138,8 +138,12 @@ func NewGoogle(ctx context.Context, opts ...option.ClientOption) (Google, error)
 	return g, nil
 }
 
+// FindFolder answers the active folder of the name under the parent, or nothing. A folder
+// deleted and waiting out its thirty days keeps its name and is not the one: Google lets a
+// new folder take the name, and the old one answers every write with "Parent is not in
+// ACTIVE state" (the lab, 2026-11-05).
 func (g *google) FindFolder(ctx context.Context, parent, displayName string) (string, error) {
-	query := fmt.Sprintf("parent=%s AND displayName=%s", parent, displayName)
+	query := fmt.Sprintf("parent=%s AND displayName=%s AND state=ACTIVE", parent, displayName)
 	it := g.folders.SearchFolders(ctx, &resourcemanagerpb.SearchFoldersRequest{Query: query})
 	for {
 		folder, err := it.Next()
@@ -149,7 +153,7 @@ func (g *google) FindFolder(ctx context.Context, parent, displayName string) (st
 		if err != nil {
 			return "", errors.Wrapf(err, "resourcemanager.FoldersClient.SearchFolders(): %s", query)
 		}
-		if folder.GetDisplayName() == displayName {
+		if folder.GetDisplayName() == displayName && folder.GetState() == resourcemanagerpb.Folder_ACTIVE {
 			return strings.TrimPrefix(folder.GetName(), "folders/"), nil
 		}
 	}
