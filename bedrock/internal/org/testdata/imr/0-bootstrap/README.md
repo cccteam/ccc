@@ -67,8 +67,8 @@ Build triggers" below).
   role `stateBucketPolicyAdmin` in the boot project (reads and sets a
   bucket's IAM policy, nothing else) on the bucket for the boot identity,
   which applies this layer through the triggers; for both runners, the read of
-  the organization's folder's and its projects' IAM policies for the check's
-  leftover report; and for the applier, the markers under `applied/` that
+  the organization's folder, its projects and their IAM policies for the
+  check's leftover report; and for the applier, the markers under `applied/` that
   record each layer's last successful apply (`cloud-build.tf`).
 
 Not created here, on purpose: the state bucket. It is seeded and left outside
@@ -589,7 +589,7 @@ Who runs what, and why the first time works in order:
   with the apply identity's writes. What each holds itself: the build logs,
   the read of its own build (its substitutions, the pull request, the
   commit), the connection's read token (the changed files are read through
-  it), the two apps' keys, the read of the folder's and the projects' IAM
+  it), the two apps' keys, the read of the folder, the projects and their IAM
   policies for the check's leftover report, and, for the applier, the markers
   under `applied/` in the state bucket.
 - IAM refuses a binding for a service account that does not exist, so each
