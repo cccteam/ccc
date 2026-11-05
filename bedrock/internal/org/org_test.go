@@ -219,6 +219,10 @@ func TestPlacementValidate(t *testing.T) {
 		{name: "a global token secret version", mutate: func(p *Placement) {
 			p.CloudBuildTokenSecretVersion = "projects/imr-root-gbl-core-c3d4/secrets/github-token/versions/3"
 		}},
+		{name: "the token secret's alias current", mutate: func(p *Placement) {
+			p.CloudBuildTokenSecretVersion = "projects/imr-root-gbl-core-c3d4/secrets/imr-root-gbl-github-token/versions/current"
+		}},
+		{name: "a token version pinned in a hosting organization", mutate: func(p *Placement) { p.GithubTokenVersion = "1" }, wantErr: "githubTokenVersion is set, and a hosting organization pins no key: the root organization imr pins the version in its own placement.json"},
 		{name: "the installation id without the token", mutate: func(p *Placement) { p.CloudBuildTokenSecretVersion = "" }, wantErr: "cloudBuildInstallationId and cloudBuildTokenSecretVersion are recorded together: the root organization's bootstrap records both, the Cloud Build GitHub App's installation it finds and the Bot Account's token secret it makes (README.md, \"Bootstrapped by one command\"), and the creation copies them into a hosting organization's placement"},
 		{name: "the token without the installation id", mutate: func(p *Placement) { p.CloudBuildInstallationID = "" }, wantErr: "cloudBuildInstallationId and cloudBuildTokenSecretVersion are recorded together"},
 		{name: "no bedrock pin yet", mutate: func(p *Placement) { p.BedrockVersion, p.BedrockSHA256 = "", "" }},

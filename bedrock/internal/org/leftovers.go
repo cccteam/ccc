@@ -275,9 +275,10 @@ func (c *policies) ProjectPolicy(ctx context.Context, project string) ([]Binding
 	return policyBindings(policy), nil
 }
 
-// OrganizationFolder finds the folder named name directly under the organization.
+// OrganizationFolder finds the active folder named name directly under the organization;
+// one deleted and waiting out its thirty days keeps its name and is not it.
 func (c *policies) OrganizationFolder(ctx context.Context, organizationID, name string) (string, error) {
-	query := fmt.Sprintf("parent=organizations/%s AND displayName=%s", organizationID, name)
+	query := fmt.Sprintf("parent=organizations/%s AND displayName=%s AND state=ACTIVE", organizationID, name)
 	it := c.folders.SearchFolders(ctx, &resourcemanagerpb.SearchFoldersRequest{Query: query})
 	for {
 		folder, err := it.Next()
@@ -287,7 +288,7 @@ func (c *policies) OrganizationFolder(ctx context.Context, organizationID, name 
 		if err != nil {
 			return "", errors.Wrapf(err, "resourcemanager.FoldersClient.SearchFolders(): %s", query)
 		}
-		if folder.GetDisplayName() == name {
+		if folder.GetDisplayName() == name && folder.GetState() == resourcemanagerpb.Folder_ACTIVE {
 			return strings.TrimPrefix(folder.GetName(), "folders/"), nil
 		}
 	}

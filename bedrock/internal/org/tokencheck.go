@@ -59,7 +59,8 @@ func CheckToken(ctx context.Context, open secret.ClientFunc, access KeyAccessFun
 	}
 	login, err := identity(ctx, strings.TrimSpace(string(token)), p.GithubOrganization)
 	if err != nil {
-		return nil, errors.Wrapf(err, "version %s of %s is not the Bot Account's token; nothing changes", req.Version, req.Container)
+		// The command prints the cause alone, so the version is named in it.
+		return nil, errors.Newf("version %s of %s is not the Bot Account's token: %s; nothing changes", req.Version, req.Container, errors.Cause(err))
 	}
 	if login != p.GithubBotAccount {
 		return nil, errors.Newf("version %s of %s is %s's token, not the Bot Account %s's (githubBotAccount in placement.json): nothing changes", req.Version, req.Container, login, p.GithubBotAccount)

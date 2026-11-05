@@ -15,14 +15,17 @@ const (
 	infraKey    = "imr-root-gbl-github-infrastructure-key"
 	deployerKey = "imr-root-gbl-github-deployer-key"
 	keysProject = "imr-root-gbl-core-c3d4"
+	botAccountContainer = "imr-root-gbl-github-token"
 )
 
 // orgSecrets are the root organization's secrets, in its root project: the
-// infrastructure key at three versions, the third disabled, and the deployer key at two.
+// infrastructure key at three versions, the third disabled, the deployer key at two, and
+// the Bot Account's token at three.
 func orgSecrets() labSecrets {
 	return labSecrets{containers: map[string][]string{
 		infraKey:    {secret.Enabled, secret.Enabled, "DISABLED"},
 		deployerKey: {secret.Enabled, secret.Enabled},
+		botAccountContainer: {secret.Enabled, secret.Enabled, secret.Enabled},
 	}}
 }
 

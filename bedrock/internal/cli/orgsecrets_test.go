@@ -17,6 +17,7 @@ import (
 
 	"github.com/cccteam/ccc/bedrock/internal/deploy"
 	"github.com/cccteam/ccc/bedrock/internal/github"
+	"github.com/cccteam/ccc/bedrock/internal/github/githubtest"
 	"github.com/cccteam/ccc/bedrock/internal/org"
 )
 
@@ -123,16 +124,44 @@ func testPEM(t *testing.T) string {
 func TestOrgSecretsCheck(t *testing.T) {
 	t.Parallel()
 
-	const deployerVersion2 = "projects/" + keysProject + "/secrets/" + deployerKey + "/versions/2"
+	const (
+		deployerVersion2 = "projects/" + keysProject + "/secrets/" + deployerKey + "/versions/2"
+		tokenVersion     = "projects/" + keysProject + "/secrets/" + botAccountContainer + "/versions/"
+	)
 	pemKey := testPEM(t)
 	tests := []struct {
 		name    string
 		hosting bool
+		// login is the account GitHub says a token is, for the token's cases; empty
+		// means GitHub's stand-in answers for the deployer app's key instead.
+		login   string
 		args    []string
 		edit    func(p *org.Placement)
 		wantErr string
 		wantOut []string
 	}{
+		{
+			name:  "the Bot Account's token, proven",
+			login: "imp-bot",
+			args:  []string{"github-token", "2"},
+			wantOut: []string{
+				"Version 2 of imr-root-gbl-github-token in project imr-root-gbl-core-c3d4 is enabled, and GitHub says it is imp-bot's, an owner of imp-example: the Bot Account's token.\n",
+				"The alias current is pinned to version 1 (githubTokenVersion in placement.json); nothing reads version 2 yet.\n",
+				"Next: bedrock secret pin github-token 2, then the pull request with the render; its apply moves the alias, and every Cloud Build connection in every organization reads it. Then, on GitHub, as the Bot Account, delete the old token once the apply has gone through clean.\n",
+			},
+		},
+		{
+			name:    "a token a GitHub App issued is refused by its prefix",
+			login:   "imp-bot",
+			args:    []string{"github-token", "3"},
+			wantErr: "version 3 of imr-root-gbl-github-token is not the Bot Account's token: the token passed is a GitHub App's user access token, which a GitHub App issued to the account that authorized it",
+		},
+		{
+			name:    "another account's token is refused",
+			login:   "someone",
+			args:    []string{"github-token", "2"},
+			wantErr: "version 2 of imr-root-gbl-github-token is someone's token, not the Bot Account imp-bot's (githubBotAccount in placement.json): nothing changes",
+		},
 		{
 			name: "a version the app's key signs as, not yet pinned",
 			args: []string{"github-deployer-key", "2"},
@@ -196,10 +225,21 @@ func TestOrgSecretsCheck(t *testing.T) {
 				editPlacement(t, dir, tt.edit)
 			}
 			secrets := orgSecrets()
-			srv := appServer(t, "5080800", "imp-deployer")
+			url := appServer(t, "5080800", "imp-deployer").URL
+			if tt.login != "" {
+				gh := githubtest.New(t)
+				gh.Login = tt.login
+				gh.Memberships["imp-example"] = "admin"
+				url = gh.URL
+			}
+			payloads := map[string]string{
+				deployerVersion2:   pemKey,
+				tokenVersion + "2": "test-token\n",
+				tokenVersion + "3": "ghu_ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghij",
+			}
 			d := deps{domains: noCloudDomains, secrets: secrets.open, projects: noProjects, interactive: never, deploy: &deploy.Clients{
-				Secrets: (&keyReader{payloads: map[string]string{deployerVersion2: pemKey}}).open,
-				GitHub:  func(token string) *github.Client { return github.New(srv.URL, token) },
+				Secrets: (&keyReader{payloads: payloads}).open,
+				GitHub:  func(token string) *github.Client { return github.New(url, token) },
 			}}
 			out, err := execute(d, "", append([]string{"org", "secrets", "check"}, append(tt.args, "--dir", dir)...)...)
 			if tt.wantErr != "" {

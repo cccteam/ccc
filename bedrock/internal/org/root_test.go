@@ -56,6 +56,8 @@ func TestRootPlacementValidate(t *testing.T) {
 		}},
 		{name: "the root of another organization", mutate: func(p *Placement) { p.Root = &RootPlace{Organization: "imq", Project: "imq-boot-gbl-core-0a0b"} }, wantErr: "root is set, and a root organization holds the GitHub Apps' keys itself"},
 		{name: "a key operator that is not a member", mutate: func(p *Placement) { p.KeyOperators = []string{"ops@imp.example"} }, wantErr: `keyOperators entry "ops@imp.example" is not an IAM member (user:, group:, serviceAccount:)`},
+		{name: "the token's alias named with no version pinned", mutate: func(p *Placement) { p.GithubTokenVersion = "" }, wantErr: "cloudBuildTokenSecretVersion names the alias current of the token secret, and githubTokenVersion pins no version for it: the bootstrap records both; pin one (bedrock secret pin github-token <version>)"},
+		{name: "a token version of latest", mutate: func(p *Placement) { p.GithubTokenVersion = "latest" }, wantErr: `githubTokenVersion "latest" is not a secret version's number (digits, never latest)`},
 		{name: "a hosting organization twice", mutate: func(p *Placement) {
 			p.HostingOrganizations = append(p.HostingOrganizations, HostingOrganization{Prefix: "imp", BootProject: "imp-boot-gbl-core-a1b2"})
 		}, wantErr: `hostingOrganizations names "imp" twice`},
