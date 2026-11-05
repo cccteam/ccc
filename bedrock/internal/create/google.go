@@ -197,12 +197,12 @@ func (g *google) folderPolicy(resource string) policy {
 		get: func(ctx context.Context) (*iampb.Policy, error) {
 			p, err := g.folders.GetIamPolicy(ctx, &iampb.GetIamPolicyRequest{Resource: resource})
 
-			return p, errors.Wrapf(err, "resourcemanager.FoldersClient.GetIamPolicy(): %s", resource)
+			return p, wrapf(err, "resourcemanager.FoldersClient.GetIamPolicy(): %s", resource)
 		},
 		set: func(ctx context.Context, p *iampb.Policy) error {
 			_, err := g.folders.SetIamPolicy(ctx, &iampb.SetIamPolicyRequest{Resource: resource, Policy: p})
 
-			return errors.Wrapf(err, "resourcemanager.FoldersClient.SetIamPolicy(): %s", resource)
+			return wrapf(err, "resourcemanager.FoldersClient.SetIamPolicy(): %s", resource)
 		},
 	}
 }
@@ -213,12 +213,12 @@ func (g *google) projectPolicy(resource string) policy {
 		get: func(ctx context.Context) (*iampb.Policy, error) {
 			p, err := g.projects.GetIamPolicy(ctx, &iampb.GetIamPolicyRequest{Resource: resource})
 
-			return p, errors.Wrapf(err, "resourcemanager.ProjectsClient.GetIamPolicy(): %s", resource)
+			return p, wrapf(err, "resourcemanager.ProjectsClient.GetIamPolicy(): %s", resource)
 		},
 		set: func(ctx context.Context, p *iampb.Policy) error {
 			_, err := g.projects.SetIamPolicy(ctx, &iampb.SetIamPolicyRequest{Resource: resource, Policy: p})
 
-			return errors.Wrapf(err, "resourcemanager.ProjectsClient.SetIamPolicy(): %s", resource)
+			return wrapf(err, "resourcemanager.ProjectsClient.SetIamPolicy(): %s", resource)
 		},
 	}
 }
@@ -504,4 +504,14 @@ func sleep(ctx context.Context, d time.Duration) error {
 	case <-timer.C:
 		return nil
 	}
+}
+
+// wrapf is errors.Wrapf for an error that may be nil, which it leaves nil: a policy's
+// read or write that went through has no error to wrap.
+func wrapf(err error, format string, args ...any) error {
+	if err == nil {
+		return nil
+	}
+
+	return errors.Wrapf(err, format, args...)
 }
