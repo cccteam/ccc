@@ -23,7 +23,7 @@ func newOrgCreate(d deps) *cobra.Command {
 	var dir, placement string
 	cmd := &cobra.Command{
 		Use:   createCommand + " <prefix>",
-		Short: "Record a hosting organization for the root organization's apply trigger to found",
+		Short: "Record a hosting organization for the root organization's apply trigger to create",
 		Long: `create, in a root organization's repository, records a hosting organization the apply
 trigger creates on the merge: the organization's folder at the organization node and the
 foundation under it (the terraform folder, the boot project, the boot identity with its roles

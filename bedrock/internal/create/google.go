@@ -50,6 +50,9 @@ type Google interface {
 	CreateProject(ctx context.Context, id, displayName, folder string, labels map[string]string) error
 	// ProjectNumber is the project's number.
 	ProjectNumber(ctx context.Context, id string) (string, error)
+	// GrantProject adds the member to the role on the project's policy; a member already
+	// in the role is left as it is.
+	GrantProject(ctx context.Context, id, role, member string) error
 	// RevokeProject takes the member out of each of the roles on the project's policy.
 	RevokeProject(ctx context.Context, id, member string, roles []string) error
 	// LinkBilling links the project to the billing account.
@@ -165,6 +168,10 @@ func (g *google) GrantFolder(ctx context.Context, folder, role, member string) e
 
 func (g *google) RevokeFolder(ctx context.Context, folder, member string, roles []string) error {
 	return revoke(ctx, g.folderPolicy("folders/"+folder), member, roles)
+}
+
+func (g *google) GrantProject(ctx context.Context, id, role, member string) error {
+	return grant(ctx, g.projectPolicy("projects/"+id), role, member)
 }
 
 func (g *google) RevokeProject(ctx context.Context, id, member string, roles []string) error {

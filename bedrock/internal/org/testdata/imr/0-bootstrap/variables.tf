@@ -9,7 +9,6 @@ variable "boot_layer_roles" {
   default = [
     "roles/cloudbuild.builds.editor",        # the two triggers that plan and apply the layers (cloud-build.tf)
     "roles/cloudbuild.connectionAdmin",      # the connection and the repository link the triggers watch (cloud-build.tf)
-    "roles/iam.roleAdmin",                   # the custom roles this layer creates in the boot project (project updater, state bucket policy admin)
     "roles/iam.serviceAccountAdmin",         # the dns layer identity, the two runner identities, the two plan identities, and the grants on each
     "roles/resourcemanager.folderAdmin",     # the terraform folder, and the bindings on the organization's folder for the dns layer identity and the two plan identities
     "roles/resourcemanager.projectCreator",  # the boot project
@@ -37,6 +36,14 @@ variable "boot_plan_roles" {
 variable "boot_project_id" {
   description = "(Required) Project ID of the boot project created during the gcloud seed, including the random suffix chosen for it (e.g. \"imr-boot-gbl-core-a1b2\"). This layer adopts the project rather than creating it, so the ID has to be supplied rather than derived."
   type        = string
+}
+
+variable "boot_project_roles" {
+  description = "Roles granted to the boot layer identity on the boot project alone: the roles Google binds on a project or at the organization node and never on a folder. The gcloud seed in this layer's README grants the same list; change both together."
+  type        = list(string)
+  default = [
+    "roles/iam.roleAdmin", # the custom roles this layer creates in the boot project (project updater, state bucket policy admin, secret policy admin)
+  ]
 }
 
 variable "github_default_branch" {

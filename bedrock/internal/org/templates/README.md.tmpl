@@ -257,7 +257,8 @@ the place it happens.
 {{end}}
    Then the gcloud commands that make the organization's folder, which makes
    the account its administrator, the `terraform` folder under it, the boot
-   project, the boot layer identity and its roles on the folder, and the state
+   project, the boot layer identity and its roles on the folder and on the boot
+   project, and the state
    bucket. Both are in [`0-bootstrap/README.md`](0-bootstrap/README.md), "1.
    Seed with gcloud". In a terminal, a billing administrator separately
    grants `roles/billing.user` on the billing account to the boot identity;
@@ -370,7 +371,8 @@ creates, for the run.
    organization without a folder yet, in order, as the creating identity: the
    folder at the organization node named after the prefix, the `terraform`
    folder under it, the boot project with its billing link and its APIs, the
-   boot identity with its roles on the folder, the break-glass account's
+   boot identity with its roles on the folder and on the boot project, the
+   break-glass account's
    Folder Admin on the folder, the state bucket, and the boot identity's
    policy administration of the four shared secrets here; then, against the
    new bucket, the first applies of the new organization's two foundation
@@ -725,10 +727,13 @@ Consequences of the above, not separately decided:
   `roles/cloudbuild.connectionAdmin` go to the boot layer identity, which
   makes the connection and the triggers. `roles/logging.configWriter` and
   `roles/storage.admin` are dropped from the org layer identity (no central
-  logging). `roles/iam.roleAdmin` is added to it, because `1-org` creates custom
-  roles in each project, and `roles/resourcemanager.tagAdmin`, because it
+  logging). `roles/resourcemanager.tagAdmin` is added to it, because it
   owns the public-invoker tag key in each environment project and the grants
-  on its value. Every grant sits on the organization's folder, none at the
+  on its value. `roles/iam.roleAdmin`, for the custom roles `1-org` creates in
+  each project, is granted on each project by `1-org` itself, and to the boot
+  layer identity on the boot project by `0-bootstrap`: Google binds Custom Roles
+  Administrator on a project or at the organization node, never on a folder.
+  Every other grant sits on the organization's folder, none at the
   organization node ("Several organizations").
 - The billing grants are gated by `manage_billing_iam`, false here:
   the break-glass account is a Billing Account User on the account and cannot set its

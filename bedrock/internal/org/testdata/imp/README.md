@@ -417,10 +417,13 @@ Consequences of the above, not separately decided:
   `roles/cloudbuild.connectionAdmin` go to the boot layer identity, which
   makes the connection and the triggers. `roles/logging.configWriter` and
   `roles/storage.admin` are dropped from the org layer identity (no central
-  logging). `roles/iam.roleAdmin` is added to it, because `1-org` creates custom
-  roles in each project, and `roles/resourcemanager.tagAdmin`, because it
+  logging). `roles/resourcemanager.tagAdmin` is added to it, because it
   owns the public-invoker tag key in each environment project and the grants
-  on its value. Every grant sits on the organization's folder, none at the
+  on its value. `roles/iam.roleAdmin`, for the custom roles `1-org` creates in
+  each project, is granted on each project by `1-org` itself, and to the boot
+  layer identity on the boot project by `0-bootstrap`: Google binds Custom Roles
+  Administrator on a project or at the organization node, never on a folder.
+  Every other grant sits on the organization's folder, none at the
   organization node ("Several organizations").
 - The billing grants are gated by `manage_billing_iam`, false here:
   the break-glass account is a Billing Account User on the account and cannot set its

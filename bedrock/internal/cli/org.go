@@ -216,7 +216,7 @@ happens:
   2. The merge, as the root organization's creating identity: the organization's folder at
      the organization root (%s), the terraform folder under it, the boot project
      %s-boot-gbl-core-<suffix>, the boot identity %s-boot-gbl-tofu with its roles on the
-     organization's folder, the break-glass account's (%s) Folder Admin on it and the state
+     organization's folder and on the boot project, the break-glass account's (%s) Folder Admin on it and the state
      bucket %s-boot-gbl-state-<suffix>; the first applies of 0-bootstrap and 1-org against
      the bucket (the connection from the recorded authorization, the repository link and the
      two triggers; the folders, the projects and their identities, recorded in
@@ -277,7 +277,7 @@ By hand, before the Cloud Build triggers can run (the commands are in 0-bootstra
 %s     then the seed: the organization's folder at the organization root (%s), which makes
      the account its administrator, the terraform folder under it, the boot project
      %s-boot-gbl-core-<suffix>, the boot identity %s-boot-gbl-tofu with its roles on the
-     organization's folder, and the state bucket %s-boot-gbl-state-<suffix>. Nothing of the
+     organization's folder and on the boot project, and the state bucket %s-boot-gbl-state-<suffix>. Nothing of the
      organization's sits at the organization node.
   2. In this repository, the seed's values: boot_project_id and terraform_folder_id in
      0-bootstrap/terraform.tfvars, boot_project_id in 1-dns, and in placement.json the

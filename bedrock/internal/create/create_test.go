@@ -234,6 +234,7 @@ func TestRun(t *testing.T) {
 		"folders/" + orgFolder + " roles/resourcemanager.tagAdmin serviceAccount:" + creatingEmail,
 		"folders/" + orgFolder + " roles/cloudbuild.builds.editor " + bootIdentity,
 		"folders/" + orgFolder + " roles/serviceusage.serviceUsageAdmin " + bootIdentity,
+		"projects/rgb-boot-gbl-core-e5f6 roles/iam.roleAdmin " + bootIdentity,
 		"folders/" + orgFolder + " roles/resourcemanager.folderAdmin user:seed@imp.example",
 		"projects/imr-boot-gbl-core-c3d4/secrets/imr-boot-gbl-github-infrastructure-key " + policyAdmin + " " + bootIdentity,
 		"projects/imr-boot-gbl-core-c3d4/secrets/imr-boot-gbl-github-release-key " + policyAdmin + " " + bootIdentity,
@@ -244,8 +245,8 @@ func TestRun(t *testing.T) {
 			t.Errorf("grants lack %q:\n%s", want, strings.Join(f.google.Grants, "\n"))
 		}
 	}
-	if n := len(f.google.Grants); n != 3+len(org.BootLayerRoles)+1+4 {
-		t.Errorf("%d grants, want %d (the three roles for the first applies, the boot roles, Folder Admin, four secrets)", n, 3+len(org.BootLayerRoles)+1+4)
+	if n := len(f.google.Grants); n != 3+len(org.BootLayerRoles)+len(org.BootProjectRoles)+1+4 {
+		t.Errorf("%d grants, want %d (the three roles for the first applies, the boot roles on the folder and the project, Folder Admin, four secrets)", n, 3+len(org.BootLayerRoles)+len(org.BootProjectRoles)+1+4)
 	}
 	creator := " serviceAccount:" + creatingEmail + " roles/resourcemanager.folderAdmin+roles/resourcemanager.folderEditor"
 	wantRevoked := []string{
@@ -347,7 +348,7 @@ func TestRun(t *testing.T) {
 		"=== creation rgb as " + creatingEmail + " ===\n",
 		"Created folder rgb under organizations/123456789012: " + orgFolder + ".\n",
 		"Created project rgb-boot-gbl-core-e5f6 under folder " + tfFolder + ".\n",
-		"Granted the boot identity its 9 roles and the break-glass account Folder Admin on folder " + orgFolder + ".\n",
+		"Granted the boot identity its 8 roles on folder " + orgFolder + " and 1 on the boot project, and the break-glass account Folder Admin on the folder.\n",
 		"Granted the boot identity the policy administration of the 4 shared secrets.\n",
 		"Created repository " + owner + "/rgb-infrastructure, private, default branch master.\n",
 		"=== first apply of rgb's 0-bootstrap as " + creatingEmail + ", state in gs://rgb-boot-gbl-state-e5f6/0-bootstrap ===\n",

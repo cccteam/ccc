@@ -188,6 +188,18 @@ resource "google_folder_iam_member" "boot_tofu" {
   member = google_service_account.boot_tofu.member
 }
 
+# Custom Roles Administrator binds on a project or at the organization node,
+# never on a folder (IAM refuses the binding), so the identity holds it on the
+# boot project alone, where the custom roles this layer makes live. The seed
+# grants the same list (var.boot_project_roles); keep the two in sync.
+resource "google_project_iam_member" "boot_tofu_project" {
+  for_each = toset(var.boot_project_roles)
+
+  project = module.boot_project.project_id
+  role    = each.value
+  member  = google_service_account.boot_tofu.member
+}
+
 # roles/billing.user rather than the roles/billing.admin tf-gcp-setup grants:
 # linking a project to the account is all a layer ever does with billing, and
 # the account belongs to CCC rather than to this organization. Gated because

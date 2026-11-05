@@ -189,7 +189,8 @@ the place it happens.
 
    Then the gcloud commands that make the organization's folder, which makes
    the account its administrator, the `terraform` folder under it, the boot
-   project, the boot layer identity and its roles on the folder, and the state
+   project, the boot layer identity and its roles on the folder and on the boot
+   project, and the state
    bucket. Both are in [`0-bootstrap/README.md`](0-bootstrap/README.md), "1.
    Seed with gcloud". In a terminal, a billing administrator separately
    grants `roles/billing.user` on the billing account to the boot identity;
@@ -302,7 +303,8 @@ creates, for the run.
    organization without a folder yet, in order, as the creating identity: the
    folder at the organization node named after the prefix, the `terraform`
    folder under it, the boot project with its billing link and its APIs, the
-   boot identity with its roles on the folder, the break-glass account's
+   boot identity with its roles on the folder and on the boot project, the
+   break-glass account's
    Folder Admin on the folder, the state bucket, and the boot identity's
    policy administration of the four shared secrets here; then, against the
    new bucket, the first applies of the new organization's two foundation

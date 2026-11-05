@@ -9,7 +9,22 @@
 # shared by every bedrock organization under it and held for 37 days after a
 # delete, and whose administration would be a role above this organization's
 # folder. A role's id is unique within its project, so it carries no suffix.
+#
+# Custom Roles Administrator (roles/iam.roleAdmin) binds on a project or at the
+# organization node, never on a folder, so this layer grants it to its own
+# identity on each project it makes, before the roles; the creating identity's
+# Owner covered the first apply, which made the projects and the roles.
 # ---------------------------------------------------------------------------
+
+resource "google_project_iam_member" "org_tofu_role_admin" {
+  for_each = local.custom_role_projects
+
+  project = each.value
+  role    = "roles/iam.roleAdmin"
+  member  = "serviceAccount:${local.boot.org_service_account_email}"
+
+  depends_on = [time_sleep.apis_ready]
+}
 
 # Secret Manager without the payloads, in each project. A layer identity creates secrets as
 # containers and manages their IAM and the lifecycle of their versions, but
@@ -41,7 +56,7 @@ resource "google_project_iam_custom_role" "secret_container_admin" {
     "secretmanager.versions.list",
   ]
 
-  depends_on = [time_sleep.apis_ready]
+  depends_on = [google_project_iam_member.org_tofu_role_admin]
 }
 
 # Secret Manager for the person who owns the values. A member of the
@@ -74,7 +89,7 @@ resource "google_project_iam_custom_role" "secret_operator" {
     "serviceusage.services.use",
   ]
 
-  depends_on = [time_sleep.apis_ready]
+  depends_on = [google_project_iam_member.org_tofu_role_admin]
 }
 
 # Cloud Run job policies for the deploy pipeline. bedrock deploy jobs makes a
@@ -97,7 +112,7 @@ resource "google_project_iam_custom_role" "run_job_policy_admin" {
     "run.jobs.setIamPolicy",
   ]
 
-  depends_on = [time_sleep.apis_ready]
+  depends_on = [google_project_iam_member.org_tofu_role_admin]
 }
 
 # A pull-request build plans each environment's application stack as that
@@ -125,7 +140,7 @@ resource "google_project_iam_custom_role" "spanner_plan_reader" {
     "spanner.backupSchedules.list",
   ]
 
-  depends_on = [time_sleep.apis_ready]
+  depends_on = [google_project_iam_member.org_tofu_role_admin]
 }
 
 # Creating a database is checked on the instance (spanner.databases.create),
@@ -152,7 +167,7 @@ resource "google_project_iam_custom_role" "spanner_database_creator" {
     "spanner.instances.get",
   ]
 
-  depends_on = [time_sleep.apis_ready]
+  depends_on = [google_project_iam_member.org_tofu_role_admin]
 }
 
 # Creating a bucket is checked on the project (storage.buckets.create: the
@@ -183,7 +198,7 @@ resource "google_project_iam_custom_role" "storage_bucket_creator" {
     "storage.buckets.list",
   ]
 
-  depends_on = [time_sleep.apis_ready]
+  depends_on = [google_project_iam_member.org_tofu_role_admin]
 }
 
 # A restore of an environment to a release, and a release run again, are
@@ -218,7 +233,7 @@ resource "google_project_iam_custom_role" "cloud_build_trigger_runner" {
     "cloudbuild.triggers.list",
   ]
 
-  depends_on = [time_sleep.apis_ready]
+  depends_on = [google_project_iam_member.org_tofu_role_admin]
 }
 
 # The task queue operator: pauses, resumes and purges a Cloud Tasks queue, and
@@ -244,7 +259,7 @@ resource "google_project_iam_custom_role" "cloud_tasks_queue_operator" {
     "cloudtasks.queues.purge",
   ]
 
-  depends_on = [time_sleep.apis_ready]
+  depends_on = [google_project_iam_member.org_tofu_role_admin]
 }
 
 # The pipeline's first step reads the build it runs in (bedrock deploy resolve:
@@ -271,7 +286,7 @@ resource "google_project_iam_custom_role" "cloud_build_build_reader" {
     "cloudbuild.builds.get",
   ]
 
-  depends_on = [time_sleep.apis_ready]
+  depends_on = [google_project_iam_member.org_tofu_role_admin]
 }
 
 # A pull-request build plans each environment's application stack as that
@@ -339,7 +354,7 @@ resource "google_project_iam_custom_role" "application_plan_reader" {
     "storage.buckets.get",
   ]
 
-  depends_on = [time_sleep.apis_ready]
+  depends_on = [google_project_iam_member.org_tofu_role_admin]
 }
 
 # ---------------------------------------------------------------------------
@@ -402,7 +417,7 @@ resource "google_project_iam_custom_role" "environment_layer_plan_reader" {
     "storage.buckets.get",
   ]
 
-  depends_on = [time_sleep.apis_ready]
+  depends_on = [google_project_iam_member.org_tofu_role_admin]
 }
 
 # The shared services layer (2-shr: the container registry).
@@ -419,7 +434,7 @@ resource "google_project_iam_custom_role" "services_layer_plan_reader" {
     "artifactregistry.repositories.get",
   ]
 
-  depends_on = [time_sleep.apis_ready]
+  depends_on = [google_project_iam_member.org_tofu_role_admin]
 }
 
 # The shared network layer (2-net: the load balancer, DNS and certificates).
@@ -453,7 +468,7 @@ resource "google_project_iam_custom_role" "network_layer_plan_reader" {
     "dns.managedZones.get",
   ]
 
-  depends_on = [time_sleep.apis_ready]
+  depends_on = [google_project_iam_member.org_tofu_role_admin]
 }
 
 # The shared Spanner layer (2-spn: the instance stg and prd share).
@@ -473,7 +488,7 @@ resource "google_project_iam_custom_role" "spanner_layer_plan_reader" {
     "spanner.instances.get",
   ]
 
-  depends_on = [time_sleep.apis_ready]
+  depends_on = [google_project_iam_member.org_tofu_role_admin]
 }
 
 # The state bucket's IAM policy, for the environment layers' plan identities.
@@ -496,7 +511,7 @@ resource "google_project_iam_custom_role" "bucket_policy_reader" {
     "storage.buckets.getIamPolicy",
   ]
 
-  depends_on = [time_sleep.apis_ready]
+  depends_on = [google_project_iam_member.org_tofu_role_admin]
 }
 
 # Firebase added to a project, which initializing Identity Platform does first
@@ -517,7 +532,7 @@ resource "google_project_iam_custom_role" "identity_platform_initializer" {
     "firebase.projects.update",
   ]
 
-  depends_on = [time_sleep.apis_ready]
+  depends_on = [google_project_iam_member.org_tofu_role_admin]
 }
 
 # resourcemanager.projects.update is not carried by any narrow predefined
@@ -535,7 +550,7 @@ resource "google_project_iam_custom_role" "project_updater" {
   description = "Grants resourcemanager.projects.update so a layer identity can manage the project's labels and metadata."
   permissions = ["resourcemanager.projects.update"]
 
-  depends_on = [time_sleep.apis_ready]
+  depends_on = [google_project_iam_member.org_tofu_role_admin]
 }
 
 resource "google_project_iam_member" "org_tofu_project_updater" {

@@ -22,8 +22,9 @@ Build triggers" below).
   IAM credentials, logging, Secret Manager, service usage, storage), its
   labels, and the deletion of its default compute service account.
 - Role bindings on the organization's folder for the boot layer identity
-  (`var.boot_layer_roles`), and `roles/dns.admin` on the boot project alone for
-  the dns layer identity, whose zones live there (`1-dns`).
+  (`var.boot_layer_roles`) and on the boot project alone
+  (`var.boot_project_roles`), and `roles/dns.admin` on the boot project alone
+  for the dns layer identity, whose zones live there (`1-dns`).
 - The dns layer identity `imr-dns-gbl-tofu`, in the boot project.
 - The two boot layers' plan identities `imr-boot-gbl-plan` and
   `imr-dns-gbl-plan`, in the boot project, with the reads on the
@@ -200,7 +201,11 @@ until gcloud iam service-accounts list \
 
 Create the boot layer identity and grant it its roles on the organization's
 folder. This list is the same one in `var.boot_layer_roles`; change both
-together. Nothing is granted at the organization node:
+together. Nothing is granted at the organization node. Custom Roles
+Administrator binds on a project or at the organization node and never on a
+folder (IAM refuses the binding), so it goes on the boot project alone, where
+the custom roles this layer makes live (`var.boot_project_roles`, the same
+list):
 
 ```bash
 export SA_EMAIL="${PREFIX}-boot-gbl-tofu@${BOOT_PROJECT_ID}.iam.gserviceaccount.com"
@@ -213,7 +218,6 @@ gcloud iam service-accounts create "${PREFIX}-boot-gbl-tofu" \
 for role in \
   roles/cloudbuild.builds.editor \
   roles/cloudbuild.connectionAdmin \
-  roles/iam.roleAdmin \
   roles/iam.serviceAccountAdmin \
   roles/resourcemanager.folderAdmin \
   roles/resourcemanager.projectCreator \
@@ -222,6 +226,13 @@ for role in \
   roles/serviceusage.serviceUsageAdmin
 do
   gcloud resource-manager folders add-iam-policy-binding "${ORGANIZATION_FOLDER_ID}" \
+    --member="serviceAccount:${SA_EMAIL}" --role="${role}" --condition=None
+done
+
+for role in \
+  roles/iam.roleAdmin
+do
+  gcloud projects add-iam-policy-binding "${BOOT_PROJECT_ID}" \
     --member="serviceAccount:${SA_EMAIL}" --role="${role}" --condition=None
 done
 ```
@@ -464,9 +475,10 @@ them with each record, and a creation refused for one says which.
 | Name | Description | Type | Default | Required |
 |---|---|---|---|:---:|
 | `billing_account_id` | Billing account ID to link projects to. | `string` | n/a | yes |
-| `boot_layer_roles` | Roles granted to the boot layer identity on the organization's folder. The seed grants the same list; change both together. | `list(string)` | nine roles, see `variables.tf` | no |
+| `boot_layer_roles` | Roles granted to the boot layer identity on the organization's folder. The seed grants the same list; change both together. | `list(string)` | eight roles, see `variables.tf` | no |
 | `boot_plan_roles` | Reads on the organization's folder of the two boot layers' plan identities. | `list(string)` | eight roles, see `variables.tf` | no |
 | `boot_project_id` | Project ID of the seeded boot project, suffix included. Adopted, not created. | `string` | n/a | yes |
+| `boot_project_roles` | Roles granted to the boot layer identity on the boot project alone, the ones Google never binds on a folder. The seed grants the same list; change both together. | `list(string)` | one role, see `variables.tf` | no |
 | `github_default_branch` | The infrastructure repository's default branch: the plan trigger runs on a pull request into it, the apply trigger on a push to it. | `string` | `"master"` | no |
 | `github_organization` | The GitHub organization of the infrastructure and application repositories. | `string` | `"imp-example"` | no |
 | `infrastructure_repository` | This repository's name, the one the connection links and the triggers watch. | `string` | `"imr-root-infrastructure"` | no |
@@ -591,8 +603,9 @@ Who runs what, and why the first time works in order:
 
 Each identity's role set is completed by refusal: a layer applied as its
 identity that is refused a permission gets the role that carries it, in
-`var.boot_layer_roles` or, for the dns identity, `bootstrap.tf`'s grant on
-the boot project; a plan of a boot layer, in `var.boot_plan_roles` or the dns
+`var.boot_layer_roles` (or `var.boot_project_roles`, for a role Google binds on
+a project and never on a folder) or, for the dns identity, `bootstrap.tf`'s
+grant on the boot project; a plan of a boot layer, in `var.boot_plan_roles` or the dns
 plan identity's grant there.
 
 ## The infrastructure GitHub App

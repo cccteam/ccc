@@ -22,7 +22,8 @@ Build triggers" below).
   default compute service account.
 - Role bindings on the organization's folder for the boot layer identity
   (`var.boot_layer_roles`) and for the org layer identity
-  (`var.org_layer_roles`), and `roles/privilegedaccessmanager.admin` on the
+  (`var.org_layer_roles`), the boot layer identity's roles on the boot project
+  alone (`var.boot_project_roles`), and `roles/privilegedaccessmanager.admin` on the
   boot project alone for the org
   layer identity: `1-org` declares there each environment's layer state
   entitlement, the environment layer identity's slot in the state bucket for a
@@ -99,7 +100,8 @@ grant to trim:
    applies; the `terraform` folder under it; the boot project
    `imp-boot-gbl-core-a1b2` in it, linked to the billing account with its APIs
    enabled; the boot layer identity `imp-boot-gbl-tofu` with the roles
-   of `var.boot_layer_roles` on the organization's folder; Folder Admin on the
+   of `var.boot_layer_roles` on the organization's folder and of
+   `var.boot_project_roles` on the boot project; Folder Admin on the
    folder for the break-glass account (`seed@imp.example`), its one
    standing grant; the state bucket `imp-boot-gbl-state-a1b2`; and, in the root
    organization's boot project, the boot identity's `secretPolicyAdmin` on
@@ -194,14 +196,15 @@ manages budgets.
 | Name | Description | Type | Default | Required |
 |---|---|---|---|:---:|
 | `billing_account_id` | Billing account ID to link projects to. | `string` | n/a | yes |
-| `boot_layer_roles` | Roles granted to the boot layer identity on the organization's folder. The seed grants the same list; change both together. | `list(string)` | nine roles, see `variables.tf` | no |
+| `boot_layer_roles` | Roles granted to the boot layer identity on the organization's folder. The seed grants the same list; change both together. | `list(string)` | eight roles, see `variables.tf` | no |
 | `boot_plan_roles` | Reads on the organization's folder of the two boot layers' plan identities. | `list(string)` | eight roles, see `variables.tf` | no |
 | `boot_project_id` | Project ID of the seeded boot project, suffix included. Adopted, not created. | `string` | n/a | yes |
+| `boot_project_roles` | Roles granted to the boot layer identity on the boot project alone, the ones Google never binds on a folder. The seed grants the same list; change both together. | `list(string)` | one role, see `variables.tf` | no |
 | `github_default_branch` | The infrastructure repository's default branch: the plan trigger runs on a pull request into it, the apply trigger on a push to it. | `string` | `"master"` | no |
 | `github_organization` | The GitHub organization of the infrastructure and application repositories. | `string` | `"imp-example"` | no |
 | `infrastructure_repository` | This repository's name, the one the connection links and the triggers watch. | `string` | `"imp-impulse-infrastructure"` | no |
 | `manage_billing_iam` | Whether this layer manages the two `roles/billing.user` grants. Needs Billing Account Administrator to apply. | `bool` | `true` | no |
-| `org_layer_roles` | Roles granted to the org layer identity on the organization's folder. | `list(string)` | twelve roles, see `variables.tf` | no |
+| `org_layer_roles` | Roles granted to the org layer identity on the organization's folder. | `list(string)` | eleven roles, see `variables.tf` | no |
 | `organization_domain` | Domain of the GCP organization. | `string` | n/a | yes |
 | `prefix` | Short org-wide prefix used in resource names. | `string` | `"imp"` | no |
 | `state_bucket` | The seeded state bucket, granted on here for the four identities and the applier. | `string` | the placement's `stateBucket` | no |
@@ -331,7 +334,9 @@ Who runs what, and why the first time works in order:
 
 Each identity's role set is completed by refusal: a layer applied as its
 identity that is refused a permission gets the role that carries it, in
-`var.boot_layer_roles`, `var.org_layer_roles` or `1-org`'s `layer_roles`; a
+`var.boot_layer_roles` (or `var.boot_project_roles`, for a role Google binds on
+a project and never on a folder), `var.org_layer_roles` or `1-org`'s
+`layer_roles`; a
 plan of a boot layer, in `var.boot_plan_roles`.
 
 ## The infrastructure GitHub App

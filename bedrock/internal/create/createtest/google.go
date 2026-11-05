@@ -161,6 +161,18 @@ func (g *FakeGoogle) ProjectNumber(_ context.Context, id string) (string, error)
 	return number, nil
 }
 
+// GrantProject records the binding.
+func (g *FakeGoogle) GrantProject(_ context.Context, id, role, member string) error {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	if err := g.call("GrantProject", id, role, member); err != nil {
+		return err
+	}
+	g.Grants = append(g.Grants, "projects/"+id+" "+role+" "+member)
+
+	return nil
+}
+
 // RevokeProject records the removal.
 func (g *FakeGoogle) RevokeProject(_ context.Context, id, member string, roles []string) error {
 	g.mu.Lock()

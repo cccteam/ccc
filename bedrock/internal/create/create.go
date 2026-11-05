@@ -281,10 +281,15 @@ func (f *creation) seed(ctx context.Context, g Google, h *org.Placement) (*org.S
 			return nil, "", err
 		}
 	}
+	for _, role := range org.BootProjectRoles {
+		if err := g.GrantProject(ctx, h.Projects[bootKey], role, "serviceAccount:"+bootIdentity); err != nil {
+			return nil, "", err
+		}
+	}
 	if err := g.GrantFolder(ctx, organizationFolder, folderAdminRole, "user:"+h.BreakGlassAccount); err != nil {
 		return nil, "", err
 	}
-	fmt.Fprintf(f.out, "Granted the boot identity its %d roles and the break-glass account Folder Admin on folder %s.\n", len(org.BootLayerRoles), organizationFolder)
+	fmt.Fprintf(f.out, "Granted the boot identity its %d roles on folder %s and %d on the boot project, and the break-glass account Folder Admin on the folder.\n", len(org.BootLayerRoles), organizationFolder, len(org.BootProjectRoles))
 	for _, secret := range f.req.Root.SharedSecrets() {
 		if err := g.GrantSecret(ctx, secret, "projects/"+f.req.Root.Projects["boot"]+"/roles/"+org.SecretPolicyAdminRole, "serviceAccount:"+bootIdentity); err != nil {
 			return nil, "", err

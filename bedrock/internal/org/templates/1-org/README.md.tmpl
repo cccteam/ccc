@@ -361,7 +361,12 @@ installation token, minted in the run from the key the boot project holds,
 so the audit log names the app; a person applying by hand sets
 `GITHUB_TOKEN` to the token of an owner of the organization before `tofu plan`
 or `tofu apply` (`export GITHUB_TOKEN=$(gh auth token)` with gh signed in as
-that owner), and the audit log names the person. bedrock commands use the
+that owner), and the audit log names the person. The token has to reach the
+organization's Actions variables and runner groups and the repositories'
+rulesets, which an owner's classic token with the `admin:org` and `repo`
+scopes does; a fine-grained token without those permissions on the
+organization is refused the organization variable with a 403, before anything
+is planned. bedrock commands use the
 GitHub API only to act: `bedrock restore` dispatches a workflow, `bedrock
 patch` creates branches and pull requests, the pipeline talks back on a pull
 request.

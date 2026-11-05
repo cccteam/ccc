@@ -68,7 +68,7 @@ func TestRootOrgCommands(t *testing.T) {
 					"     then the seed: the organization's folder at the organization root (123456789012), which makes\n" +
 					"     the account its administrator, the terraform folder under it, the boot project\n" +
 					"     imr-boot-gbl-core-<suffix>, the boot identity imr-boot-gbl-tofu with its roles on the\n" +
-					"     organization's folder, and the state bucket imr-boot-gbl-state-<suffix>. Nothing of the\n" +
+					"     organization's folder and on the boot project, and the state bucket imr-boot-gbl-state-<suffix>. Nothing of the\n" +
 					"     organization's sits at the organization node.",
 				"2. In this repository, the seed's values: boot_project_id and terraform_folder_id in\n     0-bootstrap/terraform.tfvars, boot_project_id in 1-dns, and in placement.json the\n     bucket (stateBucket) and the boot project's id and number (projects.boot,\n     projectNumbers.boot)",
 				"a connection named\n     imr-boot-uc1-github in us-central1",

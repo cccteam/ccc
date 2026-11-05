@@ -240,13 +240,20 @@ func (p *Placement) SharedSecrets() []string {
 var BootLayerRoles = []string{
 	"roles/cloudbuild.builds.editor",
 	"roles/cloudbuild.connectionAdmin",
-	"roles/iam.roleAdmin",
 	"roles/iam.serviceAccountAdmin",
 	"roles/resourcemanager.folderAdmin",
 	"roles/resourcemanager.projectCreator",
 	"roles/resourcemanager.projectDeleter",
 	"roles/resourcemanager.projectIamAdmin",
 	"roles/serviceusage.serviceUsageAdmin",
+}
+
+// BootProjectRoles are the roles the boot layer identity holds on the boot project alone,
+// 0-bootstrap's var.boot_project_roles, which the hand seed and the creation grant with
+// BootLayerRoles: Custom Roles Administrator, for the custom roles the layer makes there,
+// which Google binds on a project or at the organization node and never on a folder.
+var BootProjectRoles = []string{
+	"roles/iam.roleAdmin",
 }
 
 // ProjectLabels are the labels the seed gives the boot project and the state bucket, as
