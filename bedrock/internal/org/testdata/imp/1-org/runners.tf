@@ -23,20 +23,20 @@
 # application identities it creates their slots (2-env/identities.tf). The
 # environment layer identities also receive the policy administration of the
 # deployer and release GitHub Apps' key secrets here, which live in the root
-# organization's boot project, so 2-env can grant the applications' identities
+# organization's root project, so 2-env can grant the applications' identities
 # their read.
 # ---------------------------------------------------------------------------
 
 locals {
   boot = data.terraform_remote_state.boot.outputs
 
-  # The GitHub Apps' keys live in the root organization imr's boot
+  # The GitHub Apps' keys live in the root organization imr's root
   # project (placement.json, keys), one secret per app, read by alias; this
   # layer hands their policy administration down with the role of that
   # project 0-bootstrap holds (0-bootstrap/github.tf).
-  keys_project           = "imr-boot-gbl-core-c3d4"
-  key_secrets            = { deployer = "imr-boot-gbl-github-deployer-key", release = "imr-boot-gbl-github-release-key" }
-  keys_policy_admin_role = "projects/imr-boot-gbl-core-c3d4/roles/secretPolicyAdmin"
+  keys_project           = "imr-root-gbl-core-c3d4"
+  key_secrets            = { deployer = "imr-root-gbl-github-deployer-key", release = "imr-root-gbl-github-release-key" }
+  keys_policy_admin_role = "projects/imr-root-gbl-core-c3d4/roles/secretPolicyAdmin"
 
   state_bucket_objects = "projects/_/buckets/${var.state_bucket}/objects"
 

@@ -1,7 +1,7 @@
 // secrets.go holds the three secrets a root organization keeps for every organization
 // in the Google Cloud organization, the private keys of the GitHub Apps the layers and
 // the pipelines act as: where each lives (one secret per App, which the root
-// organization's 0-bootstrap creates in its boot project), the alias every reader names
+// organization's bootstrap creates in its root project), the alias every reader names
 // (current, on each secret), and where the version it points at is pinned (the root
 // organization's placement.json). A hosting organization names the root organization
 // that holds them (root) and pins nothing. bedrock secret add and pin take the secrets'
@@ -30,7 +30,7 @@ import (
 // The organization's secrets, by the name the commands take.
 const (
 	// InfrastructureKey is the infrastructure GitHub App's private key: the secret a
-	// root organization's 0-bootstrap creates in its boot project, the version its alias
+	// root organization's bootstrap creates in its root project, the version its alias
 	// points at pinned in that placement.json (githubInfrastructureKeyVersion), from
 	// which a run of the triggers in every organization mints its second layer's GitHub
 	// token.
@@ -60,9 +60,9 @@ const KeyAlias = "current"
 // in a hosting organization's placement (root).
 type RootPlace struct {
 	// Organization is the root organization's prefix, which names its secrets
-	// (<prefix>-boot-gbl-github-<app>-key).
+	// (<prefix>-root-gbl-github-<app>-key).
 	Organization string `json:"organization"`
-	// Project is the root organization's boot project, where the secrets live.
+	// Project is the root organization's root project, where the secrets live.
 	Project string `json:"project"`
 }
 
@@ -154,10 +154,10 @@ func (p *Placement) validateKeys() error {
 		return errors.New("keyOperators and hostingOrganizations are a root organization's, which holds the keys; a hosting organization names it (root) and records neither")
 	}
 	if p.CiLargeRunner != "" || p.CiLargeRunnerSize != "" || p.CiLargeRunnerMaximum != 0 {
-		return errors.Newf("ciLargeRunner, ciLargeRunnerSize and ciLargeRunnerMaximum are the GitHub organization's larger runner, declared once in the root organization %s's placement.json, whose 1-dns sets the variable and makes the runner; remove them here", p.Root.Organization)
+		return errors.Newf("ciLargeRunner, ciLargeRunnerSize and ciLargeRunnerMaximum are the GitHub organization's larger runner, declared once in the root organization %s's placement.json, whose apply sets the variable and makes the runner; remove them here", p.Root.Organization)
 	}
 	if p.CloudBuildTokenSecretVersion != "" && p.TokenSecretProject() != p.Root.Project {
-		return errors.Newf("cloudBuildTokenSecretVersion names a secret in %s, and a hosting organization's connections read the token the root organization %s recorded once, in its boot project %s (root.project): record that organization's cloudBuildTokenSecretVersion (its placement.json), which its hostingOrganizations grant gives this organization's boot identity the policy of", p.TokenSecretProject(), p.Root.Organization, p.Root.Project)
+		return errors.Newf("cloudBuildTokenSecretVersion names a secret in %s, and a hosting organization's connections read the token the root organization %s recorded once, in its root project %s (root.project): record that organization's cloudBuildTokenSecretVersion (its placement.json), which its hostingOrganizations grant gives this organization's boot identity the policy of", p.TokenSecretProject(), p.Root.Organization, p.Root.Project)
 	}
 
 	return nil
@@ -179,7 +179,7 @@ func (p *Placement) TokenSecretProject() string {
 // and hosting organizations each with a prefix of its own and a boot project.
 func (p *Placement) validateKeyHolding() error {
 	if p.Root != nil {
-		return errors.New("root is set, and a root organization holds the GitHub Apps' keys itself, in its boot project: root names the root organization a hosting organization reads them from")
+		return errors.New("root is set, and a root organization holds the GitHub Apps' keys itself, in its root project: root names the root organization a hosting organization reads them from")
 	}
 	for _, member := range p.KeyOperators {
 		if !slices.ContainsFunc(memberPrefixes, func(prefix string) bool { return strings.HasPrefix(member, prefix) && len(member) > len(prefix) }) {
@@ -223,11 +223,12 @@ func (p *Placement) RootOrganization() string {
 	return p.Root.Organization
 }
 
-// RootProject is the project holding the keys: a root organization's boot project
-// (projects.boot, empty until recorded), a hosting organization's root.project.
+// RootProject is the project holding the keys: a root organization's root project
+// (projects.root, empty until the bootstrap records it), a hosting organization's
+// root.project.
 func (p *Placement) RootProject() string {
 	if p.IsRoot() {
-		return p.Projects[bootProject]
+		return p.Projects[RootProjectKey]
 	}
 	if p.Root == nil {
 		return ""
@@ -244,29 +245,7 @@ func (p *Placement) KeysElsewhere() error {
 		return nil
 	}
 
-	return errors.Newf("the GitHub Apps' keys live in the root organization %s (root.organization in placement.json), in its boot project %s: add, check and pin a key in that organization's infrastructure repository; this organization reads each secret's alias %s, which that organization's placement pins", p.RootOrganization(), p.RootProject(), KeyAlias)
-}
-
-// KeyAliasHCL is the secret's version_aliases as HCL, for a root organization's
-// 0-bootstrap: the alias current at the version placement.json pins, or an empty map
-// while none is pinned.
-func (p *Placement) KeyAliasHCL(name string) string {
-	version := *p.pinned(name)
-	if version == "" {
-		return "{}"
-	}
-
-	return "{ " + KeyAlias + " = \"" + version + "\" }"
-}
-
-// KeyOperatorsHCL is the root organization's key operators as an HCL set of members.
-func (p *Placement) KeyOperatorsHCL() string {
-	quoted := make([]string, 0, len(p.KeyOperators))
-	for _, member := range p.KeyOperators {
-		quoted = append(quoted, "\""+member+"\"")
-	}
-
-	return "toset([" + strings.Join(quoted, ", ") + "])"
+	return errors.Newf("the GitHub Apps' keys live in the root organization %s (root.organization in placement.json), in its root project %s: add, check and pin a key in that organization's infrastructure repository; this organization reads each secret's alias %s, which that organization's placement pins", p.RootOrganization(), p.RootProject(), KeyAlias)
 }
 
 // secretVersionRE is a pinned version: a positive number, never latest.
@@ -315,19 +294,19 @@ func organizationID(data []byte) string {
 // App's private key, as the root organization's 0-bootstrap names it in its boot
 // project.
 func (p *Placement) InfrastructureKeySecret() string {
-	return p.RootOrganization() + "-boot-gbl-github-infrastructure-key"
+	return p.RootOrganization() + "-" + RootProjectKey + "-gbl-github-infrastructure-key"
 }
 
 // DeployerKeySecret is the Secret Manager secret holding the deployer GitHub App's
-// private key, as the root organization's 0-bootstrap names it in its boot project.
+// private key, as the root organization's bootstrap names it in its root project.
 func (p *Placement) DeployerKeySecret() string {
-	return p.RootOrganization() + "-boot-gbl-github-deployer-key"
+	return p.RootOrganization() + "-" + RootProjectKey + "-gbl-github-deployer-key"
 }
 
 // ReleaseKeySecret is the Secret Manager secret holding the release GitHub App's private
-// key, as the root organization's 0-bootstrap names it in its boot project.
+// key, as the root organization's bootstrap names it in its root project.
 func (p *Placement) ReleaseKeySecret() string {
-	return p.RootOrganization() + "-boot-gbl-github-release-key"
+	return p.RootOrganization() + "-" + RootProjectKey + "-gbl-github-release-key"
 }
 
 // SecretContainer is the secret's name in the project that holds the keys.
@@ -343,14 +322,33 @@ func (p *Placement) SecretContainer(name string) string {
 }
 
 // SecretProject is the project holding the keys as the placement records it: a root
-// organization's boot project (projects.boot). One not recorded yet is refused.
+// organization's root project (projects.root), a hosting organization's root.project.
+// One not recorded yet is refused.
 func (p *Placement) SecretProject() (string, error) {
 	project := p.RootProject()
 	if project == "" {
-		return "", errors.Newf("placement.json records no project for %s (projects.%s): record the seed's value there, or pass --project", bootProject, bootProject)
+		if p.IsRoot() {
+			return "", errors.Newf("placement.json records no root project (projects.%s): bedrock org bootstrap records it, or pass --project", RootProjectKey)
+		}
+
+		return "", errors.New("placement.json names no root organization (root): the keys live in the root organization's root project, and a hosting organization's placement names it")
 	}
 
 	return project, nil
+}
+
+// PinnedVersionName is the resource name of the version the placement pins for the key
+// (projects/<root project>/secrets/<container>/versions/<number>), as the bootstrap reads
+// a key before its apply has pointed the alias at it; empty while the placement pins
+// none or records no root project.
+func (p *Placement) PinnedVersionName(name string) string {
+	project := p.RootProject()
+	version := p.KeyVersion(name)
+	if project == "" || version == "" {
+		return ""
+	}
+
+	return "projects/" + project + "/secrets/" + p.SecretContainer(name) + "/versions/" + version
 }
 
 // SecretVersionName is the resource name every reader of the key names: the secret's
@@ -608,7 +606,7 @@ func (r *SecretPinResult) Write(w io.Writer) {
 	fmt.Fprintf(w, "Pinned %s to version %s: %s in %s.\n", r.Secret, r.Version, r.Key, r.File)
 	fmt.Fprintf(w, "Secret Manager confirms version %s of %s in project %s is enabled.\n", r.Version, r.Container, r.Project)
 	r.writeAppUnset(w)
-	fmt.Fprintf(w, "Next: commit placement.json and the files org render rewrote (%d owned file(s), 0-bootstrap/github.tf among them) and open the pull request; its apply moves the alias %s of %s to version %s, and every reader in every organization (%s) names the alias, so all of them switch at that apply and nothing changes before it. Then, on GitHub, delete the old key on the app's settings page once the next run has gone through clean.\n", r.Rendered, KeyAlias, r.Container, r.Version, keyReaders(r.Secret))
+	fmt.Fprintf(w, "Next: commit placement.json and the %d file(s) org render rewrote, and open the pull request; its apply moves the alias %s of %s to version %s, and every reader in every organization (%s) names the alias, so all of them switch at that apply and nothing changes before it. Then, on GitHub, delete the old key on the app's settings page once the next run has gone through clean.\n", r.Rendered, KeyAlias, r.Container, r.Version, keyReaders(r.Secret))
 }
 
 // keyReaders names who reads the key, for the pin's next step.
@@ -634,4 +632,28 @@ func (r *SecretPinResult) writeAppUnset(w io.Writer) {
 		return
 	}
 	fmt.Fprintf(w, "placement.json records no %s: record the infrastructure app's App ID there, from the app's settings page, and run bedrock org render; until both are recorded a run of the triggers that plans or applies 1-org stops.\n", appKey(r.Secret))
+}
+
+// KeyVersion is the version placement.json pins for the key secret (github-<app>-key),
+// empty while none is pinned.
+func (p *Placement) KeyVersion(name string) string {
+	return *p.pinned(name)
+}
+
+// TokenSecretID is the id of the secret a root organization's bootstrap puts the Bot
+// Account's token in, in the root project (<prefix>-root-gbl-github-token), which every
+// Cloud Build connection authorizes with.
+func (p *Placement) TokenSecretID() string {
+	return p.Prefix + "-" + RootProjectKey + "-gbl-github-token"
+}
+
+// PinKeyVersion records the version of the key secret (github-<app>-key) the alias points
+// at: a number, never latest.
+func (p *Placement) PinKeyVersion(name, version string) error {
+	if !projectNumberRE.MatchString(version) {
+		return errors.Newf("version %q of %s is not a secret version's number (digits, never latest)", version, name)
+	}
+	*p.pinned(name) = version
+
+	return nil
 }

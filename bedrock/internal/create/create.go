@@ -1,9 +1,9 @@
 // Package create is how a root organization creates a hosting organization from its apply
 // trigger's run (README.md, "Creating a hosting organization"): for each hosting
 // organization placement.json records without a folder yet, the run, as the root
-// organization's creating identity, does under a new folder what the hand seed and the
-// first apply do for an organization bootstrapped by hand, pushes the rendered
-// repository, takes its own creator grants off, and hands the organization off with a
+// organization's creating identity, makes under a new folder what the first applies
+// need and runs them (nothing of a hosting organization is made by hand), pushes the
+// rendered repository, takes its own creator grants off, and hands the organization off with a
 // pull request that records its folder. Every step looks before it makes, so a run
 // that stopped halfway finishes on the next push, and a created organization is
 // left alone: its marker in the root organization's state bucket says so.
@@ -97,8 +97,9 @@ type Result struct {
 	Already bool
 }
 
-// The seed's values, as the hand seed names them (0-bootstrap/README.md, "Seed with
-// gcloud"), which the creation makes the same way.
+// The seed's values: the names and roles of what the creation makes before the first
+// applies, which 0-bootstrap then adopts (0-bootstrap/README.md, "Created by the root
+// organization").
 const (
 	terraformFolderName = "terraform"
 	bootKey             = "boot"
@@ -109,8 +110,9 @@ const (
 	folderAdminRole        = "roles/resourcemanager.folderAdmin"
 	folderEditorRole       = "roles/resourcemanager.folderEditor"
 	ownerRole              = "roles/owner"
+	billingUserRole        = "roles/billing.user"
 	// grantSettle is how long the creation waits for a new project's creator grant to
-	// reach IAM before it gives up (the hand seed polls the same way).
+	// reach IAM before it gives up (the bootstrap polls the same way for the root project).
 	grantSettle = 3 * time.Minute
 	grantPoll   = 10 * time.Second
 	// handOffBranch is the root organization repository's branch the hand-off pull
@@ -118,16 +120,17 @@ const (
 	handOffBranch = "create/"
 )
 
-// creatingFolderRoles are the roles the hand seed grants the break-glass account on the
-// organization's folder for the first applies (0-bootstrap/README.md, "Seed with gcloud"),
-// which the creation grants its identity the same way: Project Creator for the boot
+// creatingFolderRoles are the roles the creation grants its identity on the
+// organization's folder for the first applies, beside the Folder Admin a folder's creator
+// has, since a folder's administrator creates no project: Project Creator for the boot
 // project and 1-org's projects, Organization Policy Administrator for 1-org's policies on
 // its folders, and Tag Administrator for the tag keys 1-org makes in the environment
 // projects. Its Folder Admin, a creator's, covers the rest; the withdrawal takes all of
 // it off.
 var creatingFolderRoles = []string{bootProjectRoleCreator, orgPolicyAdminRole, tagAdminRole}
 
-// services are the APIs the hand seed enables in a boot project.
+// services are the APIs the creation enables in a boot project before its 0-bootstrap
+// applies.
 var services = []string{
 	"cloudbilling.googleapis.com", "cloudbuild.googleapis.com", "cloudresourcemanager.googleapis.com",
 	"iam.googleapis.com", "iamcredentials.googleapis.com", "secretmanager.googleapis.com",
@@ -245,7 +248,7 @@ func (f *creation) create(ctx context.Context) (*Result, error) {
 	return f.establish(ctx, g, h, seed, number)
 }
 
-// seed does what the hand seed does: the organization's folder at the organization node
+// seed makes what the first applies need: the organization's folder at the organization node
 // (with the roles the first applies need for the creating identity itself, since a
 // folder's administrator creates no project), the terraform folder, the boot project with its billing link and
 // its APIs, the boot identity, the state bucket, the boot identity's roles and the
@@ -291,7 +294,7 @@ func (f *creation) seed(ctx context.Context, g Google, h *org.Placement) (*org.S
 	}
 	fmt.Fprintf(f.out, "Granted the boot identity its %d roles on folder %s and %d on the boot project, and the break-glass account Folder Admin on the folder.\n", len(org.BootLayerRoles), organizationFolder, len(org.BootProjectRoles))
 	for _, secret := range f.req.Root.SharedSecrets() {
-		if err := g.GrantSecret(ctx, secret, "projects/"+f.req.Root.Projects["boot"]+"/roles/"+org.SecretPolicyAdminRole, "serviceAccount:"+bootIdentity); err != nil {
+		if err := g.GrantSecret(ctx, secret, "projects/"+f.req.Root.RootProject()+"/roles/"+org.SecretPolicyAdminRole, "serviceAccount:"+bootIdentity); err != nil {
 			return nil, "", err
 		}
 	}
@@ -321,6 +324,9 @@ func (f *creation) establish(ctx context.Context, g Google, h *org.Placement, se
 		return nil, err
 	}
 	fmt.Fprintf(f.out, "Applied %s's %s: its triggers exist, and its own apply trigger applies every layer from the first push on.\n", h.Prefix, bootstrapLayer)
+	if err := f.billingUsers(ctx, g, h); err != nil {
+		return nil, err
+	}
 	folders, err := f.organize(ctx, dir, h)
 	if err != nil {
 		return nil, err
@@ -349,6 +355,23 @@ func (f *creation) establish(ctx context.Context, g Google, h *org.Placement, se
 	}
 
 	return &Result{Marker: marker, PullRequest: url}, nil
+}
+
+// billingUsers grants the new organization's boot and org identities Billing Account User
+// on the billing account, which 1-org needs the day it links a project it creates: the
+// creating identity holds Billing Account Administrator, granted by the bootstrap, so no
+// billing administrator is asked. Done once 0-bootstrap's first apply has made the org
+// identity.
+func (f *creation) billingUsers(ctx context.Context, g Google, h *org.Placement) error {
+	for _, name := range []string{h.Prefix + "-boot-gbl-tofu", h.Prefix + "-org-gbl-tofu"} {
+		member := "serviceAccount:" + name + "@" + h.Projects[bootKey] + ".iam.gserviceaccount.com"
+		if err := g.GrantBillingAccount(ctx, h.BillingAccount, billingUserRole, member); err != nil {
+			return err
+		}
+	}
+	fmt.Fprintf(f.out, "Granted the boot and org identities Billing Account User on %s, for the projects 1-org links.\n", h.BillingAccount)
+
+	return nil
 }
 
 // folder finds or makes the folder named under the parent.
@@ -469,8 +492,8 @@ func (f *creation) render(h *org.Placement, seed *org.Seed, dir string) error {
 	return h.Write(filepath.Join(dir, org.PlacementFile))
 }
 
-// withdraw takes the creating identity's creator grants off, what the hand trim takes off
-// the break-glass account (0-bootstrap/README.md, "Trimming the break-glass account"):
+// withdraw takes the creating identity's creator grants off, so that no grant of the
+// creation outlives it (0-bootstrap/README.md, "Created by the root organization"):
 // Folder Admin and Folder Editor on each folder 1-org made and on the terraform folder,
 // Owner on each project 1-org made and on the boot project, and on the organization's
 // folder the same two with the roles it granted itself for the first applies, last, so

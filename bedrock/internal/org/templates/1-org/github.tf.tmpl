@@ -350,6 +350,14 @@ resource "github_repository_ruleset" "infrastructure" {
   target      = "branch"
   enforcement = "active"
 
+  # bedrock itself, acting as the infrastructure app, bypasses these rules, which it
+  # writes: the same actor the root organization's ruleset names.
+  bypass_actors {
+    actor_id    = var.github_infrastructure_app_id
+    actor_type  = "Integration"
+    bypass_mode = "always"
+  }
+
   conditions {
     ref_name {
       include = local.lines.default.include

@@ -103,7 +103,7 @@ output "github_deployer_app_id" {
 }
 
 output "github_deployer_key_secret_version" {
-  description = "Resource name of the alias current of the Secret Manager secret holding the deployer app's private key, in the root organization's boot project (placement.json, keys); that organization pins the version the alias points at."
+  description = "Resource name of the alias current of the Secret Manager secret holding the deployer app's private key, in the root organization's root project (placement.json, keys); that organization pins the version the alias points at."
   value       = local.github_deployer_key_secret_version
 }
 
@@ -113,6 +113,6 @@ output "github_release_app_id" {
 }
 
 output "github_release_key_secret_version" {
-  description = "Resource name of the alias current of the Secret Manager secret holding the release app's private key, in the root organization's boot project (placement.json, keys); that organization pins the version the alias points at. The applications' release triggers mint their token from it, in tst, where the release identities live."
+  description = "Resource name of the alias current of the Secret Manager secret holding the release app's private key, in the root organization's root project (placement.json, keys); that organization pins the version the alias points at. The applications' release triggers mint their token from it, in tst, where the release identities live."
   value       = local.github_release_key_secret_version
 }

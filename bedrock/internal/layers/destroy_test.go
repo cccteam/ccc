@@ -114,10 +114,8 @@ func (r *handRunner) Output(_ context.Context, c deploy.Command, _ io.Writer) ([
 }
 
 // destroyCheckout is a checkout with the layers' files the destroy reads and copies: the
-// variables, with or without the destroy variable for the two layers that declare it
-// (1-dns, a root organization's second layer, never does), the backend, the values and
-// the lock, and the OpenTofu version at the root. It holds 1-org and 1-dns both, so one
-// checkout serves either kind.
+// variables, with or without the destroy variable, the backend, the values and the lock,
+// and the OpenTofu version at the root.
 func destroyCheckout(t *testing.T, destroyVariable bool) string {
 	t.Helper()
 
@@ -135,8 +133,6 @@ func destroyCheckout(t *testing.T, destroyVariable bool) string {
 		"0-bootstrap/README.md":        "# not copied\n",
 		"1-org/" + variablesFile:       variables,
 		"1-org/initialize.tf":          "terraform {\n  backend \"gcs\" {\n    bucket = \"imp-boot-gbl-state-a1b2\"\n    prefix = \"1-org\"\n  }\n}\n",
-		"1-dns/" + variablesFile:       "variable \"boot_project_id\" {\n  type = string\n}\n",
-		"1-dns/initialize.tf":          "terraform {\n  backend \"gcs\" {\n    bucket = \"imp-boot-gbl-state-a1b2\"\n    prefix = \"1-dns\"\n  }\n}\n",
 	}
 	for name, content := range files {
 		path := filepath.Join(dir, name)
@@ -151,14 +147,16 @@ func destroyCheckout(t *testing.T, destroyVariable bool) string {
 	return dir
 }
 
-// The layers' states in the tests: 1-org with its repositories, a ruleset, two folders,
-// two projects and a lien; 0-bootstrap with its folders, project and an identity; 1-dns
-// with this repository and its ruleset, a zone and a record set.
+// The layers' states in the tests: 1-org with its repositories, a ruleset, the tst
+// public-invoker tag key and value, two folders, two projects and a lien; 0-bootstrap
+// with its folders, project and an identity.
 var (
 	orgState = []string{
 		"github_repository.infrastructure",
 		`github_repository.app["quill"]`,
 		`github_repository_ruleset.branch["quill"]`,
+		`google_tags_tag_key.public_invoker["tst"]`,
+		`google_tags_tag_value.public_invoker["tst"]`,
 		`google_folder.this["shared"]`,
 		`google_folder.this["tst"]`,
 		`module.project["net"].module.project-factory.google_project.main`,
@@ -173,12 +171,6 @@ var (
 		"google_service_account.boot_tofu",
 		"module.boot_project.module.project-factory.google_project.main",
 		`module.boot_project.module.project-factory.module.project_services.google_project_service.project_services["iam.googleapis.com"]`,
-	}
-	dnsState = []string{
-		"github_repository.infrastructure",
-		"github_repository_ruleset.infrastructure",
-		`google_dns_managed_zone.domain["clientbay.example"]`,
-		`google_dns_record_set.delegation["harbor.clientbay.example"]`,
 	}
 	pulledState = `{"version": 4, "resources": []}` + "\n"
 )
@@ -198,13 +190,11 @@ func TestDestroy(t *testing.T) {
 		name            string
 		destroyVariable bool
 		keepNet         bool
-		// zones marks a root organization's checkout: 1-dns in place of 1-org.
-		zones   bool
-		token   func(context.Context) (string, error)
-		runs    map[string]*handRun
-		wantErr string
-		wantRan []string
-		wantOut []string
+		token           func(context.Context) (string, error)
+		runs            map[string]*handRun
+		wantErr         string
+		wantRan         []string
+		wantOut         []string
 		// wantAbsent are texts the output may not hold.
 		wantAbsent []string
 		wantCopy   bool
@@ -222,6 +212,8 @@ func TestDestroy(t *testing.T) {
 				"1-org: tofu state list [data 1-org.data]",
 				"1-org: tofu state rm github_repository.infrastructure [token] [data 1-org.data]",
 				`1-org: tofu state rm github_repository.app["quill"] [token] [data 1-org.data]`,
+				`1-org: tofu state rm google_tags_tag_key.public_invoker["tst"] [token] [data 1-org.data]`,
+				`1-org: tofu state rm google_tags_tag_value.public_invoker["tst"] [token] [data 1-org.data]`,
 				`1-org: tofu apply -input=false -no-color -auto-approve -var destroy=true -target=google_folder.this["shared"] -target=google_folder.this["tst"] -target=module.project["net"].module.project-factory.google_project.main -target=module.project["net"].module.project-factory.module.project_services.google_project_service.project_services["dns.googleapis.com"] -target=module.project["tst"].module.project-factory.google_project.main -target=module.project["tst"].module.project-factory.module.project_services.google_project_service.project_services["compute.googleapis.com"] [token] [data 1-org.data]`,
 				"1-org: tofu destroy -input=false -no-color -auto-approve -var destroy=true [token] [data 1-org.data]",
 				"0-bootstrap: tofu init -input=false -no-color -reconfigure [data 0-bootstrap.data]",
@@ -231,7 +223,7 @@ func TestDestroy(t *testing.T) {
 				`0-bootstrap(copy): tofu apply -input=false -no-color -auto-approve -var destroy=true -target=google_folder.organization -target=google_folder.terraform -target=module.boot_project.module.project-factory.google_project.main -target=module.boot_project.module.project-factory.module.project_services.google_project_service.project_services["iam.googleapis.com"]`,
 				"0-bootstrap(copy): tofu destroy -input=false -no-color -auto-approve -var destroy=true",
 			},
-			wantOut:  []string{"Took github_repository.infrastructure out of 1-org's state: the repository stays.", "Recording on 1-org that the destroy deletes 2 project(s) with 2 service(s) and 2 folder(s), disabling no API first.", "Destroyed 1-org.", "Copied 0-bootstrap's state and files to", "Recording on 0-bootstrap that the destroy deletes 1 project(s) with 1 service(s) and 2 folder(s), disabling no API first.", "Destroyed 0-bootstrap."},
+			wantOut:  []string{"Took github_repository.infrastructure out of 1-org's state: the repository stays.", `Took google_tags_tag_value.public_invoker["tst"] out of 1-org's state: it goes with the project that holds it.`, "A tag key or value at the organization node, from a render before the tags moved into the environment projects, stays behind: delete it by hand", "Recording on 1-org that the destroy deletes 2 project(s) with 2 service(s) and 2 folder(s), disabling no API first.", "Destroyed 1-org.", "Copied 0-bootstrap's state and files to", "Recording on 0-bootstrap that the destroy deletes 1 project(s) with 1 service(s) and 2 folder(s), disabling no API first.", "Destroyed 0-bootstrap."},
 			wantCopy: true,
 		},
 		{
@@ -248,6 +240,8 @@ func TestDestroy(t *testing.T) {
 				"1-org: tofu state list [data 1-org.data]",
 				"1-org: tofu state rm github_repository.infrastructure [token] [data 1-org.data]",
 				`1-org: tofu state rm github_repository.app["quill"] [token] [data 1-org.data]`,
+				`1-org: tofu state rm google_tags_tag_key.public_invoker["tst"] [token] [data 1-org.data]`,
+				`1-org: tofu state rm google_tags_tag_value.public_invoker["tst"] [token] [data 1-org.data]`,
 				`1-org: tofu apply -input=false -no-color -auto-approve -var destroy=true -target=google_folder.this["shared"] -target=google_folder.this["tst"] -target=module.project["tst"].module.project-factory.google_project.main -target=module.project["tst"].module.project-factory.module.project_services.google_project_service.project_services["compute.googleapis.com"] [token] [data 1-org.data]`,
 				`1-org: tofu destroy -input=false -no-color -auto-approve -var destroy=true -exclude=module.project["net"] [token] [data 1-org.data]`,
 				"0-bootstrap: tofu init -input=false -no-color -reconfigure [data 0-bootstrap.data]",
@@ -290,6 +284,8 @@ func TestDestroy(t *testing.T) {
 			wantRan: []string{
 				"1-org: tofu init -input=false -no-color -reconfigure [data 1-org.data]",
 				"1-org: tofu state list [data 1-org.data]",
+				`1-org: tofu state rm google_tags_tag_key.public_invoker["tst"] [token] [data 1-org.data]`,
+				`1-org: tofu state rm google_tags_tag_value.public_invoker["tst"] [token] [data 1-org.data]`,
 				`1-org: tofu apply -input=false -no-color -auto-approve -var destroy=true -target=google_folder.this["shared"] -target=google_folder.this["tst"] -target=module.project["net"].module.project-factory.google_project.main -target=module.project["net"].module.project-factory.module.project_services.google_project_service.project_services["dns.googleapis.com"] -target=module.project["tst"].module.project-factory.google_project.main -target=module.project["tst"].module.project-factory.module.project_services.google_project_service.project_services["compute.googleapis.com"] [token] [data 1-org.data]`,
 				"1-org: tofu destroy -input=false -no-color -auto-approve -var destroy=true [token] [data 1-org.data]",
 				"1-org: tofu destroy -input=false -no-color -auto-approve -var destroy=true [token] [data 1-org.data]",
@@ -330,58 +326,6 @@ func TestDestroy(t *testing.T) {
 				"1-org: tofu state list [data 1-org.data]",
 			},
 		},
-		{
-			name:            "a root organization: destroys 1-dns then 0-bootstrap, the repository and the zones out of the state first, and sets no destroy variable on 1-dns, which declares none",
-			destroyVariable: true,
-			zones:           true,
-			token:           fixedToken,
-			runs: map[string]*handRun{
-				dnsLayer:       {stateList: dnsState},
-				BootstrapLayer: {stateList: bootState, statePull: pulledState},
-			},
-			wantRan: []string{
-				"1-dns: tofu init -input=false -no-color -reconfigure [data 1-dns.data]",
-				"1-dns: tofu state list [data 1-dns.data]",
-				"1-dns: tofu state rm github_repository.infrastructure [token] [data 1-dns.data]",
-				`1-dns: tofu state rm google_dns_managed_zone.domain["clientbay.example"] [token] [data 1-dns.data]`,
-				`1-dns: tofu state rm google_dns_record_set.delegation["harbor.clientbay.example"] [token] [data 1-dns.data]`,
-				"1-dns: tofu destroy -input=false -no-color -auto-approve [token] [data 1-dns.data]",
-				"0-bootstrap: tofu init -input=false -no-color -reconfigure [data 0-bootstrap.data]",
-				"0-bootstrap: tofu state pull [data 0-bootstrap.data]",
-				"0-bootstrap(copy): tofu init -input=false -no-color -reconfigure",
-				"0-bootstrap(copy): tofu state list",
-				`0-bootstrap(copy): tofu apply -input=false -no-color -auto-approve -var destroy=true -target=google_folder.organization -target=google_folder.terraform -target=module.boot_project.module.project-factory.google_project.main -target=module.boot_project.module.project-factory.module.project_services.google_project_service.project_services["iam.googleapis.com"]`,
-				"0-bootstrap(copy): tofu destroy -input=false -no-color -auto-approve -var destroy=true",
-			},
-			wantOut: []string{
-				"Took github_repository.infrastructure out of 1-dns's state: the repository stays.",
-				`Took google_dns_managed_zone.domain["clientbay.example"] out of 1-dns's state: it goes with the boot project.`,
-				`Took google_dns_record_set.delegation["harbor.clientbay.example"] out of 1-dns's state: it goes with the boot project.`,
-				"Destroyed 1-dns.", "Destroyed 0-bootstrap.",
-			},
-			wantAbsent: []string{"Recording on 1-dns", "github_repository_ruleset"},
-			wantCopy:   true,
-		},
-		{
-			name:            "a root organization refuses a 0-bootstrap rendered without the destroy variable, asking none of 1-dns",
-			destroyVariable: false,
-			zones:           true,
-			token:           fixedToken,
-			runs:            map[string]*handRun{},
-			wantErr:         "0-bootstrap/variables.tf declares no destroy variable",
-		},
-		{
-			name:            "a root organization refuses 1-dns without a GitHub token, before anything changes",
-			destroyVariable: true,
-			zones:           true,
-			token:           noToken,
-			runs:            map[string]*handRun{dnsLayer: {stateList: dnsState}},
-			wantErr:         "1-dns's GitHub provider needs a token for this repository's ruleset: the infrastructure GitHub App's installation token, or an organization owner's",
-			wantRan: []string{
-				"1-dns: tofu init -input=false -no-color -reconfigure [data 1-dns.data]",
-				"1-dns: tofu state list [data 1-dns.data]",
-			},
-		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -390,7 +334,7 @@ func TestDestroy(t *testing.T) {
 			dir := destroyCheckout(t, tt.destroyVariable)
 			runner := &handRunner{runs: tt.runs}
 			var out bytes.Buffer
-			err := Destroy(context.Background(), runner, &DestroyRequest{Dir: dir, GithubToken: tt.token, KeepNet: tt.keepNet, Root: tt.zones}, &out)
+			err := Destroy(context.Background(), runner, &DestroyRequest{Dir: dir, GithubToken: tt.token, KeepNet: tt.keepNet}, &out)
 			switch {
 			case tt.wantErr == "" && err != nil:
 				t.Fatalf("Destroy() = %v, want no error; printed:\n%s", err, out.String())

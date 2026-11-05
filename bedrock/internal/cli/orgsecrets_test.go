@@ -137,7 +137,7 @@ func TestOrgSecretsCheck(t *testing.T) {
 			name: "a version the app's key signs as, not yet pinned",
 			args: []string{"github-deployer-key", "2"},
 			wantOut: []string{
-				"Version 2 of imr-boot-gbl-github-deployer-key in project imr-boot-gbl-core-c3d4 is enabled, and GitHub accepts a token signed with it as the deployer GitHub App's private key: App 5080800 (imp-deployer).\n",
+				"Version 2 of imr-root-gbl-github-deployer-key in project imr-root-gbl-core-c3d4 is enabled, and GitHub accepts a token signed with it as the deployer GitHub App's private key: App 5080800 (imp-deployer).\n",
 				"The alias current is pinned to version 1 (githubDeployerKeyVersion in placement.json); nothing reads version 2 yet.\n",
 				"Next: bedrock secret pin github-deployer-key 2, then the pull request with the render; its apply moves the alias, and every reader in every organization switches. Delete the old key on GitHub once the next run has gone through clean.\n",
 			},
@@ -154,12 +154,12 @@ func TestOrgSecretsCheck(t *testing.T) {
 			name:    "a key that is not the app's: GitHub refuses",
 			args:    []string{"github-deployer-key", "2"},
 			edit:    func(p *org.Placement) { p.GithubDeployerAppID = "999" },
-			wantErr: "GitHub refuses a token signed with version 2 of imr-boot-gbl-github-deployer-key as App 999 (githubDeployerAppId): the version is not that app's key, or githubDeployerAppId records another app's id; nothing changes",
+			wantErr: "GitHub refuses a token signed with version 2 of imr-root-gbl-github-deployer-key as App 999 (githubDeployerAppId): the version is not that app's key, or githubDeployerAppId records another app's id; nothing changes",
 		},
 		{
 			name:    "a disabled version is refused before GitHub is asked",
 			args:    []string{"github-infrastructure-key", "3"},
-			wantErr: "version 3 of imr-boot-gbl-github-infrastructure-key in project imr-boot-gbl-core-c3d4 is DISABLED, not ENABLED",
+			wantErr: "version 3 of imr-root-gbl-github-infrastructure-key in project imr-root-gbl-core-c3d4 is DISABLED, not ENABLED",
 		},
 		{
 			name:    "the app not recorded is refused",
@@ -176,7 +176,7 @@ func TestOrgSecretsCheck(t *testing.T) {
 			name:    "a hosting organization is sent to the root organization",
 			hosting: true,
 			args:    []string{"github-deployer-key", "2"},
-			wantErr: "the GitHub Apps' keys live in the root organization imr (root.organization in placement.json), in its boot project imr-boot-gbl-core-c3d4: add, check and pin a key in that organization's infrastructure repository",
+			wantErr: "the GitHub Apps' keys live in the root organization imr (root.organization in placement.json), in its root project imr-root-gbl-core-c3d4: add, check and pin a key in that organization's infrastructure repository",
 		},
 	}
 	for _, tt := range tests {
@@ -236,7 +236,7 @@ func TestOrgSecretInHosting(t *testing.T) {
 			}
 			d := deps{domains: noCloudDomains, secrets: noSecretManager, projects: noProjects, interactive: never}
 			out, err := execute(d, "pem", append([]string{secretCommand}, append(args, "--dir", dir)...)...)
-			want := "the GitHub Apps' keys live in the root organization imr (root.organization in placement.json), in its boot project imr-boot-gbl-core-c3d4: add, check and pin a key in that organization's infrastructure repository; this organization reads each secret's alias current, which that organization's placement pins"
+			want := "the GitHub Apps' keys live in the root organization imr (root.organization in placement.json), in its root project imr-root-gbl-core-c3d4: add, check and pin a key in that organization's infrastructure repository; this organization reads each secret's alias current, which that organization's placement pins"
 			if err == nil || !strings.Contains(err.Error(), want) {
 				t.Fatalf("Execute() error = %v, want %q; output:\n%s", err, want, out)
 			}

@@ -44,14 +44,14 @@ func TestFill(t *testing.T) {
 		}
 		wants := map[string]string{
 			"organizationDomain": h.OrganizationDomain, "organizationId": h.OrganizationID, "billingAccount": h.BillingAccount,
-			"githubOrganization": h.GithubOrganization, "githubMachineAccount": h.GithubMachineAccount, "githubDefaultBranch": h.GithubDefaultBranch,
+			"githubOrganization": h.GithubOrganization, "githubBotAccount": h.GithubBotAccount, "githubDefaultBranch": h.GithubDefaultBranch,
 			"githubInfrastructureAppId": h.GithubInfrastructureAppID, "githubDeployerAppId": h.GithubDeployerAppID, "githubReleaseAppId": h.GithubReleaseAppID,
 			"cloudBuildInstallationId": h.CloudBuildInstallationID, "cloudBuildTokenSecretVersion": h.CloudBuildTokenSecretVersion,
 			"breakGlassAccount": h.BreakGlassAccount, "bedrockVersion": h.BedrockVersion, "bedrockSha256": h.BedrockSHA256,
 		}
 		roots := map[string]string{
 			"organizationDomain": root.OrganizationDomain, "organizationId": root.OrganizationID, "billingAccount": root.BillingAccount,
-			"githubOrganization": root.GithubOrganization, "githubMachineAccount": root.GithubMachineAccount, "githubDefaultBranch": root.GithubDefaultBranch,
+			"githubOrganization": root.GithubOrganization, "githubBotAccount": root.GithubBotAccount, "githubDefaultBranch": root.GithubDefaultBranch,
 			"githubInfrastructureAppId": root.GithubInfrastructureAppID, "githubDeployerAppId": root.GithubDeployerAppID, "githubReleaseAppId": root.GithubReleaseAppID,
 			"cloudBuildInstallationId": root.CloudBuildInstallationID, "cloudBuildTokenSecretVersion": root.CloudBuildTokenSecretVersion,
 			"breakGlassAccount": root.BreakGlassAccount, "bedrockVersion": root.BedrockVersion, "bedrockSha256": root.BedrockSHA256,
@@ -61,7 +61,7 @@ func TestFill(t *testing.T) {
 				t.Errorf("%s = %q, want the root organization's %q", name, got, roots[name])
 			}
 		}
-		if h.Root == nil || h.Root.Organization != "imr" || h.Root.Project != "imr-boot-gbl-core-c3d4" {
+		if h.Root == nil || h.Root.Organization != "imr" || h.Root.Project != "imr-root-gbl-core-c3d4" {
 			t.Errorf("root = %+v", h.Root)
 		}
 		if h.SourceRepo != "rgb-infrastructure" || h.GithubReleaseAppSlug != "imp-example-release" {
@@ -84,9 +84,6 @@ func TestFill(t *testing.T) {
 	}{
 		{name: "the root organization's own prefix", mutate: func(h *Placement) { h.Prefix = "imr" }, wantErr: `prefix "imr" is the root organization's own`},
 		{name: "a root kind", mutate: func(h *Placement) { h.Kind = RootKind }, wantErr: "kind is root, and a record is a hosting organization's placement"},
-		{name: "another primary region than the regional token's", mutate: func(h *Placement) {
-			h.Regions = []Region{{Name: "us-west3", Code: "uw3"}, {Name: "us-central1", Code: "uc1"}}
-		}, wantErr: "regions names us-west3 first, and the Cloud Build token the root organization recorded is a regional secret in us-central1"},
 		{name: "a boot project of another name", mutate: func(h *Placement) { h.Projects = map[string]string{"boot": "other-boot-gbl-core-a1b2"} }, wantErr: `projects.boot "other-boot-gbl-core-a1b2" is not rgb-boot-gbl-core-<suffix>`},
 		{name: "no apps domain", mutate: func(h *Placement) { h.AppsDomain = "" }, wantErr: "organizations/rgb/placement.json needs what is the organization's own to decide"},
 		{name: "one region", mutate: func(h *Placement) { h.Regions = h.Regions[:1] }, wantErr: "needs what is the organization's own to decide"},
@@ -115,6 +112,19 @@ func TestFill(t *testing.T) {
 			}
 		})
 	}
+
+	t.Run("another primary region than the regional token's", func(t *testing.T) {
+		t.Parallel()
+
+		regional := *root
+		regional.CloudBuildTokenSecretVersion = "projects/imr-root-gbl-core-c3d4/locations/us-central1/secrets/imr-root-uc1-github-token/versions/1"
+		h := hostingRecord()
+		h.Regions = []Region{{Name: "us-west3", Code: "uw3"}, {Name: "us-central1", Code: "uc1"}}
+		err := Fill(&regional, h)
+		if want := "regions names us-west3 first, and the Cloud Build token the root organization recorded is a regional secret in us-central1"; err == nil || !strings.Contains(err.Error(), want) {
+			t.Errorf("Fill() error = %v, want %q", err, want)
+		}
+	})
 
 	t.Run("a hosting organization creates nothing", func(t *testing.T) {
 		t.Parallel()
@@ -207,10 +217,10 @@ func TestSharedSecretsAndIdentity(t *testing.T) {
 
 	root := rootPlacement(t)
 	want := []string{
-		"projects/imr-boot-gbl-core-c3d4/secrets/imr-boot-gbl-github-infrastructure-key",
-		"projects/imr-boot-gbl-core-c3d4/secrets/imr-boot-gbl-github-deployer-key",
-		"projects/imr-boot-gbl-core-c3d4/secrets/imr-boot-gbl-github-release-key",
-		"projects/imr-boot-gbl-core-c3d4/locations/us-central1/secrets/github-github-oauthtoken-fedcba",
+		"projects/imr-root-gbl-core-c3d4/secrets/imr-root-gbl-github-infrastructure-key",
+		"projects/imr-root-gbl-core-c3d4/secrets/imr-root-gbl-github-deployer-key",
+		"projects/imr-root-gbl-core-c3d4/secrets/imr-root-gbl-github-release-key",
+		"projects/imr-root-gbl-core-c3d4/secrets/imr-root-gbl-github-token",
 	}
 	if got := root.SharedSecrets(); !slices.Equal(got, want) {
 		t.Errorf("SharedSecrets() = %v, want %v", got, want)
@@ -219,10 +229,10 @@ func TestSharedSecretsAndIdentity(t *testing.T) {
 	if got := root.SharedSecrets(); len(got) != 3 {
 		t.Errorf("SharedSecrets() without the token = %v", got)
 	}
-	if got := root.CreatingIdentity(); got != "imr-create-gbl-tofu@imr-boot-gbl-core-c3d4.iam.gserviceaccount.com" {
+	if got := root.CreatingIdentity(); got != "imr-create-gbl-tofu@imr-root-gbl-core-c3d4.iam.gserviceaccount.com" {
 		t.Errorf("CreatingIdentity() = %q", got)
 	}
-	variables := rootRenderedFile(t, "0-bootstrap/variables.tf")
+	variables := renderedFile(t, "0-bootstrap/variables.tf")
 	for _, role := range BootLayerRoles {
 		if !strings.Contains(variables, `"`+role+`",`) {
 			t.Errorf("0-bootstrap/variables.tf lacks %s in boot_layer_roles, which BootLayerRoles names", role)
@@ -240,11 +250,16 @@ func TestSharedSecretsAndIdentity(t *testing.T) {
 		t.Errorf("boot_project_roles lists %d roles, BootProjectRoles %d", got, len(BootProjectRoles))
 	}
 	p := testPlacement(t)
-	if got := p.TokenSecretProject(); got != "imr-boot-gbl-core-c3d4" {
+	if got := p.TokenSecretProject(); got != "imr-root-gbl-core-c3d4" {
 		t.Errorf("TokenSecretProject() = %q", got)
 	}
-	if !p.TokenSecretRegional() || p.TokenSecretLocation() != "us-central1" || p.TokenSecretName() != "projects/imr-boot-gbl-core-c3d4/locations/us-central1/secrets/github-github-oauthtoken-fedcba" {
+	if p.TokenSecretRegional() || p.TokenSecretLocation() != "" || p.TokenSecretName() != "projects/imr-root-gbl-core-c3d4/secrets/imr-root-gbl-github-token" {
 		t.Errorf("token secret: regional %v, location %q, name %q", p.TokenSecretRegional(), p.TokenSecretLocation(), p.TokenSecretName())
+	}
+	regional := *p
+	regional.CloudBuildTokenSecretVersion = "projects/imr-root-gbl-core-c3d4/locations/us-central1/secrets/imr-root-uc1-github-token/versions/1"
+	if !regional.TokenSecretRegional() || regional.TokenSecretLocation() != "us-central1" || regional.TokenSecretName() != "projects/imr-root-gbl-core-c3d4/locations/us-central1/secrets/imr-root-uc1-github-token" {
+		t.Errorf("regional token secret: regional %v, location %q, name %q", regional.TokenSecretRegional(), regional.TokenSecretLocation(), regional.TokenSecretName())
 	}
 }
 

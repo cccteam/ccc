@@ -1,6 +1,5 @@
-# {{if .IsRoot}}Read by hand when substituting values into {{.SecondLayer}}/terraform.tfvars and
-# placement.json{{else}}Read by the creation, which records them in placement.json, and by 1-org
-# through data "terraform_remote_state" on the state bucket (prefix 0-bootstrap){{end}}. Nothing here is a secret; keep it that way.
+# Read by the creation, which records them in placement.json, and by 1-org
+# through data "terraform_remote_state" on the state bucket (prefix 0-bootstrap). Nothing here is a secret; keep it that way.
 
 output "boot_project_id" {
   description = "Project ID of the boot project, used as the quota and billing project by every downstream layer."
@@ -18,17 +17,17 @@ output "boot_service_account_email" {
 }
 
 output "boot_plan_service_accounts" {
-  description = "Read-only plan identity email of the two boot layers (boot for 0-bootstrap, {{.SecondIdentity}} for {{.SecondLayer}}), in the boot project; a pull request plans those layers as them."
+  description = "Read-only plan identity email of the two boot layers (boot for 0-bootstrap, org for 1-org), in the boot project; a pull request plans those layers as them."
   value       = { for k, sa in google_service_account.boot_plan : k => sa.email }
 }
 
 output "planner_member" {
-  description = "The plan trigger's runner identity as an IAM member{{if .IsRoot}}, which impersonates the two plan identities{{else}}; 1-org lets it impersonate the plan identities it creates (roles/iam.serviceAccountTokenCreator){{end}}."
+  description = "The plan trigger's runner identity as an IAM member; 1-org lets it impersonate the plan identities it creates (roles/iam.serviceAccountTokenCreator)."
   value       = google_service_account.planner.member
 }
 
 output "applier_member" {
-  description = "The apply trigger's runner identity as an IAM member{{if .IsRoot}}, which impersonates the two apply identities{{else}}; 1-org lets it impersonate the apply identities it creates{{end}}."
+  description = "The apply trigger's runner identity as an IAM member; 1-org lets it impersonate the apply identities it creates."
   value       = google_service_account.applier.member
 }
 
@@ -52,21 +51,13 @@ output "org_id" {
   value       = local.org_id
 }
 
-{{- if .IsRoot}}
-
-output "creating_service_account_email" {
-  description = "Email of the creating identity, which creates a hosting organization from the apply trigger's run; the administrators grant it Folder Creator at the organization node and Billing Account User on the billing account (README, \"The creating identity's grants\")."
-  value       = google_service_account.create_tofu.email
-}
-{{- end}}
-
 output "org_service_account_email" {
-  description = "Email of the {{.SecondIdentity}} layer identity. The apply trigger's run applies {{.SecondLayer}} as it, after the first apply."
+  description = "Email of the org layer identity. The apply trigger's run applies 1-org as it, after the first apply."
   value       = google_service_account.org_tofu.email
 }
 
 output "state_bucket_policy_admin_role" {
-  description = "Full name of the custom role in the boot project that reads and sets a bucket's IAM policy{{if .IsRoot}}, held on the state bucket by the boot identity{{else}}; 1-org grants it on the state bucket to the environment layer identities, which grant the application identities their slots{{end}}."
+  description = "Full name of the custom role in the boot project that reads and sets a bucket's IAM policy; 1-org grants it on the state bucket to the environment layer identities, which grant the application identities their slots."
   value       = google_project_iam_custom_role.state_bucket_policy_admin.id
 }
 
@@ -76,6 +67,6 @@ output "terraform_folder_id" {
 }
 
 output "organization_folder_id" {
-  description = "Folder ID of the organization's folder, named after the prefix{{if .IsRoot}}, which holds the terraform folder{{else}}, under which 1-org creates the environment folders{{end}}."
+  description = "Folder ID of the organization's folder, named after the prefix, under which 1-org creates the environment folders."
   value       = google_folder.organization.folder_id
 }

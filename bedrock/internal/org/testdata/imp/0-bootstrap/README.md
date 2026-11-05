@@ -45,12 +45,12 @@ Build triggers" below).
   (`resourcemanager.projects.update`), granted to the boot identity on it;
   `1-org` makes the same role in each project it creates, for its identity.
 - `roles/billing.user` on the billing account for both identities, only when
-  `manage_billing_iam` is true. See step 5.
+  `manage_billing_iam` is true ("The spend budget" below).
 - The Cloud Build side (`cloud-build.tf`): the GitHub connection
   `imp-boot-uc1-github` in the boot project, from the Cloud Build GitHub App's
   installation and the token secret's version `placement.json` records
-  (`cloudBuildInstallationId`, `cloudBuildTokenSecretVersion`; "The Cloud
-  Build GitHub authorization" below); the link of this repository
+  (`cloudBuildInstallationId`, `cloudBuildTokenSecretVersion`; "Created by
+  the root organization" below); the link of this repository
   (imp-example/imp-impulse-infrastructure) under it; the read of the token secret for
   the boot project's Cloud Build service agent and for each environment
   project's, by the numbers `placement.json` records (`projectNumbers`), since
@@ -60,7 +60,7 @@ Build triggers" below).
   request into `master` and `imp-boot-uc1-layers-apply` on a push
   to it, whose steps are the trigger's own ("The Cloud Build triggers").
 - The grants on the three GitHub Apps' key secrets, which live in the root
-  organization `imr`'s boot project (`root` in
+  organization `imr`'s root project (`root` in
   `placement.json`; `github.tf`): the org identity's policy administration of
   the deployer and release secrets, the org plan identity's read of the
   infrastructure key, and both boot plan identities' read of the three
@@ -88,12 +88,10 @@ Nothing here was seeded or applied by hand. The root organization
 organization from a pull request in its repository (`bedrock org create
 imp` there, then the merge), as its creating identity
 `imr-create-gbl-tofu`, which holds Folder Creator at the
-organization node and Billing Account User on the billing account, granted by
-hand once by an administrator of the Google Cloud organization and a billing
-administrator (that organization's `0-bootstrap/README.md`, "The creation
-identity's grants"). The creation did under a new folder what the hand seed
-and the first applies do for a root organization, and left no person with a
-grant to trim:
+organization node and Billing Account Administrator on the billing account,
+granted by that organization's bootstrap (its `README.md`, "Bootstrapped by one
+command"). The creation did under a new folder what a hand seed and the first
+applies would, and left no person with a grant to trim:
 
 1. **The seed, by API.** The organization's folder at the organization root,
    named `imp`, which made the creating identity its administrator, as
@@ -106,7 +104,7 @@ grant to trim:
    `var.boot_project_roles` on the boot project; Folder Admin on the
    folder for the break-glass account (`seed@imp.example`), its one
    standing grant; the state bucket `imp-boot-gbl-state-a1b2`; and, in the root
-   organization's boot project, the boot identity's `secretPolicyAdmin` on
+   organization's root project, the boot identity's `secretPolicyAdmin` on
    the three GitHub Apps' key secrets and the Cloud Build token secret ("The
    GitHub Apps' keys" below).
 2. **The first apply of this layer**, against the bucket (`tofu init` at the
@@ -116,10 +114,13 @@ grant to trim:
    creation), and the rest made: the org layer identity, the plan identities,
    the custom roles, the key grants, the connection from the Cloud Build
    authorization the root organization recorded (`cloudBuildInstallationId`
-   and `cloudBuildTokenSecretVersion`, which name the machine account's token
-   in that organization's boot project: one authorization serves every
+   and `cloudBuildTokenSecretVersion`, which name the Bot Account's token
+   in that organization's root project: one authorization serves every
    organization in the Google Cloud organization), the link of this
-   repository under it, the two triggers, and the bucket's grants.
+   repository under it, the two triggers, and the bucket's grants. Then the
+   creating identity granted the boot identity and the org identity Billing
+   Account User on the billing account, which this organization's own applies
+   need the day `1-org` links a project it creates.
 3. **The first apply of `1-org`**, the same way, with the infrastructure
    GitHub App's token for its GitHub provider: the folders, the six projects
    with their liens, identities, custom roles and org policies. Its
@@ -140,11 +141,8 @@ grant to trim:
    (`hostingOrganizations`), from which that organization keeps the boot
    identity's grants on the shared secrets rendered.
 
-Two things stay by hand, by a billing administrator, after the creation
-("Billing grants and the budget" below): `roles/billing.user` on the billing
-account for the two layer identities, which `1-org` needs the day it links a
-project it creates (the creating identity's own Billing Account User covered
-the first apply), and the spend budget. The consent screen of each environment
+One thing stays by hand, by a billing administrator, after the creation: the
+spend budget ("The spend budget" below). The consent screen of each environment
 project and the role groups follow as the root `README.md` says ("Created by
 the root organization" there).
 
@@ -158,40 +156,25 @@ one of this organization's projects. After a creation there is none; one
 means the creating identity's withdrawal did not finish, or somebody granted
 by hand.
 
-### Billing grants and the budget, by a billing administrator
+### The spend budget, by a billing administrator
 
-The creating identity held Billing Account User on the billing account, which
-links projects to the account but cannot change the account's IAM policy, so
-the two `google_billing_account_iam_member` resources in this layer were not
-applied in the creation. `manage_billing_iam = false` in `terraform.tfvars`
-skips them. Instead, in a terminal, a Billing Account Administrator makes the
-grants by hand once the creation has made the two identities:
+The two layer identities, `imp-boot-gbl-tofu` and `imp-org-gbl-tofu`,
+hold `roles/billing.user` on the billing account `012345-6789AB-CDEF01` since the
+creation, which granted it as the root organization's creating identity, a
+Billing Account Administrator. `1-org` needs it the day it links a project it
+creates; the creation linked the six. `manage_billing_iam = false` in
+`terraform.tfvars` keeps this layer from asserting the same two members itself,
+which the identity applying it may not do; set it to `true` once that identity
+is a billing administrator, and the two `google_billing_account_iam_member`
+resources assert them.
 
-```bash
-export BILLING_ACCOUNT_ID=012345-6789AB-CDEF01
-export BOOT_PROJECT_ID=imp-boot-gbl-core-a1b2
-
-for sa in imp-boot-gbl-tofu imp-org-gbl-tofu; do
-  gcloud billing accounts add-iam-policy-binding "${BILLING_ACCOUNT_ID}" \
-    --member="serviceAccount:${sa}@${BOOT_PROJECT_ID}.iam.gserviceaccount.com" \
-    --role=roles/billing.user
-done
-```
-
-Nothing depends on these grants until the apply trigger runs `1-org` as its
-identity to link a project to the account, which it does for a project it
-creates; the creation linked the six. Set `manage_billing_iam = true` once
-the identity applying this layer can manage billing IAM; the resources then
-assert the same two members.
-
-In the Billing console, as the same billing administrator, set the spend
-budget: Billing, the billing account `012345-6789AB-CDEF01`, Budgets & alerts,
-Create budget. Scope it to every project of the billing account, give it a
-monthly amount, and keep the alert thresholds (50%, 90% and 100% of the actual
-spend) and the email to the billing account's administrators and users. A
-budget sends alerts and stops nothing. Nothing in the layers renders it: it
-belongs to the billing account, where no layer identity holds a role that
-manages budgets.
+In the Billing console, as a billing administrator, set the spend budget:
+Billing, the billing account `012345-6789AB-CDEF01`, Budgets & alerts, Create
+budget. Scope it to every project of the billing account, give it a monthly
+amount, and keep the alert thresholds (50%, 90% and 100% of the actual spend)
+and the email to the billing account's administrators and users. A budget
+sends alerts and stops nothing. Nothing in the layers renders it: it belongs to
+the billing account, where no layer identity holds a role that manages budgets.
 
 ## Inputs
 
@@ -345,40 +328,30 @@ plan of a boot layer, in `var.boot_plan_roles`.
 
 `1-org` configures the applications' repositories with the GitHub provider,
 which needs a token with an organization owner's rights. In a run of the
-triggers that token is an installation token of the infrastructure GitHub
-App, minted in the run from its private key. A third app beside the release
-and deployer apps, because widening the deployer app would give every
-application pipeline those rights. Once, by a person:
+triggers that token is an installation token of the infrastructure GitHub App,
+minted in the run from its private key. A third app beside the release and
+deployer apps, because widening the deployer app would give every application
+pipeline those rights. The app is the root organization's: its bootstrap made
+it from bedrock's declaration (the root `README.md`, "Bootstrapped by one
+command") with the repository permissions Actions (read), Administration (read
+and write), Contents (read and write) and Metadata (read), and the
+organization permissions Administration, Variables and Self-hosted runners
+(read and write), installed on the organization for all repositories, and this
+organization records the same App ID (`githubInfrastructureAppId` in
+`placement.json`, filled in by the creation). The provider reads a repository's
+environments and their branch policies on the Actions permission and writes
+them on Administration; with Contents the creation pushes a new organization's
+rendered repository; the organization permissions are for the
+`CI_LARGE_RUNNER` variable, the runner and its runner group, which the root
+organization's apply sets and makes when its placement names a larger runner
+(`ciLargeRunner`, `ciLargeRunnerSize`). The app bypasses the branch rules it
+writes, here as in the root organization's repository (`1-org/github.tf`).
 
-1. On GitHub, as an owner of the `imp-example` organization: the
-   organization's Settings, Developer settings, GitHub Apps, New GitHub App.
-   Name it `imp-example-infrastructure`, give it any homepage URL,
-   turn Webhook off. Repository permissions: Actions (read), Administration
-   (read and write), Metadata (read); the provider reads a repository's
-   environments and their branch policies on the Actions permission and
-   writes them on Administration; Contents (read and write), with which the
-   root organization's creation pushes a created organization's rendered
-   repository. Organization permissions: Administration (read and write),
-   Variables (read and write) and Self-hosted runners (read and write); the
-   second is for the organization's `CI_LARGE_RUNNER` variable, which the
-   root organization sets when its placement names a larger runner
-   (`ciLargeRunner`), and the third for the runner and its runner group, which
-   it creates when the placement sizes it (`ciLargeRunnerSize`);
-   without them that apply is refused 403. Where can this app be installed:
-   only this account. Create it, and note the App ID on its settings page. A
-   permission added later is accepted on the installation: the
-   organization's Settings, Third-party Access, GitHub Apps, the app.
-2. On the app's settings page: Private keys, Generate a private key. The
-   browser downloads a `.pem` file.
-3. On the same page: Install App, on the organization, for all repositories.
-4. In `placement.json`: the App ID as `githubInfrastructureAppId`, then
-   `bedrock org render`. The key itself lives in the root organization
-   `imr`'s boot project (`root` in `placement.json`), added,
-   proven and pinned there by its key operators; a run of the triggers here
-   reads the alias `current` of `imr-boot-gbl-github-infrastructure-key`, which that
-   organization pins, and nothing is added in this repository.
-
-Until the App ID is recorded and the alias names a version, a run of the
+The key itself lives in the root organization `imr`'s root
+project (`root` in `placement.json`), added, proven and pinned there by its key
+operators; a run of the triggers here reads the alias `current` of
+`imr-root-gbl-github-infrastructure-key`, which that organization pins, and nothing is
+added in this repository. Until the alias names a version, a run of the
 triggers that plans or applies `1-org` says so and stops; the Google side of
 the layer is unaffected. A person applying `1-org` by hand keeps using their
 own token (`1-org/README.md`).
@@ -386,15 +359,15 @@ own token (`1-org/README.md`).
 ## The GitHub Apps' keys
 
 The three GitHub Apps' private keys live in the root organization
-`imr`'s boot project (`imr-boot-gbl-core-c3d4`; `root` in
+`imr`'s root project (`imr-root-gbl-core-c3d4`; `root` in
 `placement.json`), one secret per app for every bedrock organization in the
-Google Cloud organization: `imr-boot-gbl-github-infrastructure-key`,
-`imr-boot-gbl-github-deployer-key` and `imr-boot-gbl-github-release-key`. Every reader here names
+Google Cloud organization: `imr-root-gbl-github-infrastructure-key`,
+`imr-root-gbl-github-deployer-key` and `imr-root-gbl-github-release-key`. Every reader here names
 a secret's alias `current`, which that organization's placement pins and its
 apply moves; nothing is added or pinned in this repository, `bedrock secret
 add` and `pin` refuse here and name that organization, and a rotation there
-switches every reader at once (that organization's `0-bootstrap/README.md`,
-"Rotating a GitHub App's key"). No key reaches GitHub.
+switches every reader at once (that organization's `README.md`, "The GitHub
+Apps' keys"). No key reaches GitHub.
 
 What this organization records is the apps' App IDs, which are not secrets:
 `githubInfrastructureAppId` for the infrastructure app, `githubDeployerAppId`
@@ -404,10 +377,10 @@ requests as (a deployment carrying the environment's URL, a comment, the
 guard's refusals), and `githubReleaseAppId` for the release app, which each
 application's release trigger cuts the application's releases as
 (release-please, in Cloud Build as the application's release identity). The
-apps themselves, their permissions and their installations are made once on
-GitHub (the root `README.md`, "The two GitHub Apps"); a GitHub organization
-that holds the root organization has them already, and this organization
-records the same App IDs.
+apps themselves, their permissions and their installations are the root
+organization's bootstrap's, made once from bedrock's declaration of each (the
+root `README.md`, "Bootstrapped by one command"); this organization records
+the same App IDs, filled in by the creation.
 
 How the reads are granted (`github.tf`): the root organization gives this
 organization's boot identity `secretPolicyAdmin` on the three secrets, a
@@ -462,8 +435,8 @@ complete.
 `bedrock org destroy` deletes every project of the organization, and with them
 everything the layers and the applications made: the layer identities, the
 state bucket with every layer's and every application's state and records, the
-connection and the triggers, the GitHub Apps' keys, the registry and its
-images, the Spanner instances and databases, the load balancer and the zone,
+connection and the triggers, the registry and its images, the Spanner
+instances and databases, the load balancer and the zone,
 every environment's services, jobs, secrets, records and files. The folders,
 the custom roles and the tags, the org policies, the entitlements and the audit
 log sink go with them, and on GitHub the rulesets, the operations environments,
@@ -490,10 +463,12 @@ Compute Engine's for `2-env`'s pull-request backend, refuses; the project's
 deletion takes everything regardless), and lifts the folders' deletion
 protection, all three read by the provider from the state and not from the
 configuration. Then the destroy, tried again after a pause while it fails: a
-folder refuses for a while after its last project's deletion, and a tag value
-while a binding in a project being deleted still holds it, and the next attempt
-gets past both. `1-org`'s GitHub repositories are taken out of its state
-first. `0-bootstrap`'s state lives in the bucket the boot project holds, so its
+folder refuses for a while after its last project's deletion, and the next
+attempt gets past it. `1-org`'s GitHub repositories are taken out of its state
+first, and so are its tag keys, values and bindings, which go with the
+projects that hold them (a tag value refuses to go while a binding still holds
+it, and the bindings go with the projects' deletion, not before).
+`0-bootstrap`'s state lives in the bucket the boot project holds, so its
 destroy runs on a copy of the layer with a local copy of the state, pulled
 before the project goes. A layer whose state holds nothing is skipped, so the
 command also finishes an organization whose first applies stopped halfway. The
@@ -508,7 +483,9 @@ deal with (`1-org/README.md`, "Removing a project"). The command refuses a
 checkout rendered by an earlier bedrock, which declares no `destroy` variable:
 `bedrock org render` first.
 
-It ends with a line in `JOURNAL.md`. Starting over is a new seed (step 1, with
-a new boot project), `bedrock org render` on its values, and the hand steps
-again; the GitHub side (the organization, its machine account
-`imp-machine`, the apps and their installations) is as it was.
+It ends with a line in `JOURNAL.md`. Starting over is a new record in the root
+organization's repository (`bedrock org create imp` there, which
+chooses a new boot project suffix, and its pull request), after this
+organization's entry is taken out of that placement; the GitHub side (the
+organization, its Bot Account `imp-bot`, the apps and their
+installations) is as it was, and this repository stays with its history.

@@ -106,6 +106,12 @@ variable "github_organization" {
   default     = "{{.GithubOrganization}}"
 }
 
+variable "github_infrastructure_app_id" {
+  description = "App ID of the infrastructure GitHub App, which a run of the triggers acts on GitHub as and which bypasses the infrastructure repository's branch rules, written here; from placement.json (githubInfrastructureAppId), recorded by the root organization's bootstrap."
+  type        = number
+  default     = {{.GithubInfrastructureAppIDHCL}}
+}
+
 variable "github_release_app_id" {
   description = "App ID of the release GitHub App, the only actor that creates, moves or deletes a release tag; from the app's settings page (a private app cannot be read by its slug)."
   type        = number

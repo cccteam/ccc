@@ -19,7 +19,6 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
-	"github.com/cccteam/ccc/bedrock/internal/create"
 	"github.com/cccteam/ccc/bedrock/internal/deploy"
 	"github.com/cccteam/ccc/bedrock/internal/github"
 	"github.com/cccteam/ccc/bedrock/internal/org"
@@ -43,14 +42,12 @@ const (
 	stateObject = "default.tfstate"
 )
 
-// The two commands, as the triggers run them, and the layers whose GitHub provider needs
-// a token: 1-org in a hosting organization, 1-dns in a root organization
-// (org.Placement.SecondLayer answers by kind).
+// The two commands, as the triggers run them, and the layer whose GitHub provider needs
+// a token.
 const (
 	planCommand  = "plan"
 	applyCommand = "apply"
 	orgLayer     = "1-org"
-	dnsLayer     = "1-dns"
 )
 
 // Request is what a run was started with: the build (BUILD_ID, PROJECT_ID and LOCATION,
@@ -86,10 +83,6 @@ type Clients struct {
 	GitHub  deploy.GitHubFunc
 	Keys    org.KeyClientAsFunc
 	Exec    deploy.Runner
-	// Google opens Google Cloud as the root organization's creating identity, for the
-	// creation of a hosting organization (found.go); Sleep waits between its tries.
-	Google create.GoogleAsFunc
-	Sleep  deploy.SleepFunc
 }
 
 // ready refuses a run whose seams are not all wired.
@@ -257,11 +250,11 @@ func (r *run) changedFiles(ctx context.Context, base, head string) ([]string, er
 }
 
 // infrastructureToken mints the infrastructure GitHub App's installation token, which
-// the GitHub provider of 1-org, or of 1-dns in a root organization, takes as
-// GITHUB_TOKEN, from the key's alias in the project that holds the keys (the root
-// organization's boot project). It is refused while the app is not recorded.
+// the GitHub provider of 1-org takes as GITHUB_TOKEN, from the key's alias in the
+// project that holds the keys (the root organization's root project). It is refused
+// while the app is not recorded.
 func (r *run) infrastructureToken(ctx context.Context) (string, error) {
-	return r.appToken(ctx, org.InfrastructureKey, r.p.GithubInfrastructureAppID, "the infrastructure app", r.p.SecondLayer()+"'s GitHub provider needs the infrastructure GitHub App (0-bootstrap/README.md, \"The infrastructure GitHub App\"): create it and record its App ID as githubInfrastructureAppId in placement.json; its key is the alias "+org.KeyAlias+" of %s in the root organization's boot project, added and pinned there (bedrock secret add github-infrastructure-key, bedrock secret pin github-infrastructure-key <version>)")
+	return r.appToken(ctx, org.InfrastructureKey, r.p.GithubInfrastructureAppID, "the infrastructure app", orgLayer+"'s GitHub provider needs the infrastructure GitHub App, which the root organization's bootstrap made and the creation recorded (githubInfrastructureAppId in placement.json); its key is the alias "+org.KeyAlias+" of %s in the root organization's root project, added and pinned there (bedrock secret add github-infrastructure-key, bedrock secret pin github-infrastructure-key <version>)")
 }
 
 // deployerToken mints the deployer GitHub App's installation token, which the plan

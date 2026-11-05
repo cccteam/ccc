@@ -71,3 +71,33 @@ func (c *Client) UpdateRef(ctx context.Context, owner, repo, ref, sha string, fo
 
 	return c.do(ctx, http.MethodPatch, "/repos/"+owner+"/"+repo+"/git/refs/"+ref, in, nil)
 }
+
+// RepositorySettings are the merge settings the infrastructure repositories carry: squash
+// the only merge, the squashed commit titled from the pull request and bodied from its
+// description, the head branch deleted on merge, and the update of a branch offered on
+// the pull request, which a ruleset's strict checks need. Each is a pointer, so that a
+// read says which are set and an update sends what it means to change.
+type RepositorySettings struct {
+	AllowMergeCommit         *bool   `json:"allow_merge_commit,omitempty"`
+	AllowRebaseMerge         *bool   `json:"allow_rebase_merge,omitempty"`
+	AllowSquashMerge         *bool   `json:"allow_squash_merge,omitempty"`
+	SquashMergeCommitTitle   *string `json:"squash_merge_commit_title,omitempty"`
+	SquashMergeCommitMessage *string `json:"squash_merge_commit_message,omitempty"`
+	DeleteBranchOnMerge      *bool   `json:"delete_branch_on_merge,omitempty"`
+	AllowUpdateBranch        *bool   `json:"allow_update_branch,omitempty"`
+}
+
+// RepositorySettings reads the repository's merge settings.
+func (c *Client) RepositorySettings(ctx context.Context, owner, repo string) (*RepositorySettings, error) {
+	out := &RepositorySettings{}
+	if err := c.do(ctx, http.MethodGet, "/repos/"+owner+"/"+repo, nil, out); err != nil {
+		return nil, err
+	}
+
+	return out, nil
+}
+
+// UpdateRepositorySettings sets the merge settings given (the pointers set).
+func (c *Client) UpdateRepositorySettings(ctx context.Context, owner, repo string, in *RepositorySettings) error {
+	return c.do(ctx, http.MethodPatch, "/repos/"+owner+"/"+repo, in, nil)
+}

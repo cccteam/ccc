@@ -40,9 +40,8 @@ func TestLayersOf(t *testing.T) {
 		{name: "a file outside the layers changes nothing", paths: []string{"scripts/x.tf", ".github/workflows/layers.yml"}},
 		{name: "the OpenTofu version changes every layer", paths: []string{".opentofu-version"}, want: "0-bootstrap,1-org,2-shr,2-spn,2-env,2-net"},
 		{name: "a layer twice is one layer", paths: []string{"1-org/a.tf", "1-org/b.tf"}, want: "1-org"},
-		{name: "a root organization's layer", zones: true, paths: []string{"1-dns/dns.tf", "1-dns/domains.auto.tfvars"}, want: "1-dns"},
-		{name: "a hosting layer's path changes nothing in a root organization", zones: true, paths: []string{"1-org/github.tf"}},
-		{name: "the OpenTofu version changes a root organization's two layers", zones: true, paths: []string{".opentofu-version"}, want: "0-bootstrap,1-dns"},
+		{name: "a hosting layer's path changes nothing in a root organization, which has no layer", zones: true, paths: []string{"1-org/github.tf"}},
+		{name: "the OpenTofu version changes nothing in a root organization", zones: true, paths: []string{".opentofu-version"}},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -50,7 +49,7 @@ func TestLayersOf(t *testing.T) {
 
 			layers := org.HostingLayers
 			if tt.zones {
-				layers = org.RootLayers
+				layers = nil
 			}
 			if got := strings.Join(layersOf(layers, tt.paths), ","); got != tt.want {
 				t.Errorf("layersOf(%v) = %q, want %q", tt.paths, got, tt.want)

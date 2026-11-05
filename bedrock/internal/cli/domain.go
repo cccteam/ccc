@@ -67,8 +67,8 @@ for making a zone again), a check that passes on every domain says the value can
 now, and bedrock org render written.
 
 In a root organization (kind in placement.json) the check reads each domain's zone in the
-boot project (1-dns's dns.tf, which holds the domain's delegation alone: no address, no
-certificate) and resolves the domain's delegation the same way, with the same steps printed
+root project (made by the organization's apply from domains in placement.json; it holds the
+domain's delegation alone: no address, no certificate) and resolves the domain's delegation the same way, with the same steps printed
 for a domain as registered (the registrar) and for a label of a domain served elsewhere
 (the NS records at its DNS provider); then, once the domain is delegated, it asks the world
 for each label handed onward (domains.<domain>.labels in placement.json) and says whether

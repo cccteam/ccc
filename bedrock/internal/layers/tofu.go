@@ -52,7 +52,7 @@ type tofu struct {
 
 // newTofu sets a run up in the layer's directory as the identity, with the working
 // directory under the system's temporary files; the layer with the GitHub provider
-// (1-org, or 1-dns in a root organization) gets its token with withGitHub.
+// (1-org) gets its token with withGitHub.
 func newTofu(exec deploy.Runner, root string, lr org.LayerRun, identity string, out io.Writer) (*tofu, error) {
 	work, err := os.MkdirTemp("", "bedrock-"+lr.Layer+"-")
 	if err != nil {

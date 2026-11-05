@@ -29,10 +29,13 @@ var templates embed.FS
 
 const (
 	templateDir = "templates"
-	templateExt = ".tmpl"
-	tfvarsFile  = "terraform.tfvars"
-	journalFile = "JOURNAL.md"
-	ignoreFile  = ".gitignore"
+	// rootTemplateDir holds a root organization's files: the README, the journal and
+	// the ignore rules, and no layer.
+	rootTemplateDir = templateDir + "/root"
+	templateExt     = ".tmpl"
+	tfvarsFile      = "terraform.tfvars"
+	journalFile     = "JOURNAL.md"
+	ignoreFile      = ".gitignore"
 	// StepsVersion names the shape of the triggers' inline steps this bedrock renders
 	// (0-bootstrap/cloud-build.tf): the substitutions they carry and what each step
 	// does. The steps also follow the pin's kind (a release pin renders FetchBedrock
@@ -71,12 +74,10 @@ var HostingLayers = []string{bootstrapLayer, orgLayer, shrLayer, spnLayer, envLa
 
 // layerProjects is the project each single-run layer's identities live in, by layer: the
 // boot project for the two boot layers (both identities are named after their layer, boot
-// and org, or dns for a root organization), the layer's own project for the shared ones.
-// 2-env's are the environments'.
+// and org), the layer's own project for the shared ones. 2-env's are the environments'.
 var layerProjects = map[string]struct{ name, project string }{
 	bootstrapLayer: {name: bootProject, project: bootProject},
 	orgLayer:       {name: orgIdentity, project: bootProject},
-	dnsLayer:       {name: dnsIdentity, project: bootProject},
 	shrLayer:       {name: shrProject, project: shrProject},
 	spnLayer:       {name: spnProject, project: spnProject},
 	netLayer:       {name: netProject, project: netProject},
@@ -91,7 +92,7 @@ var seeded = map[string]bool{
 
 // view is what the templates see: the placement and the phrases derived from it, and
 // the creation's seed when the render is a creation's (the folder ids the seeded tfvars
-// carry; REPLACEME otherwise, for a person to fill in after a hand seed).
+// carry; REPLACEME otherwise, until the creation records them).
 type view struct {
 	*Placement
 	seed *Seed
@@ -313,6 +314,16 @@ func (v *view) GithubDeployerAppIDHCL() string {
 	return v.GithubDeployerAppID
 }
 
+// GithubInfrastructureAppIDHCL is the infrastructure app's App ID as an HCL number, or
+// null on a placement that records none yet.
+func (v *view) GithubInfrastructureAppIDHCL() string {
+	if v.GithubInfrastructureAppID == "" {
+		return hclNull
+	}
+
+	return v.GithubInfrastructureAppID
+}
+
 func (v *view) DeployerKeyVersionNameHCL() string {
 	return hclStringOrNull(v.DeployerKeyVersionName())
 }
@@ -433,8 +444,8 @@ func (*view) ApplyBuildSeconds() int {
 }
 
 // LayerOrderProse spells the apply order: 0-bootstrap, 1-org, 2-shr and 2-spn, then
-// 2-env for tst, stg and prd, then 2-net; for a root organization, 0-bootstrap, then
-// 1-dns.
+// 2-env for tst, stg and prd, then 2-net; empty for a root organization, which has no
+// layer.
 func (v *view) LayerOrderProse() string {
 	layers := v.Layers()
 	i := slices.Index(layers, envLayer)
@@ -793,36 +804,6 @@ func (v *view) LabelsBlockQuoted(layer, environment string) string {
 	return v.LabelsBlock(layer, fmt.Sprintf("%q", environment))
 }
 
-// DomainsHCL is a root organization's domains as the HCL value 1-dns takes
-// (var.domains): each domain with its labels handed onward, each label with the hosting
-// organization and the four name servers, in name order; {} with no domain.
-func (v *view) DomainsHCL() string {
-	domains := v.DomainNames()
-	if len(domains) == 0 {
-		return emptyHCLMap
-	}
-	var b strings.Builder
-	b.WriteString("{\n")
-	for _, d := range domains {
-		fmt.Fprintf(&b, "  %q = {\n    labels = ", d)
-		labels := v.LabelNames(d)
-		if len(labels) == 0 {
-			b.WriteString(emptyHCLMap + "\n  }\n")
-
-			continue
-		}
-		b.WriteString("{\n")
-		for _, label := range labels {
-			h := v.Domains[d].Labels[label]
-			fmt.Fprintf(&b, "      %q = { organization = %q, name_servers = %s }\n", label, h.Organization, hclList(h.NameServers))
-		}
-		b.WriteString("    }\n  }\n")
-	}
-	b.WriteString("}")
-
-	return b.String()
-}
-
 // DomainsProse names a root organization's domains for a README, each in backticks,
 // joined with "and"; empty when none is declared yet.
 func (v *view) DomainsProse() string {
@@ -874,7 +855,11 @@ func RenderSeeded(p *Placement, seed *Seed) ([]render.File, error) {
 	}
 	v := &view{Placement: p, seed: seed}
 	var files []render.File
-	root, err := renderDir(templateDir, "", v)
+	dir := templateDir
+	if p.IsRoot() {
+		dir = rootTemplateDir
+	}
+	root, err := renderDir(dir, "", v)
 	if err != nil {
 		return nil, err
 	}

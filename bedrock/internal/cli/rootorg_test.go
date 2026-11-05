@@ -7,16 +7,21 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
 	"github.com/cccteam/ccc/bedrock/internal/deploy"
 	"github.com/cccteam/ccc/bedrock/internal/domain"
+	"github.com/cccteam/ccc/bedrock/internal/github"
+	"github.com/cccteam/ccc/bedrock/internal/github/githubtest"
 	"github.com/cccteam/ccc/bedrock/internal/org"
+	rootorg "github.com/cccteam/ccc/bedrock/internal/root"
+	"github.com/cccteam/ccc/bedrock/internal/root/roottest"
 )
 
 // rootFixture is the zones fixture organization: imr, in the boot project
-// imr-boot-gbl-core-c3d4, holding zones for clientbay.example (harbor handed to imp,
+// imr-root-gbl-core-c3d4, holding zones for clientbay.example (harbor handed to imp,
 // beacon to rgb), impapps.example (a handed to imp) and zones.imp.example (nothing handed
 // yet).
 const rootFixture = "../org/testdata/imr"
@@ -35,89 +40,62 @@ func rootRepo(t *testing.T) string {
 	return fixtureRepo(t, rootFixture)
 }
 
-// TestRootOrgCommands runs the org commands over the zones fixture: new renders the two
-// layers and prints a root organization's hand steps (the five roles its seed needs, no
-// team group, no consent screen, the two apps' keys, the domains last), check is clean
-// after it with no hosting layer rendered, and render says what the triggers lack before
-// the boot project is recorded.
+// TestRootOrgCommands: org new refuses a root organization's placement and names the
+// bootstrap; render writes the root files and nothing of a layer; check is clean after a
+// render.
 func TestRootOrgCommands(t *testing.T) {
 	t.Parallel()
 
+	t.Run("new refuses a root organization and names the bootstrap", func(t *testing.T) {
+		t.Parallel()
+
+		dir := rootRepo(t)
+		_, err := execute(orgDeps(""), "", "org", "new", dir)
+		want := "is a root organization's placement (kind), and a root organization is made by bedrock org bootstrap, which writes its record and renders its files; org new renders a hosting organization's foundation"
+		if err == nil || !strings.Contains(err.Error(), want) {
+			t.Errorf("org new error = %v, want %q", err, want)
+		}
+	})
+
 	tests := []struct {
-		name    string
-		steps   func(t *testing.T, dir string) (code int, out string)
-		wantOut []string
-		absent  []string
+		name     string
+		steps    func(t *testing.T, dir string) (code int, out string)
+		wantCode int
+		wantOut  []string
+		absent   []string
 	}{
 		{
-			name: "new renders the two layers and prints the hand steps",
+			name: "render writes the README, the journal and the ignore rules, and no layer",
 			steps: func(t *testing.T, dir string) (int, string) {
 				t.Helper()
+				code, out := runOrg(t, "org", "render", "--dir", dir)
+				for _, want := range []string{"README.md", "JOURNAL.md", ".gitignore"} {
+					if _, err := os.Stat(filepath.Join(dir, want)); err != nil {
+						t.Errorf("org render did not write %s: %v", want, err)
+					}
+				}
+				for _, layer := range org.HostingLayers {
+					if _, err := os.Stat(filepath.Join(dir, layer)); !os.IsNotExist(err) {
+						t.Errorf("org render wrote %s, a layer: %v", layer, err)
+					}
+				}
 
-				return runOrg(t, "org", "new", dir)
+				return code, out
 			},
-			wantOut: []string{
-				"Rendered the imr foundation", "18 owned file(s) in 0-bootstrap, 1-dns; seeded .gitignore, 0-bootstrap/terraform.tfvars, 1-dns/terraform.tfvars, JOURNAL.md.",
-				"By hand, before the Cloud Build triggers can run",
-				"0. On GitHub, as an organization owner: the organization, its machine account (imp-machine, an\n     owner of the organization, named in placement.json as githubMachineAccount), this\n     infrastructure repository (default branch master; 1-dns rules that branch and nothing\n     else of it), and the deployer and infrastructure apps",
-				"A GitHub organization that holds a hosting organization\n     has the account and the apps already: record the same, and the release app's App ID\n     too (githubReleaseAppId), since this organization holds its key for them.",
-				"In a terminal, in this repository, the three apps' keys, never by hand, once\n     0-bootstrap has made their secrets in the boot project, one per app for every\n     organization in the Google Cloud organization: bedrock secret add\n     github-infrastructure-key, bedrock org secrets check github-infrastructure-key\n     <version>, which proves the version with GitHub, and bedrock secret pin\n     github-infrastructure-key <version>, which pins the version the alias current points\n     at; the same with github-deployer-key and github-release-key. The pull request's\n     apply moves the alias, which every reader in every organization names\n     (0-bootstrap/README.md, \"Rotating a GitHub App's key\").",
-				"1. In a terminal, as seed@imp.example, after gcloud auth application-default login:\n     bedrock org preflight, which must find each of these roles held:\n" +
-					"       - Folder Creator (roles/resourcemanager.folderCreator), on the organization\n" +
-					"       - Billing Account User (roles/billing.user), on the billing account\n" +
-					"     then the seed: the organization's folder at the organization root (123456789012), which makes\n" +
-					"     the account its administrator, the terraform folder under it, the boot project\n" +
-					"     imr-boot-gbl-core-<suffix>, the boot identity imr-boot-gbl-tofu with its roles on the\n" +
-					"     organization's folder and on the boot project, and the state bucket imr-boot-gbl-state-<suffix>. Nothing of the\n" +
-					"     organization's sits at the organization node.",
-				"2. In this repository, the seed's values: boot_project_id and terraform_folder_id in\n     0-bootstrap/terraform.tfvars, boot_project_id in 1-dns, and in placement.json the\n     bucket (stateBucket), the boot project's id and number (projects.boot,\n     projectNumbers.boot) and the organization's Cloud Identity customer\n     (directoryCustomerId, from gcloud organizations describe)",
-				"a connection named\n     imr-boot-uc1-github in us-central1",
-				"4. In a terminal, in 0-bootstrap: the apply on local state, the connection imported\n     into it first, then the migration of its state into the bucket.",
-				"5. In a terminal, as a billing administrator of 012345-6789AB-CDEF01: roles/billing.user on\n     it for the boot identity.",
-				"6. In a terminal, in 1-dns: the apply, with GITHUB_TOKEN set to an organization\n     owner's token (1-dns/README.md, \"Applying\"). It leaves nothing behind: the layer\n     creates no project and no identity.",
-				"From then on the two Cloud Build triggers in the boot project (imr-boot-uc1-layers-plan and imr-boot-uc1-layers-apply)\napply both layers: a pull request plans the layers it touches as their plan identities and\nposts the plans on it, the merge applies them as their apply identities, in layer order, and\ncreates what placement.json lists without a folder yet.",
-				"Then the domains: each domain delegated to this organization goes into placement.json\n(domains), bedrock org render and the pull request whose apply makes its zone; by the\ncustomer, where the domain's DNS is set, the delegation to the zone's name servers, as\nbedrock domain check prints them with the place (1-dns/README.md, \"Delegating a domain to\nthis organization\"). Each application's name under a domain follows at the application's\nregistration, in two pull requests (1-dns/README.md, \"Handing a label onward\").",
-				"7. In a terminal, once 0-bootstrap has applied and made the creating identity\n     imr-create-gbl-tofu: an administrator of the Google Cloud organization grants it Folder\n     Creator (roles/resourcemanager.folderCreator) at the organization node, and a billing\n     administrator Billing Account User (roles/billing.user) on 012345-6789AB-CDEF01",
-				"Pinned bedrock " + headVersion + " in ",
-			},
-			absent: []string{"Organization Policy Administrator", "Tag Administrator", "team group", "consent screen", "2-net", "1-org", "8. "},
+			wantOut: []string{"1 owned file(s) written"},
+			absent:  []string{"0-bootstrap", "1-dns"},
 		},
 		{
-			name: "check is clean after new, the two layers rendered and no other",
+			name: "check is clean after a render",
 			steps: func(t *testing.T, dir string) (int, string) {
 				t.Helper()
-				if code, out := runOrg(t, "org", "new", dir); code != 0 {
-					t.Fatalf("org new: %d %s", code, out)
-				}
-				for _, want := range []string{"0-bootstrap/cloud-build.tf", "1-dns/dns.tf", "1-dns/domains.auto.tfvars", "1-dns/github.tf", "1-dns/terraform.tfvars"} {
-					if _, err := os.Stat(filepath.Join(dir, want)); err != nil {
-						t.Errorf("org new did not write %s: %v", want, err)
-					}
-				}
-				for _, layer := range org.HostingLayers[1:] {
-					if _, err := os.Stat(filepath.Join(dir, layer)); !os.IsNotExist(err) {
-						t.Errorf("org new wrote %s, a hosting layer: %v", layer, err)
-					}
+				if code, out := runOrg(t, "org", "render", "--dir", dir); code != 0 {
+					t.Fatalf("org render: %d %s", code, out)
 				}
 
 				return runOrg(t, "org", "check", "--dir", dir)
 			},
-			wantOut: []string{"18 owned file(s) match the placement"},
-		},
-		{
-			name: "render says what the triggers still lack before the boot project is recorded",
-			steps: func(t *testing.T, dir string) (int, string) {
-				t.Helper()
-				if code, out := runOrg(t, "org", "new", dir); code != 0 {
-					t.Fatalf("org new: %d %s", code, out)
-				}
-				editPlacement(t, dir, func(p *org.Placement) {
-					p.Projects, p.ProjectNumbers = nil, nil
-				})
-
-				return runOrg(t, "org", "render", "--dir", dir)
-			},
-			wantOut: []string{"18 owned file(s) written", "The triggers cannot run every layer yet: record projects.boot in placement.json and run bedrock org render."},
+			wantOut: []string{"1 owned file(s) match the placement"},
 		},
 	}
 	for _, tt := range tests {
@@ -126,8 +104,8 @@ func TestRootOrgCommands(t *testing.T) {
 
 			dir := rootRepo(t)
 			code, out := tt.steps(t, dir)
-			if code != 0 {
-				t.Errorf("exit code = %d, want 0:\n%s", code, out)
+			if code != tt.wantCode {
+				t.Errorf("exit code = %d, want %d:\n%s", code, tt.wantCode, out)
 			}
 			for _, want := range tt.wantOut {
 				if !strings.Contains(out, want) {
@@ -149,8 +127,8 @@ func TestRootHostingOnly(t *testing.T) {
 	t.Parallel()
 
 	dir := rootRepo(t)
-	if code, out := runOrg(t, "org", "new", dir); code != 0 {
-		t.Fatalf("org new: %d %s", code, out)
+	if code, out := runOrg(t, "org", "render", "--dir", dir); code != 0 {
+		t.Fatalf("org render: %d %s", code, out)
 	}
 	tests := []struct {
 		name    string
@@ -170,7 +148,7 @@ func TestRootHostingOnly(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			want := fmt.Sprintf("the imr organization is a root organization (kind in placement.json), which holds DNS zones alone, no applications and no environments: bedrock org %s has nothing to act on here; the names under its domains are handed onward in placement.json (domains), and bedrock domain check reads them", tt.command)
+			want := fmt.Sprintf("the imr organization is a root organization (kind in placement.json), which holds the GitHub Apps' keys, the zones of the domains delegated to it and the hosting organizations' records, no applications and no environments: bedrock org %s has nothing to act on here; the names under its domains are handed onward in placement.json (domains), and bedrock domain check reads them", tt.command)
 			_, err := execute(orgDeps(dir), "", tt.args...)
 			if err == nil || !strings.Contains(err.Error(), want) {
 				t.Errorf("%v error = %v, want %q", tt.args, err, want)
@@ -179,64 +157,135 @@ func TestRootHostingOnly(t *testing.T) {
 	}
 }
 
-// rootDestroyTofu is tofu in the zones destroy's tests: 1-dns's state holds this
-// repository and its ruleset, a zone and a record set; 0-bootstrap's the boot project.
-type rootDestroyTofu struct {
-	ran []string
-}
-
-func (f *rootDestroyTofu) Run(_ context.Context, c deploy.Command, _ io.Writer) error {
-	f.ran = append(f.ran, filepath.Base(c.Dir)+": "+c.String())
-
-	return nil
-}
-
-func (f *rootDestroyTofu) Output(_ context.Context, c deploy.Command, _ io.Writer) ([]byte, error) {
-	f.ran = append(f.ran, filepath.Base(c.Dir)+": "+c.String())
-	switch {
-	case c.Args[1] == "pull":
-		return []byte(`{"version": 4}`), nil
-	case filepath.Base(c.Dir) == "1-dns":
-		return []byte("github_repository.infrastructure\ngithub_repository_ruleset.infrastructure\ngoogle_dns_managed_zone.domain[\"clientbay.example\"]\ngoogle_dns_record_set.delegation[\"harbor.clientbay.example\"]\n"), nil
-	default:
-		return []byte("module.boot_project.module.project-factory.google_project.main\n"), nil
-	}
-}
-
-// rootDestroyRepo is the zones fixture's placement with the two layers' files the destroy
-// reads: 0-bootstrap's variables declaring destroy and its backend, 1-dns's variables
-// declaring none.
-func rootDestroyRepo(t *testing.T) string {
+// rootWorld is the zones fixture's root organization standing as its bootstrap left it,
+// before the engine's first apply, in a repository rendered from the fixture, with the
+// engine's stand-ins wired into the deps: what org check, plan, apply and destroy run
+// against in a root organization's repository.
+func rootWorld(t *testing.T) (deps, *roottest.Fake, *githubtest.Server, string) {
 	t.Helper()
 
 	dir := rootRepo(t)
-	files := map[string]string{
-		"0-bootstrap/variables.tf":  "variable \"destroy\" {\n  type    = bool\n  default = false\n}\n",
-		"0-bootstrap/initialize.tf": "terraform {\n  backend \"gcs\" {}\n}\n",
-		"1-dns/variables.tf":        "variable \"boot_project_id\" {\n  type = string\n}\n",
-		"JOURNAL.md":                "# Journal\n",
+	if code, out := runOrg(t, "org", "render", "--dir", dir); code != 0 {
+		t.Fatalf("org render: %d %s", code, out)
 	}
-	for name, content := range files {
-		path := filepath.Join(dir, name)
-		if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil {
-			t.Fatal(err)
-		}
-		if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
-			t.Fatal(err)
-		}
+	p, err := org.ReadPlacement(filepath.Join(dir, "placement.json"))
+	if err != nil {
+		t.Fatal(err)
 	}
+	srv := githubtest.New(t)
+	fake := roottest.Standing(t, p, srv)
+	clients := &rootorg.Clients{GitHub: func(token string) *github.Client { return github.New(srv.URL, token) }, Sleep: noWait}
+	fake.Clients(clients)
+	d := orgDeps(dir)
+	d.org.root = clients
+	d.githubToken = func(context.Context) (string, error) { return "test-token", nil }
+	d.deploy = &deploy.Clients{Secrets: func(context.Context) (deploy.Secrets, error) { return fake, nil }}
 
-	return dir
+	return d, fake, srv, dir
 }
 
-// TestRootOrgDestroy: org destroy on a root organization says what goes (the boot
-// project with the zones, the folders and the roles, the ruleset), asks for the prefix,
-// destroys 1-dns with this repository and the zones taken out of its state and no destroy
-// variable set on it, then 0-bootstrap, and writes the journal.
+// TestRootOrgCheckEngine: org check in a root organization's repository compares it with
+// Google Cloud and GitHub through the engine, after the render check, as information: what
+// the apply would make is listed, and the files still match.
+func TestRootOrgCheckEngine(t *testing.T) {
+	t.Parallel()
+
+	d, _, _, dir := rootWorld(t)
+	out, err := execute(d, "", "org", "check", "--dir", dir)
+	if err != nil {
+		t.Fatalf("org check = %v; printed:\n%s", err, out)
+	}
+	for _, want := range []string{
+		"identities: the apply creates the identity imr-root-gbl-planner@imr-root-gbl-core-c3d4.iam.gserviceaccount.com",
+		"zones: the apply creates the zone imr-root-gbl-dns-clientbay-example for clientbay.example",
+		"Cloud Build: the apply creates the trigger imr-root-uc1-apply",
+		"change(s) the apply would make;",
+		dir + ": ",
+		"owned file(s) match the placement",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("printed:\n%s\nwant it to contain %q", out, want)
+		}
+	}
+}
+
+// TestRootOrgPlanApply: in a root organization's repository, org plan is the plan
+// trigger's run through the engine, which posts what the merge changes on the pull
+// request, and org apply the apply trigger's, which makes it and leaves the marker.
+func TestRootOrgPlanApply(t *testing.T) {
+	// No t.Parallel(): the commands read the build's id, project and location from the
+	// process environment, as the trigger's step passes them.
+	d, fake, srv, dir := rootWorld(t)
+	p, err := org.ReadPlacement(filepath.Join(dir, "placement.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The organization stands as the bootstrap's apply leaves it; the fixture's pending
+	// creation (rgb) is the create package's to test.
+	editPlacement(t, dir, func(p *org.Placement) {
+		p.HostingOrganizations = slices.DeleteFunc(p.HostingOrganizations, func(h org.HostingOrganization) bool { return !h.Created() })
+	})
+	p.HostingOrganizations = slices.DeleteFunc(p.HostingOrganizations, func(h org.HostingOrganization) bool { return !h.Created() })
+	if _, err := rootorg.Run(context.Background(), d.org.root, &rootorg.Request{Placement: p, Dir: dir, Mode: rootorg.Apply, Commit: "abc1234", GitHubToken: "test-token", Bootstrap: true}, io.Discard); err != nil {
+		t.Fatal(err)
+	}
+	// The pull request adds a domain.
+	editPlacement(t, dir, func(p *org.Placement) { p.Domains["harbor.example"] = org.Domain{} })
+	build := fmt.Sprintf(`{"id":"b-1","substitutions":{"_BEDROCK_STEPS":%q,"_PR_NUMBER":"7","COMMIT_SHA":"0123456789abcdef0123456789abcdef01234567"}}`, org.StepsShape(p))
+	d.deploy.Builds = (&fakeBuilds{build: build}).open
+	t.Setenv("BUILD_ID", "b-1")
+	t.Setenv("PROJECT_ID", "imr-root-gbl-core-c3d4")
+	t.Setenv("LOCATION", "us-central1")
+	out, err := execute(d, "", "org", "plan", "--dir", dir)
+	if err != nil {
+		t.Fatalf("org plan = %v; printed:\n%s", err, out)
+	}
+	for _, want := range []string{
+		"zones: the apply creates the zone imr-root-gbl-dns-harbor-example for harbor.example",
+		"Posted the report on pull request #7 as the deployer app.",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("org plan printed:\n%s\nwant it to contain %q", out, want)
+		}
+	}
+	if comments := srv.Repos["imp-example/imr-root-infrastructure"].Comments[7]; len(comments) != 1 || !strings.Contains(comments[0].Body, "- zones: creates the zone imr-root-gbl-dns-harbor-example for harbor.example") {
+		t.Errorf("the pull request's comments: %+v", comments)
+	}
+	out, err = execute(d, "", "org", "apply", "--dir", dir)
+	if err != nil {
+		t.Fatalf("org apply = %v; printed:\n%s", err, out)
+	}
+	if !strings.Contains(out, "zones: creates the zone imr-root-gbl-dns-harbor-example for harbor.example") || !strings.Contains(out, "Applied 1 change(s)") {
+		t.Errorf("org apply printed:\n%s", out)
+	}
+	if _, ok := fake.ZoneMap["imr-root-gbl-core-c3d4"]["imr-root-gbl-dns-harbor-example"]; !ok {
+		t.Errorf("the zone was not made: %v", fake.ZoneMap)
+	}
+	if marker, ok := fake.Objects["imr-root-gbl-state-c3d4/"+rootorg.MarkerObject]; !ok || !strings.Contains(string(marker), "0123456789abcdef") {
+		t.Errorf("the marker: %q", marker)
+	}
+}
+
+// TestRootOrgDestroy: org destroy on a root organization refuses while a hosting
+// organization is recorded as created; otherwise it says what goes (the root project with
+// the zones, the folder, the creating identity's grants), asks for the prefix, takes the
+// grants off, deletes the project and the folder by API, and writes the journal.
 func TestRootOrgDestroy(t *testing.T) {
 	t.Parallel()
 
-	const warning = "bedrock org destroy deletes the boot project of the imr root organization, and with it everything the layers made:"
+	t.Run("refuses while a hosting organization is recorded as created", func(t *testing.T) {
+		t.Parallel()
+
+		d, fake, _, dir := rootWorld(t)
+		_, err := execute(d, "", "org", "destroy", "--dir", dir, "--yes")
+		if want := "placement.json records imp as created hosting organizations (hostingOrganizations with a folder): destroy each in its own repository first (bedrock org destroy there), then take its entry out and destroy the root organization"; err == nil || !strings.Contains(err.Error(), want) {
+			t.Errorf("org destroy = %v, want %q", err, want)
+		}
+		if !fake.Projects["imr-root-gbl-core-c3d4"] {
+			t.Errorf("the project went: %v", fake.Projects)
+		}
+	})
+	const warning = "bedrock org destroy deletes the root project of the imr root organization, and with it everything the bootstrap and the applies made:"
 	tests := []struct {
 		name        string
 		interactive func() bool
@@ -245,7 +294,7 @@ func TestRootOrgDestroy(t *testing.T) {
 		wantErr     string
 		wantOut     []string
 		absent      []string
-		wantRan     []string
+		deleted     bool
 		wantJournal string
 	}{
 		{
@@ -254,10 +303,10 @@ func TestRootOrgDestroy(t *testing.T) {
 			wantErr:     "asks for the prefix typed back at the terminal, and this run has none: --yes stands in for it",
 			wantOut: []string{
 				warning,
-				"imr-boot-gbl-core-c3d4 (boot): the layer identities, the state bucket with both layers' states, the Cloud Build connection and triggers, the GitHub Apps' keys, and the zones with their record sets: every domain delegated to this organization then points at servers that answer nothing",
-				"Also gone: the folders and the custom roles, and on GitHub this repository's ruleset. The repository stays, with its code and pull requests.",
+				"imr-root-gbl-core-c3d4 (root): the runner identities and the creating identity, the state bucket with the hosting organizations' creation records, the Cloud Build connection and triggers, the GitHub Apps' keys and the Bot Account's token, and the zones with their record sets: every domain delegated to this organization then points at servers that answer nothing",
+				"Also gone: the folder, and the creating identity's grants at the organization node and on the billing account. The repository stays on GitHub with its code, pull requests, settings and ruleset, and the three GitHub Apps stay installed.",
 			},
-			absent: []string{"Spanner", "registrations", "tst"},
+			absent: []string{"Spanner", "registrations", "environment", "layers"},
 		},
 		{
 			name:        "stops when something else than the prefix is typed",
@@ -271,47 +320,31 @@ func TestRootOrgDestroy(t *testing.T) {
 			in:          "imr\n",
 			wantOut: []string{
 				warning,
-				"Took github_repository.infrastructure out of 1-dns's state: the repository stays.",
-				`Took google_dns_managed_zone.domain["clientbay.example"] out of 1-dns's state: it goes with the boot project.`,
-				`Took google_dns_record_set.delegation["harbor.clientbay.example"] out of 1-dns's state: it goes with the boot project.`,
-				"Destroyed 1-dns.", "Destroyed 0-bootstrap.",
-				"Deleted the imr root organization's boot project; a line went into JOURNAL.md. Google holds it for 30 days (its id never returns); the GitHub repository is as it was, without the ruleset 1-dns made.",
-				"every domain delegated here is then delegated again, to the new zones' name servers.",
+				"Took the creating identity's grants off the organization node and billing account 012345-6789AB-CDEF01.",
+				"Deleted the project imr-root-gbl-core-c3d4, with the secrets, the zones, the connection, the triggers, the identities and the state bucket: Google holds it for 30 days, and its id never returns.",
+				"Deleted the folder imr (100).",
+				"Deleted the imr root organization's root project and folder; a line went into JOURNAL.md. Google holds the project for 30 days (its id never returns); the GitHub repository is as it was, with its settings and ruleset, and the three GitHub Apps stay installed, their keys in nobody's hands until a bootstrap stores them again.",
+				"To start over: bedrock org bootstrap <dir> again, in an empty directory, with the apps brought (--infrastructure-app and --infrastructure-key, and the others) or made anew; every domain delegated here is then delegated again, to the new zones' name servers.",
 			},
-			wantRan: []string{
-				"1-dns: tofu init -input=false -no-color -reconfigure",
-				"1-dns: tofu state list",
-				"1-dns: tofu state rm github_repository.infrastructure",
-				`1-dns: tofu state rm google_dns_managed_zone.domain["clientbay.example"]`,
-				`1-dns: tofu state rm google_dns_record_set.delegation["harbor.clientbay.example"]`,
-				"1-dns: tofu destroy -input=false -no-color -auto-approve",
-				"0-bootstrap: tofu init -input=false -no-color -reconfigure",
-				"0-bootstrap: tofu state pull",
-				"0-bootstrap: tofu init -input=false -no-color -reconfigure",
-				"0-bootstrap: tofu state list",
-				"0-bootstrap: tofu apply -input=false -no-color -auto-approve -var destroy=true -target=module.boot_project.module.project-factory.google_project.main",
-				"0-bootstrap: tofu destroy -input=false -no-color -auto-approve -var destroy=true",
-			},
-			wantJournal: "bedrock org destroy deleted the root organization's boot project (imr-boot-gbl-core-c3d4), with its zones: Google holds it for 30 days, its id never returns. The GitHub repository stays.\n",
+			deleted:     true,
+			wantJournal: "bedrock org destroy deleted the root organization's root project (imr-root-gbl-core-c3d4) and folder, with its zones: Google holds the project for 30 days, its id never returns. The GitHub repository and the apps stay.\n",
 		},
 		{
 			name:        "destroys with --yes and no terminal",
 			interactive: never,
 			args:        []string{"--yes"},
-			wantOut:     []string{"Destroyed 1-dns.", "Destroyed 0-bootstrap."},
-			wantJournal: "with its zones: Google holds it for 30 days, its id never returns. The GitHub repository stays.\n",
+			wantOut:     []string{"Deleted the project imr-root-gbl-core-c3d4", "Deleted the folder imr (100)."},
+			deleted:     true,
+			wantJournal: "and folder, with its zones: Google holds the project for 30 days, its id never returns. The GitHub repository and the apps stay.\n",
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			dir := rootDestroyRepo(t)
-			tofu := &rootDestroyTofu{}
-			d := orgDeps(dir)
+			d, fake, _, dir := rootWorld(t)
+			editPlacement(t, dir, func(p *org.Placement) { p.HostingOrganizations = nil })
 			d.interactive = tt.interactive
-			d.deploy = &deploy.Clients{Exec: tofu}
-			d.githubToken = func(context.Context) (string, error) { return "ghs_token", nil }
 			out, err := execute(d, tt.in, append([]string{"org", "destroy", "--dir", dir}, tt.args...)...)
 			switch {
 			case tt.wantErr == "" && err != nil:
@@ -326,21 +359,26 @@ func TestRootOrgDestroy(t *testing.T) {
 			}
 			for _, absent := range tt.absent {
 				if strings.Contains(out, absent) {
-					t.Errorf("printed:\n%s\nwant it without %q", out, absent)
+					t.Errorf("printed:\n%s\nwant nothing about %q", out, absent)
 				}
 			}
-			if tt.wantRan != nil && strings.Join(tofu.ran, "\n") != strings.Join(tt.wantRan, "\n") {
-				t.Errorf("tofu ran:\n%s\nwant:\n%s", strings.Join(tofu.ran, "\n"), strings.Join(tt.wantRan, "\n"))
+			if fake.Projects["imr-root-gbl-core-c3d4"] == tt.deleted {
+				t.Errorf("the project is there: %v, want deleted %v", fake.Projects["imr-root-gbl-core-c3d4"], tt.deleted)
 			}
+			if tt.deleted && len(fake.Folders) != 0 {
+				t.Errorf("the folder is there: %v", fake.Folders)
+			}
+			// The render seeds the journal; the destroy adds its line.
 			journal, err := os.ReadFile(filepath.Join(dir, "JOURNAL.md"))
-			if err != nil {
-				t.Fatal(err)
+			if tt.wantJournal == "" {
+				if strings.Contains(string(journal), "bedrock org destroy") {
+					t.Errorf("a journal line was written:\n%s", journal)
+				}
+
+				return
 			}
-			if tt.wantJournal == "" && string(journal) != "# Journal\n" {
-				t.Errorf("the journal changed:\n%s", journal)
-			}
-			if tt.wantJournal != "" && !strings.HasSuffix(string(journal), tt.wantJournal) {
-				t.Errorf("the journal is:\n%s\nwant it to end with %q", journal, tt.wantJournal)
+			if err != nil || !strings.Contains(string(journal), tt.wantJournal) {
+				t.Errorf("the journal = %q, %v; want it to contain %q", journal, err, tt.wantJournal)
 			}
 		})
 	}
@@ -372,8 +410,8 @@ func (w labelWorld) LookupNS(ctx context.Context, name string) ([]*net.NS, error
 }
 
 // rootCheckRepo is a root organization repository whose placement holds the domains
-// given, with the boot project recorded or not and zoneReplacement set or not.
-func rootCheckRepo(t *testing.T, recorded, zoneReplacement bool, domains map[string]org.Domain) string {
+// given, with the root project recorded or not.
+func rootCheckRepo(t *testing.T, recorded bool, domains map[string]org.Domain) string {
 	t.Helper()
 
 	dir := t.TempDir()
@@ -382,7 +420,6 @@ func rootCheckRepo(t *testing.T, recorded, zoneReplacement bool, domains map[str
 		t.Fatal(err)
 	}
 	p.Domains = domains
-	p.ZoneReplacement = zoneReplacement
 	if !recorded {
 		p.Projects, p.ProjectNumbers = nil, nil
 	}
@@ -411,17 +448,16 @@ func TestRootDomainCheck(t *testing.T) {
 		"beacon": {Organization: "rgb", NameServers: beaconServers},
 	}}}
 	delegated := world{ns: map[string]string{clientbay: checkServer, zonesImp: checkServer}}
-	zones := zonesByName{"imr-boot-gbl-dns-clientbay-example": clientbay, "imr-boot-gbl-dns-zones-imp-example": zonesImp}
+	zones := zonesByName{"imr-root-gbl-dns-clientbay-example": clientbay, "imr-root-gbl-dns-zones-imp-example": zonesImp}
 	tests := []struct {
-		name            string
-		recorded        bool
-		zoneReplacement bool
-		domains         map[string]org.Domain
-		world           labelWorld
-		wantCode        int
-		wantOut         []string
-		absent          []string
-		wantErr         string
+		name     string
+		recorded bool
+		domains  map[string]org.Domain
+		world    labelWorld
+		wantCode int
+		wantOut  []string
+		absent   []string
+		wantErr  string
 	}{
 		{
 			name:     "a delegated domain with every label handed passes",
@@ -429,7 +465,7 @@ func TestRootDomainCheck(t *testing.T) {
 			domains:  handed,
 			world:    labelWorld{world: delegated, sets: map[string][]string{"harbor." + clientbay: harborServers, "beacon." + clientbay: beaconServers}},
 			wantOut: []string{
-				"clientbay.example is delegated to the zone imr-boot-gbl-dns-clientbay-example in imr-boot-gbl-core-c3d4: it answers the zone's name servers (" + checkServer + ").",
+				"clientbay.example is delegated to the zone imr-root-gbl-dns-clientbay-example in imr-root-gbl-core-c3d4: it answers the zone's name servers (" + checkServer + ").",
 				"harbor.clientbay.example is handed to imp: it answers the name servers of its zone there (" + strings.Join(harborServers, ", ") + ").",
 				"beacon.clientbay.example is handed to rgb: it answers the name servers of its zone there (" + strings.Join(beaconServers, ", ") + ").",
 			},
@@ -466,24 +502,16 @@ func TestRootDomainCheck(t *testing.T) {
 			domains:  map[string]org.Domain{clientbay: handed[clientbay], zonesImp: {}},
 			world:    labelWorld{world: delegated, sets: map[string][]string{"harbor." + clientbay: harborServers, "beacon." + clientbay: beaconServers}},
 			wantOut: []string{
-				"clientbay.example is delegated to the zone imr-boot-gbl-dns-clientbay-example in imr-boot-gbl-core-c3d4",
-				"\n\nzones.imp.example is delegated to the zone imr-boot-gbl-dns-zones-imp-example in imr-boot-gbl-core-c3d4: it answers the zone's name servers (" + checkServer + ").\nNo name under zones.imp.example is handed onward yet (domains in placement.json).\n",
+				"clientbay.example is delegated to the zone imr-root-gbl-dns-clientbay-example in imr-root-gbl-core-c3d4",
+				"\n\nzones.imp.example is delegated to the zone imr-root-gbl-dns-zones-imp-example in imr-root-gbl-core-c3d4: it answers the zone's name servers (" + checkServer + ").\nNo name under zones.imp.example is handed onward yet (domains in placement.json).\n",
 			},
-		},
-		{
-			name:            "every domain passing with zoneReplacement set: the value can be cleared",
-			recorded:        true,
-			zoneReplacement: true,
-			domains:         map[string]org.Domain{zonesImp: {}},
-			world:           labelWorld{world: delegated},
-			wantOut:         []string{"\nzoneReplacement is set in placement.json and every domain points at its zone: clear it and run bedrock org render.\n"},
 		},
 		{
 			name:     "a domain whose zone 1-dns has not made stops the check",
 			recorded: true,
 			domains:  map[string]org.Domain{"impapps.example": {}},
 			world:    labelWorld{world: delegated},
-			wantErr:  "no zone imr-boot-gbl-dns-impapps-example in imr-boot-gbl-core-c3d4: the apply of 1-dns creates it; apply 1-dns, then check again",
+			wantErr:  "no zone imr-root-gbl-dns-impapps-example in imr-root-gbl-core-c3d4: the root organization's apply makes it from domains in placement.json; merge the pull request that lists the domain, then check again",
 		},
 		{
 			name:     "no domain: nothing to check yet",
@@ -503,7 +531,7 @@ func TestRootDomainCheck(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			dir := rootCheckRepo(t, tt.recorded, tt.zoneReplacement, tt.domains)
+			dir := rootCheckRepo(t, tt.recorded, tt.domains)
 			d := orgDeps(dir)
 			d.lookups = &domain.Lookups{
 				OpenZones: func(context.Context) (domain.ZoneReader, error) {

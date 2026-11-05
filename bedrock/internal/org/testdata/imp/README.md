@@ -174,7 +174,7 @@ organization's boot identity's grants on the shared secrets rendered
 organization" and "The GitHub Apps' keys").
 
 The GitHub side is the root organization's: the `imp-example`
-organization, its machine account `imp-machine`, the release,
+organization, its Bot Account `imp-bot`, the release,
 deployer and infrastructure apps with their keys, and the Cloud Build GitHub
 authorization; this placement names the same, filled in by the creation.
 `1-org` configures every application's repository and rules this repository's
@@ -190,13 +190,10 @@ What is done by hand, each where it happens:
    release waits for an approval, and its members ask for its entitlements
    (`2-env/README.md`, "The team group"). Every render names them, and `2-env`
    grants to them, so they exist before the creation.
-2. **The billing grants and the budget**, after the creation. In a terminal, a
-   billing administrator grants `roles/billing.user` on the billing account to
-   the two layer identities, `imp-boot-gbl-tofu` and
-   `imp-org-gbl-tofu`, which `1-org` needs the day it links a project
-   it creates (the creating identity's own Billing Account User covered the
-   first apply); in the Billing console, the same administrator sets the spend
-   budget (`0-bootstrap/README.md`, "Billing grants and the budget").
+2. **The spend budget**, after the creation. In the Billing console, a billing
+   administrator sets the spend budget (`0-bootstrap/README.md`, "The spend
+   budget"); the two layer identities' Billing Account User, which `1-org`
+   needs the day it links a project it creates, is the creation's.
 3. **The consent screen.** In each environment project's Google Cloud
    console, before the first application's OAuth client is made there: APIs &
    Services, OAuth consent screen, with the audience **Internal**, so only the
@@ -223,7 +220,7 @@ outside the organization.
 
 GitHub prerequisites: the organization's private repositories need rulesets
 that GitHub enforces and environments; the organization holds GitHub Apps; and
-its machine account (`githubMachineAccount`) is an owner of it. bedrock's README lists each with what needs it
+its Bot Account (`githubBotAccount`) is an owner of it. bedrock's README lists each with what needs it
 ([GitHub prerequisites](https://github.com/cccteam/ccc/blob/master/bedrock/README.md#github-prerequisites)).
 
 `bedrock org register <app> [<application checkout>]` prints the pull requests
@@ -316,55 +313,31 @@ backups of its databases and the data down). `bedrock org check` names the
 step while an application out of service everywhere still stands in the
 placement. A retired application is registered again as a new one.
 
-## The two GitHub Apps
+## The GitHub Apps
 
 Besides the infrastructure app `1-org` acts as (`0-bootstrap/README.md`), the
-organization holds two GitHub Apps that every application uses: the release
-app, which cuts each release (release-please runs as it from each
-application's release trigger in Cloud Build, so the tag and the GitHub
-Release carry it as their author, and each repository's tag ruleset lets it
-alone make a release tag), and the deployer app, which the pipeline talks
-back on a pull request as (a deployment carrying the environment's URL, a
-comment, the guard's refusals). Both keys live in Secret Manager in the root
-organization `imr`'s boot project, which holds them for every
-organization and rotates them in one place (`0-bootstrap/README.md`, "The
-GitHub Apps' keys"); neither reaches GitHub. Once, by a person:
-
-1. On GitHub, as an owner of the `imp-example` organization: the
-   organization's Settings, Developer settings, GitHub Apps, New GitHub App,
-   once for each app. Give it any homepage URL, turn Webhook off, and choose
-   only this account under Where can this app be installed. Repository
-   permissions, with Metadata (read), which GitHub requires of every app:
-   - the release app: Contents, Issues and Pull requests, each read and
-     write;
-   - the deployer app: Checks, Deployments, Issues and Pull requests, each
-     read and write.
-
-   Create it and note the App ID on its settings page.
-2. On GitHub, on each app's settings page: Install App, on the organization,
-   for all repositories, so a new application's repository is covered with no
-   step of its own. Then Private keys, Generate a private key: the browser
-   downloads a `.pem` file.
-3. In `placement.json`: the release app's App ID as `githubReleaseAppId` and
-   its slug, the name in its address `github.com/apps/<slug>`, as
-   `githubReleaseAppSlug`; then `bedrock org render`. `1-org` names the app in
-   each repository's tag ruleset, and every application's placement names the
-   slug as the author of its releases.
-4. In `placement.json`: the deployer app's App ID as `githubDeployerAppId`,
-   one value for the organization.
-5. In a terminal, in the root organization `imr`'s
-   repository, as one of its key operators, for each of the two apps:
-   `bedrock secret add`, `bedrock org secrets check` and `bedrock secret pin`
-   with `github-deployer-key` and `github-release-key` (its
-   `0-bootstrap/README.md`, "The GitHub Apps' keys"). Nothing is added in this
-   repository: `2-env`'s outputs name each key's alias `current`
-   (`imr-boot-gbl-github-deployer-key`, `imr-boot-gbl-github-release-key`, in that organization's
-   boot project), each application's stack passes the aliases to its pipeline
-   and its release trigger, and the plan trigger posts the layers' plans as
-   the deployer app from the apply that sets the alias on. Until the App IDs
-   are recorded here, the pipelines talk back through nothing and the plans
-   are in the runs' logs alone; until the root organization has pinned a key,
-   the pipelines that read it say so and wait.
+organization uses two GitHub Apps in every application: the release app, which
+cuts each release (release-please runs as it from each application's release
+trigger in Cloud Build, so the tag and the GitHub Release carry it as their
+author, and each repository's tag ruleset lets it alone make a release tag),
+and the deployer app, which the pipeline talks back on a pull request as (a
+deployment carrying the environment's URL, a comment, the guard's refusals).
+All three are the root organization `imr`'s: its bootstrap
+made them from bedrock's declaration of each, owned by the
+`imp-example` organization and installed on all its repositories,
+and their keys live in Secret Manager in its root project, which holds them for
+every organization and rotates them in one place (that organization's
+`README.md`, "The GitHub Apps' keys"); no key reaches GitHub. This placement
+records the same App IDs (`githubInfrastructureAppId`, `githubDeployerAppId`,
+`githubReleaseAppId`) and the release app's slug (`githubReleaseAppSlug`, the
+name in its address `github.com/apps/<slug>`, which every application's
+placement names as the author of its releases), filled in by the creation.
+Nothing is added in this repository: `2-env`'s outputs name each key's alias
+`current` (`imr-root-gbl-github-deployer-key`, `imr-root-gbl-github-release-key`, in that
+organization's root project), each application's stack passes the aliases to
+its pipeline and its release trigger, and the plan trigger posts the layers'
+plans as the deployer app. Until the root organization has pinned a key, the
+pipelines that read it say so and wait.
 
 ## Deviations from tf-gcp-setup
 

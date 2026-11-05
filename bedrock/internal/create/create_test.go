@@ -29,9 +29,9 @@ const (
 	rootRepo      = "imr-root-infrastructure"
 	baseSHA       = "base1"
 	rootCommit    = "push7"
-	creatingEmail = "imr-create-gbl-tofu@imr-boot-gbl-core-c3d4.iam.gserviceaccount.com"
+	creatingEmail = "imr-create-gbl-tofu@imr-root-gbl-core-c3d4.iam.gserviceaccount.com"
 	bootIdentity  = "serviceAccount:rgb-boot-gbl-tofu@rgb-boot-gbl-core-e5f6.iam.gserviceaccount.com"
-	policyAdmin   = "projects/imr-boot-gbl-core-c3d4/roles/secretPolicyAdmin"
+	policyAdmin   = "projects/imr-root-gbl-core-c3d4/roles/secretPolicyAdmin"
 )
 
 // record is the hosting organization rgb as a person records it in the root
@@ -236,16 +236,16 @@ func TestRun(t *testing.T) {
 		"folders/" + orgFolder + " roles/serviceusage.serviceUsageAdmin " + bootIdentity,
 		"projects/rgb-boot-gbl-core-e5f6 roles/iam.roleAdmin " + bootIdentity,
 		"folders/" + orgFolder + " roles/resourcemanager.folderAdmin user:seed@imp.example",
-		"projects/imr-boot-gbl-core-c3d4/secrets/imr-boot-gbl-github-infrastructure-key " + policyAdmin + " " + bootIdentity,
-		"projects/imr-boot-gbl-core-c3d4/secrets/imr-boot-gbl-github-release-key " + policyAdmin + " " + bootIdentity,
-		"projects/imr-boot-gbl-core-c3d4/locations/us-central1/secrets/github-github-oauthtoken-fedcba " + policyAdmin + " " + bootIdentity,
+		"projects/imr-root-gbl-core-c3d4/secrets/imr-root-gbl-github-infrastructure-key " + policyAdmin + " " + bootIdentity,
+		"projects/imr-root-gbl-core-c3d4/secrets/imr-root-gbl-github-release-key " + policyAdmin + " " + bootIdentity,
+		"projects/imr-root-gbl-core-c3d4/secrets/imr-root-gbl-github-token " + policyAdmin + " " + bootIdentity,
 	}
 	for _, want := range wantGrants {
 		if !slices.Contains(f.google.Grants, want) {
 			t.Errorf("grants lack %q:\n%s", want, strings.Join(f.google.Grants, "\n"))
 		}
 	}
-	if n := len(f.google.Grants); n != 3+len(org.BootLayerRoles)+len(org.BootProjectRoles)+1+4 {
+	if n := len(f.google.Grants); n != 3+len(org.BootLayerRoles)+len(org.BootProjectRoles)+1+4+2 {
 		t.Errorf("%d grants, want %d (the three roles for the first applies, the boot roles on the folder and the project, Folder Admin, four secrets)", n, 3+len(org.BootLayerRoles)+len(org.BootProjectRoles)+1+4)
 	}
 	creator := " serviceAccount:" + creatingEmail + " roles/resourcemanager.folderAdmin+roles/resourcemanager.folderEditor"
@@ -356,7 +356,7 @@ func TestRun(t *testing.T) {
 		"Applied rgb's 1-org and recorded its 6 projects in the placement (projects, projectNumbers); it made 4 folders.\n",
 		"Pushed the foundation to " + owner + "/rgb-infrastructure at ",
 		"Took the creating identity's grants off the 4 folders and 6 projects 1-org made, folder " + tfFolder + ", project rgb-boot-gbl-core-e5f6 and folder " + orgFolder + ".\n",
-		"Recorded the creation of rgb in gs://imr-boot-gbl-state-c3d4/applied/created/rgb.\n",
+		"Recorded the creation of rgb in gs://imr-root-gbl-state-c3d4/applied/created/rgb.\n",
 		"Opened the hand-off pull request of rgb: https://github.com/" + owner + "/" + rootRepo + "/pull/1.\n",
 	}
 	for _, want := range wantOut {

@@ -41,9 +41,9 @@ func RecordPath(dir, prefix string) string {
 }
 
 // CreatingIdentity is the root organization's creating identity, which creates a hosting
-// organization from the apply trigger's run: a service account in the boot project.
+// organization from the apply trigger's run: a service account in the root project.
 func (p *Placement) CreatingIdentity() string {
-	return p.Prefix + "-create-gbl-tofu@" + p.Projects[bootProject] + ".iam.gserviceaccount.com"
+	return p.Prefix + "-create-gbl-tofu@" + p.Projects[RootProjectKey] + ".iam.gserviceaccount.com"
 }
 
 // CreatingIdentityMember is the creating identity as an IAM member.
@@ -52,8 +52,8 @@ func (p *Placement) CreatingIdentityMember() string {
 }
 
 // Seed is what the creation learns as it makes the organization's folders: their
-// numeric ids, which the seeded tfvars of the new repository carry. Nil renders the
-// REPLACEME values a person fills in after a hand seed.
+// numeric ids, which the seeded tfvars of the new repository carry. Nil renders
+// REPLACEME, as org new does before the creation has recorded them.
 type Seed struct {
 	OrganizationFolder string
 	TerraformFolder    string
@@ -81,7 +81,7 @@ func ReadRecord(dir, prefix string) (*Placement, error) {
 // supplies, and chooses the boot project's suffix when none is chosen yet, so that the
 // record is complete before the creation runs: the Google Cloud organization and its
 // domain, the billing account (the root organization's unless the record names one), the
-// GitHub organization, its machine account, default branch and the three apps' ids and
+// GitHub organization, its Bot Account, default branch and the three apps' ids and
 // slug, the Cloud Build authorization (the same connection token, read from the root
 // organization's boot project), the break-glass account, the bedrock pin, and the root
 // organization itself (root). What the person wrote and the root organization does not
@@ -91,11 +91,11 @@ func Fill(root, h *Placement) error {
 	if !root.IsRoot() {
 		return errors.New("the placement is a hosting organization's, and only a root organization creates another organization")
 	}
-	if root.Projects[bootProject] == "" || root.StateBucket == "" {
-		return errors.New("the root organization's placement records no boot project or no state bucket yet (projects.boot, stateBucket): the seed's values come first (0-bootstrap/README.md)")
+	if root.Projects[RootProjectKey] == "" || root.StateBucket == "" {
+		return errors.New("the root organization's placement records no root project or no state bucket yet (projects.root, stateBucket): bedrock org bootstrap records them")
 	}
 	if root.DirectoryCustomerID == "" {
-		return errors.New("the root organization's placement records no directoryCustomerId: the Google Cloud organization's Cloud Identity customer, recorded with the seed's values (0-bootstrap/README.md, step 3), which the new organization's 1-org names in its domain-restricted sharing policy")
+		return errors.New("the root organization's placement records no directoryCustomerId: the Google Cloud organization's Cloud Identity customer, which bedrock org bootstrap records and the new organization's 1-org names in its domain-restricted sharing policy")
 	}
 	if h.Prefix == root.Prefix {
 		return errors.Newf("prefix %q is the root organization's own; a hosting organization has a prefix of its own", h.Prefix)
@@ -110,15 +110,15 @@ func Fill(root, h *Placement) error {
 		h.SourceRepo = h.Prefix + "-infrastructure"
 	}
 	h.OrganizationDomain, h.OrganizationID, h.DirectoryCustomerID = root.OrganizationDomain, root.OrganizationID, root.DirectoryCustomerID
-	h.GithubOrganization, h.GithubMachineAccount, h.GithubDefaultBranch = root.GithubOrganization, root.GithubMachineAccount, root.GithubDefaultBranch
+	h.GithubOrganization, h.GithubBotAccount, h.GithubDefaultBranch = root.GithubOrganization, root.GithubBotAccount, root.GithubDefaultBranch
 	h.GithubInfrastructureAppID, h.GithubDeployerAppID, h.GithubReleaseAppID = root.GithubInfrastructureAppID, root.GithubDeployerAppID, root.GithubReleaseAppID
 	if h.GithubReleaseAppSlug == "" {
-		h.GithubReleaseAppSlug = root.GithubOrganization + "-release"
+		h.GithubReleaseAppSlug = root.ReleaseAppSlug()
 	}
 	h.CloudBuildInstallationID, h.CloudBuildTokenSecretVersion = root.CloudBuildInstallationID, root.CloudBuildTokenSecretVersion
 	h.BreakGlassAccount = root.BreakGlassAccount
 	h.BedrockVersion, h.BedrockSHA256 = root.BedrockVersion, root.BedrockSHA256
-	h.Root = &RootPlace{Organization: root.Prefix, Project: root.Projects[bootProject]}
+	h.Root = &RootPlace{Organization: root.Prefix, Project: root.Projects[RootProjectKey]}
 	h.CiLargeRunner, h.CiLargeRunnerSize, h.CiLargeRunnerMaximum = "", "", 0
 	if root.TokenSecretRegional() && len(h.Regions) > 0 && h.Regions[0].Name != root.Primary().Name {
 		return errors.Newf("regions names %s first, and the Cloud Build token the root organization recorded is a regional secret in %s: a connection reads a token in its own region, so a hosting organization under this root organization runs in %s first", h.Regions[0].Name, root.Primary().Name, root.Primary().Name)
@@ -215,8 +215,8 @@ func (p *Placement) Pending() []HostingOrganization {
 	return pending
 }
 
-// SecretPolicyAdminRole is the id of the custom role a root organization's 0-bootstrap
-// makes in its boot project (projects/<boot project>/roles/secretPolicyAdmin): a
+// SecretPolicyAdminRole is the id of the custom role a root organization's bootstrap
+// makes in its root project (projects/<root project>/roles/secretPolicyAdmin): a
 // secret's IAM policy and nothing else, which each created hosting organization's boot
 // identity and the creating identity hold on the shared secrets.
 const SecretPolicyAdminRole = "secretPolicyAdmin"
@@ -227,7 +227,7 @@ const SecretPolicyAdminRole = "secretPolicyAdmin"
 func (p *Placement) SharedSecrets() []string {
 	secrets := make([]string, 0, len(Secrets)+1)
 	for _, name := range Secrets {
-		secrets = append(secrets, "projects/"+p.Projects[bootProject]+"/secrets/"+p.SecretContainer(name))
+		secrets = append(secrets, "projects/"+p.Projects[RootProjectKey]+"/secrets/"+p.SecretContainer(name))
 	}
 	if token := p.TokenSecretName(); token != "" {
 		secrets = append(secrets, token)
@@ -238,7 +238,7 @@ func (p *Placement) SharedSecrets() []string {
 
 // BootLayerRoles are the roles the boot layer identity holds on the organization's
 // folder, and nowhere higher: the list 0-bootstrap's var.boot_layer_roles carries, which
-// the hand seed and the creation grant before the layer's first apply. The template's
+// the creation grants before the layer's first apply. The template's
 // list and this one say the same; a test holds them together.
 var BootLayerRoles = []string{
 	"roles/cloudbuild.builds.editor",
@@ -252,7 +252,7 @@ var BootLayerRoles = []string{
 }
 
 // BootProjectRoles are the roles the boot layer identity holds on the boot project alone,
-// 0-bootstrap's var.boot_project_roles, which the hand seed and the creation grant with
+// 0-bootstrap's var.boot_project_roles, which the creation grants with
 // BootLayerRoles: Custom Roles Administrator, for the custom roles the layer makes there,
 // which Google binds on a project or at the organization node and never on a folder.
 var BootProjectRoles = []string{
@@ -270,4 +270,10 @@ func (p *Placement) ProjectLabels(layer, environment string) map[string]string {
 	}
 
 	return labels
+}
+
+// RandomSuffix is four hex characters from the system's randomness: the suffix a root
+// project's id and its bucket's name take at the bootstrap.
+func RandomSuffix() (string, error) {
+	return randomSuffix()
 }

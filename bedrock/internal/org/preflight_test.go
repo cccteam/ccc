@@ -54,15 +54,18 @@ func (*fakeTester) Close() error {
 
 // TestPreflight: one line per bootstrap role, holds or missing with the permissions
 // tested; a missing role fails the check with who grants it where; an API that refuses
-// and a run without credentials say the permissions were not checked, and fail it.
+// and a run without credentials say the permissions were not checked, and fail it; a
+// hosting organization has nothing to check.
 func TestPreflight(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
 		name string
-		// tester is the fake opened; noCredentials makes the open fail instead.
+		// tester is the fake opened; noCredentials makes the open fail instead; hosting
+		// checks a hosting organization's placement.
 		tester        fakeTester
 		noCredentials bool
+		hosting       bool
 		wantOK        bool
 		wantAsked     []string
 		wantOut       []string
@@ -73,20 +76,21 @@ func TestPreflight(t *testing.T) {
 			wantOK:    true,
 			wantAsked: []string{"organizations/123456789012", "billingAccounts/012345-6789AB-CDEF01"},
 			wantOut: []string{
+				"Organization Administrator (roles/resourcemanager.organizationAdmin), on organization 123456789012: holds resourcemanager.organizations.getIamPolicy, resourcemanager.organizations.setIamPolicy\n",
 				"Folder Creator (roles/resourcemanager.folderCreator), on organization 123456789012: holds resourcemanager.folders.create\n",
-				"Billing Account User (roles/billing.user), on billing account 012345-6789AB-CDEF01: holds billing.resourceAssociations.create\n",
-				"These credentials hold every permission the seed and the first applies of 0-bootstrap and 1-org need above the organization's folder (0-bootstrap/README.md, First-time setup).\n",
+				"Billing Account Administrator (roles/billing.admin), on billing account 012345-6789AB-CDEF01: holds billing.accounts.getIamPolicy, billing.accounts.setIamPolicy, billing.resourceAssociations.create\n",
+				"These credentials hold every permission bedrock org bootstrap needs at the organization node and on the billing account (README.md, \"Bootstrapped by one command\").\n",
 			},
 			wantAbsent: []string{"missing"},
 		},
 		{
 			name:      "one permission missing names its role and who grants it",
-			tester:    fakeTester{lacks: []string{"billing.resourceAssociations.create"}},
+			tester:    fakeTester{lacks: []string{"billing.accounts.setIamPolicy"}},
 			wantAsked: []string{"organizations/123456789012", "billingAccounts/012345-6789AB-CDEF01"},
 			wantOut: []string{
 				"Folder Creator (roles/resourcemanager.folderCreator), on organization 123456789012: holds resourcemanager.folders.create\n",
-				"Billing Account User (roles/billing.user), on billing account 012345-6789AB-CDEF01: missing billing.resourceAssociations.create\n",
-				"1 of 2 role(s) missing: the break-glass account (admin@example.com) is granted Billing Account User on billing account 012345-6789AB-CDEF01, by a Billing Account Administrator of it; then run org preflight again with that account's credentials (gcloud auth application-default login).\n",
+				"Billing Account Administrator (roles/billing.admin), on billing account 012345-6789AB-CDEF01: missing billing.accounts.setIamPolicy\n",
+				"1 of 3 role(s) missing: the break-glass account (admin@example.com) is granted Billing Account Administrator on billing account 012345-6789AB-CDEF01, by a Billing Account Administrator of it; then run the command again with that account's credentials (gcloud auth application-default login).\n",
 			},
 			wantAbsent: []string{"These credentials hold every permission", "by someone who administers the organization"},
 		},
@@ -95,9 +99,10 @@ func TestPreflight(t *testing.T) {
 			tester:    fakeTester{lacks: []string{"resourcemanager.folders.create", "billing.resourceAssociations.create"}},
 			wantAsked: []string{"organizations/123456789012", "billingAccounts/012345-6789AB-CDEF01"},
 			wantOut: []string{
+				"Organization Administrator (roles/resourcemanager.organizationAdmin), on organization 123456789012: holds resourcemanager.organizations.getIamPolicy, resourcemanager.organizations.setIamPolicy\n",
 				"Folder Creator (roles/resourcemanager.folderCreator), on organization 123456789012: missing resourcemanager.folders.create\n",
-				"Billing Account User (roles/billing.user), on billing account 012345-6789AB-CDEF01: missing billing.resourceAssociations.create\n",
-				"2 of 2 role(s) missing: the break-glass account (admin@example.com) is granted Folder Creator at organization 123456789012, by someone who administers the organization, and Billing Account User on billing account 012345-6789AB-CDEF01, by a Billing Account Administrator of it; then run org preflight again with that account's credentials (gcloud auth application-default login).\n",
+				"Billing Account Administrator (roles/billing.admin), on billing account 012345-6789AB-CDEF01: missing billing.resourceAssociations.create\n",
+				"2 of 3 role(s) missing: the break-glass account (admin@example.com) is granted Folder Creator at organization 123456789012, by someone who administers the organization, and Billing Account Administrator on billing account 012345-6789AB-CDEF01, by a Billing Account Administrator of it; then run the command again",
 			},
 		},
 		{
@@ -105,7 +110,7 @@ func TestPreflight(t *testing.T) {
 			tester:    fakeTester{orgErr: errors.New("rpc error: code = PermissionDenied desc = Cloud Resource Manager API has not been used in project 0")},
 			wantAsked: []string{"organizations/123456789012"},
 			wantOut: []string{
-				"Permissions not checked (rpc error: code = PermissionDenied desc = Cloud Resource Manager API has not been used in project 0): org preflight asks Google, with the run's Application Default Credentials (gcloud auth application-default login, as the break-glass account), which of the permissions the seed and the first applies of 0-bootstrap and 1-org need above the organization's folder they hold.\n",
+				"Permissions not checked (rpc error: code = PermissionDenied desc = Cloud Resource Manager API has not been used in project 0): the preflight asks Google, with the run's Application Default Credentials (gcloud auth application-default login, as the break-glass account), which of the permissions bedrock org bootstrap needs at the organization node and on the billing account they hold.\n",
 			},
 			wantAbsent: []string{"holds", "missing"},
 		},
@@ -113,21 +118,32 @@ func TestPreflight(t *testing.T) {
 			name:      "the billing account's API refusing: not checked",
 			tester:    fakeTester{billingErr: errors.New("googleapi: Error 403: The caller does not have permission, forbidden")},
 			wantAsked: []string{"organizations/123456789012", "billingAccounts/012345-6789AB-CDEF01"},
-			wantOut:   []string{"Permissions not checked (googleapi: Error 403: The caller does not have permission, forbidden): org preflight asks Google"},
+			wantOut:   []string{"Permissions not checked (googleapi: Error 403: The caller does not have permission, forbidden): the preflight asks Google"},
 		},
 		{
 			name:          "no credentials: not checked, and says how to get them",
 			noCredentials: true,
 			wantOut: []string{
-				"Permissions not checked (google: could not find default credentials): org preflight asks Google, with the run's Application Default Credentials (gcloud auth application-default login, as the break-glass account)",
+				"Permissions not checked (google: could not find default credentials): the preflight asks Google, with the run's Application Default Credentials (gcloud auth application-default login, as the break-glass account)",
 			},
+		},
+		{
+			name:    "a hosting organization has nothing to check: its root organization creates it",
+			hosting: true,
+			wantOut: []string{
+				"Nothing to check: the imp organization is a hosting organization, which its root organization creates from its record as the creating identity; the bootstrap roles are a root organization's break-glass account's to hold.\n",
+			},
+			wantAbsent: []string{"holds", "missing", "Permissions not checked"},
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			p := &Placement{OrganizationID: "123456789012", BillingAccount: "012345-6789AB-CDEF01", BreakGlassAccount: "admin@example.com"}
+			p := &Placement{Prefix: "imr", Kind: RootKind, OrganizationID: "123456789012", BillingAccount: "012345-6789AB-CDEF01", BreakGlassAccount: "admin@example.com"}
+			if tt.hosting {
+				p.Prefix, p.Kind = "imp", ""
+			}
 			var asked []string
 			tester := tt.tester
 			tester.asked = &asked

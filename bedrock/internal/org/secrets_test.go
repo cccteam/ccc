@@ -25,42 +25,42 @@ func TestSecretPlace(t *testing.T) {
 		{
 			name:          "the infrastructure key, in the root organization's boot project",
 			secret:        InfrastructureKey,
-			placement:     Placement{Kind: RootKind, Prefix: "ex", Projects: map[string]string{"boot": "ex-boot-gbl-core-a1b2"}},
-			wantProject:   "ex-boot-gbl-core-a1b2",
-			wantContainer: "ex-boot-gbl-github-infrastructure-key",
+			placement:     Placement{Kind: RootKind, Prefix: "ex", Projects: map[string]string{"root": "ex-root-gbl-core-a1b2"}},
+			wantProject:   "ex-root-gbl-core-a1b2",
+			wantContainer: "ex-root-gbl-github-infrastructure-key",
 		},
 		{
 			name:          "the deployer key",
 			secret:        DeployerKey,
-			placement:     Placement{Kind: RootKind, Prefix: "ex", Projects: map[string]string{"boot": "ex-boot-gbl-core-a1b2"}},
-			wantProject:   "ex-boot-gbl-core-a1b2",
-			wantContainer: "ex-boot-gbl-github-deployer-key",
+			placement:     Placement{Kind: RootKind, Prefix: "ex", Projects: map[string]string{"root": "ex-root-gbl-core-a1b2"}},
+			wantProject:   "ex-root-gbl-core-a1b2",
+			wantContainer: "ex-root-gbl-github-deployer-key",
 		},
 		{
 			name:          "the release key",
 			secret:        ReleaseKey,
-			placement:     Placement{Kind: RootKind, Prefix: "ex", Projects: map[string]string{"boot": "ex-boot-gbl-core-a1b2"}},
-			wantProject:   "ex-boot-gbl-core-a1b2",
-			wantContainer: "ex-boot-gbl-github-release-key",
+			placement:     Placement{Kind: RootKind, Prefix: "ex", Projects: map[string]string{"root": "ex-root-gbl-core-a1b2"}},
+			wantProject:   "ex-root-gbl-core-a1b2",
+			wantContainer: "ex-root-gbl-github-release-key",
 		},
 		{
 			name:          "a hosting organization names the root organization's",
 			secret:        DeployerKey,
-			placement:     Placement{Prefix: "hs", Projects: map[string]string{"boot": "hs-boot-gbl-core-1111"}, Root: &RootPlace{Organization: "ex", Project: "ex-boot-gbl-core-a1b2"}},
-			wantProject:   "ex-boot-gbl-core-a1b2",
-			wantContainer: "ex-boot-gbl-github-deployer-key",
+			placement:     Placement{Prefix: "hs", Projects: map[string]string{"boot": "hs-boot-gbl-core-1111"}, Root: &RootPlace{Organization: "ex", Project: "ex-root-gbl-core-a1b2"}},
+			wantProject:   "ex-root-gbl-core-a1b2",
+			wantContainer: "ex-root-gbl-github-deployer-key",
 		},
 		{
 			name:      "the boot project not recorded yet",
 			secret:    InfrastructureKey,
 			placement: Placement{Kind: RootKind, Prefix: "ex"},
-			wantErr:   "placement.json records no project for boot (projects.boot): record the seed's value there, or pass --project",
+			wantErr:   "placement.json records no root project (projects.root): bedrock org bootstrap records it, or pass --project",
 		},
 		{
 			name:      "a hosting organization without keys",
 			secret:    DeployerKey,
 			placement: Placement{Prefix: "hs", Projects: map[string]string{"boot": "hs-boot-gbl-core-1111"}},
-			wantErr:   "placement.json records no project for boot (projects.boot)",
+			wantErr:   "placement.json names no root organization (root)",
 		},
 	}
 	for _, tt := range tests {
@@ -94,17 +94,17 @@ func TestSecretPlace(t *testing.T) {
 func TestSecretVersionNames(t *testing.T) {
 	t.Parallel()
 
-	const rootProject = "projects/ex-boot-gbl-core-a1b2/secrets/ex-boot-gbl-github-"
+	const rootProject = "projects/ex-root-gbl-core-a1b2/secrets/ex-root-gbl-github-"
 	tests := []struct {
 		name      string
 		placement Placement
 		want      string
 		release   string
 	}{
-		{name: "a root organization, nothing pinned", placement: Placement{Kind: RootKind, Prefix: "ex", Projects: map[string]string{"boot": "ex-boot-gbl-core-a1b2"}}, want: rootProject + "infrastructure-key/versions/current|" + rootProject + "deployer-key/versions/current", release: rootProject + "release-key/versions/current"},
-		{name: "a root organization, versions pinned: the alias all the same", placement: Placement{Kind: RootKind, Prefix: "ex", Projects: map[string]string{"boot": "ex-boot-gbl-core-a1b2"}, GithubInfrastructureKeyVersion: "2", GithubDeployerKeyVersion: "1", GithubReleaseKeyVersion: "3"}, want: rootProject + "infrastructure-key/versions/current|" + rootProject + "deployer-key/versions/current", release: rootProject + "release-key/versions/current"},
+		{name: "a root organization, nothing pinned", placement: Placement{Kind: RootKind, Prefix: "ex", Projects: map[string]string{"root": "ex-root-gbl-core-a1b2"}}, want: rootProject + "infrastructure-key/versions/current|" + rootProject + "deployer-key/versions/current", release: rootProject + "release-key/versions/current"},
+		{name: "a root organization, versions pinned: the alias all the same", placement: Placement{Kind: RootKind, Prefix: "ex", Projects: map[string]string{"root": "ex-root-gbl-core-a1b2"}, GithubInfrastructureKeyVersion: "2", GithubDeployerKeyVersion: "1", GithubReleaseKeyVersion: "3"}, want: rootProject + "infrastructure-key/versions/current|" + rootProject + "deployer-key/versions/current", release: rootProject + "release-key/versions/current"},
 		{name: "a root organization before its boot project is recorded", placement: Placement{Kind: RootKind, Prefix: "ex", GithubInfrastructureKeyVersion: "2"}, want: "|"},
-		{name: "a hosting organization names the root organization's", placement: Placement{Prefix: "hs", Projects: map[string]string{"boot": "hs-boot-gbl-core-1111"}, Root: &RootPlace{Organization: "ex", Project: "ex-boot-gbl-core-a1b2"}}, want: rootProject + "infrastructure-key/versions/current|" + rootProject + "deployer-key/versions/current", release: rootProject + "release-key/versions/current"},
+		{name: "a hosting organization names the root organization's", placement: Placement{Prefix: "hs", Projects: map[string]string{"boot": "hs-boot-gbl-core-1111"}, Root: &RootPlace{Organization: "ex", Project: "ex-root-gbl-core-a1b2"}}, want: rootProject + "infrastructure-key/versions/current|" + rootProject + "deployer-key/versions/current", release: rootProject + "release-key/versions/current"},
 		{name: "a hosting organization without keys", placement: Placement{Prefix: "hs", Projects: map[string]string{"boot": "hs-boot-gbl-core-1111"}}, want: "|"},
 	}
 	for _, tt := range tests {
@@ -122,37 +122,14 @@ func TestSecretVersionNames(t *testing.T) {
 	}
 }
 
-// TestKeyAliasHCL: the alias rendered on a root organization's secret, at the version
-// pinned, or an empty map before any pin; and the key operators as an HCL set.
-func TestKeyAliasHCL(t *testing.T) {
-	t.Parallel()
-
-	p := Placement{Kind: RootKind, Prefix: "ex", GithubDeployerKeyVersion: "7", KeyOperators: []string{"group:keys@ex.example", "user:op@ex.example"}}
-	if got := p.KeyAliasHCL(DeployerKey); got != `{ current = "7" }` {
-		t.Errorf("KeyAliasHCL(deployer) = %q", got)
-	}
-	if got := p.KeyAliasHCL(ReleaseKey); got != "{}" {
-		t.Errorf("KeyAliasHCL(release) = %q, want {}", got)
-	}
-	if got := p.KeyOperatorsHCL(); got != `toset(["group:keys@ex.example", "user:op@ex.example"])` {
-		t.Errorf("KeyOperatorsHCL() = %q", got)
-	}
-	if got := (&Placement{Kind: RootKind}).KeyOperatorsHCL(); got != "toset([])" {
-		t.Errorf("KeyOperatorsHCL() with none = %q", got)
-	}
-	if got := (HostingOrganization{Prefix: "hs", BootProject: "hs-boot-gbl-core-1111"}).BootIdentityMember(); got != "serviceAccount:hs-boot-gbl-tofu@hs-boot-gbl-core-1111.iam.gserviceaccount.com" {
-		t.Errorf("BootIdentityMember() = %q", got)
-	}
-}
-
 // TestKeysElsewhere: a hosting organization is sent to the root organization that holds
 // the keys; a root organization is not.
 func TestKeysElsewhere(t *testing.T) {
 	t.Parallel()
 
-	hosting := Placement{Prefix: "hs", Root: &RootPlace{Organization: "ex", Project: "ex-boot-gbl-core-a1b2"}}
+	hosting := Placement{Prefix: "hs", Root: &RootPlace{Organization: "ex", Project: "ex-root-gbl-core-a1b2"}}
 	err := hosting.KeysElsewhere()
-	want := "the GitHub Apps' keys live in the root organization ex (root.organization in placement.json), in its boot project ex-boot-gbl-core-a1b2: add, check and pin a key in that organization's infrastructure repository; this organization reads each secret's alias current, which that organization's placement pins"
+	want := "the GitHub Apps' keys live in the root organization ex (root.organization in placement.json), in its root project ex-root-gbl-core-a1b2: add, check and pin a key in that organization's infrastructure repository; this organization reads each secret's alias current, which that organization's placement pins"
 	if err == nil || !strings.Contains(err.Error(), want) {
 		t.Errorf("KeysElsewhere() = %v, want %q", err, want)
 	}

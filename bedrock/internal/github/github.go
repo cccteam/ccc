@@ -26,8 +26,8 @@ import (
 const (
 	// DefaultBase is the public API host.
 	DefaultBase = "https://api.github.com"
-	// tokenEnv is the variable a token is read from before gh is asked.
-	tokenEnv = "GITHUB_TOKEN"
+	// TokenEnv is the variable a token is read from before gh is asked.
+	TokenEnv = "GITHUB_TOKEN"
 	// apiVersion pins the REST API's shape.
 	apiVersion = "2022-11-28"
 	// maxBody bounds what one answer may carry.
@@ -60,8 +60,9 @@ type WaitFunc func(ctx context.Context, d time.Duration) error
 // ClientFunc opens the client: the CLI wires Open, tests a client over a test server.
 type ClientFunc func(ctx context.Context) (*Client, error)
 
-// New is a client over the API at base, authenticated with the token. It carries a
-// transport of its own, a copy of the default one, so nothing that closes the default
+// New is a client over the API at base, authenticated with the token; with none (""),
+// its requests carry no credential, which the conversion of an app manifest alone takes
+// (ConvertManifest). It carries a transport of its own, a copy of the default one, so nothing that closes the default
 // transport's idle connections (a test server's close does) touches a request of its
 // in flight.
 func New(base, token string) *Client {
@@ -103,13 +104,13 @@ type TokenFunc func(ctx context.Context) (string, error)
 // Token is the token the account has: GITHUB_TOKEN when set, else the token gh holds for
 // its signed-in account. With neither it refuses.
 func Token(ctx context.Context) (string, error) {
-	if token := os.Getenv(tokenEnv); token != "" {
+	if token := os.Getenv(TokenEnv); token != "" {
 		return token, nil
 	}
 	out, err := exec.CommandContext(ctx, "gh", "auth", "token").Output()
 	token := strings.TrimSpace(string(out))
 	if err != nil || token == "" {
-		return "", errors.Newf("no GitHub token: set %s, or sign in with gh (gh auth login) so that gh auth token prints one", tokenEnv)
+		return "", errors.Newf("no GitHub token: set %s, or sign in with gh (gh auth login) so that gh auth token prints one", TokenEnv)
 	}
 
 	return token, nil
@@ -177,7 +178,9 @@ func (c *Client) send(ctx context.Context, method, path string, data []byte, has
 	if err != nil {
 		return errors.Wrap(err, "http.NewRequestWithContext()")
 	}
-	req.Header.Set("Authorization", "Bearer "+c.token)
+	if c.token != "" {
+		req.Header.Set("Authorization", "Bearer "+c.token)
+	}
 	req.Header.Set("Accept", "application/vnd.github+json")
 	req.Header.Set("X-GitHub-Api-Version", apiVersion)
 	if hasBody {

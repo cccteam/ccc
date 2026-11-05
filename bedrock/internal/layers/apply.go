@@ -49,7 +49,7 @@ func Apply(ctx context.Context, clients *Clients, req *Request, out io.Writer) e
 	if len(runs) == 0 {
 		fmt.Fprintln(out, "No layer changes since the last applies: nothing to apply.")
 
-		return r.createAll(ctx, store)
+		return nil
 	}
 	if err := r.recorded(runs); err != nil {
 		return err
@@ -60,7 +60,7 @@ func Apply(ctx context.Context, clients *Clients, req *Request, out io.Writer) e
 	}
 	defer closeAll(tofus)
 	for i, lr := range runs {
-		if lr.Layer == r.p.SecondLayer() {
+		if lr.Layer == orgLayer {
 			// Minted here, once the layers before it have applied: the first apply of
 			// 0-bootstrap sets the key's alias the token is minted from, so a token
 			// minted before the applies would refuse an organization's first run.
@@ -75,7 +75,7 @@ func Apply(ctx context.Context, clients *Clients, req *Request, out io.Writer) e
 		}
 	}
 
-	return r.createAll(ctx, store)
+	return nil
 }
 
 // initialized initializes every run, in order, as its apply identity, before any

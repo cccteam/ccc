@@ -9,7 +9,11 @@
 
 package org
 
-import "strings"
+import (
+	"strings"
+
+	"github.com/cccteam/ccc/bedrock/internal/release"
+)
 
 // The images the steps run in: gcloud's (bash, curl and python3), the Go image a commit
 // pin is built in, pinned at the digest the application pipeline builds with, and the
@@ -161,4 +165,75 @@ func stepScript(script string) string {
 	}
 
 	return strings.Join(lines, "\n")
+}
+
+// TriggerStep is one step of the triggers' builds, as the root organization's apply
+// makes a trigger from it and as 0-bootstrap's render writes it (cloud-build.tf).
+type TriggerStep struct {
+	ID             string
+	Image          string
+	Entrypoint     string
+	Args           []string
+	Env            []string
+	TimeoutSeconds int
+}
+
+// The two commands the triggers end in, and the environment they read the build from.
+const (
+	PlanCommand  = "plan"
+	ApplyCommand = "apply"
+)
+
+// runEnv is the environment the plan and apply steps read their build from.
+var runEnv = []string{"BUILD_ID=$BUILD_ID", "PROJECT_ID=$PROJECT_ID", "LOCATION=$LOCATION"}
+
+// TriggerSteps are the steps of the trigger that ends in the command (plan or apply):
+// FetchBedrock, which puts the pinned bedrock in place from placement.json at run time
+// (and BuildBedrock after it for a commit pin), Check, and the command's own step.
+func (p *Placement) TriggerSteps(command string) []TriggerStep {
+	steps := []TriggerStep{{
+		ID: "FetchBedrock", Image: gcloudImage, Entrypoint: "python3",
+		Args:           []string{"-c", fetchBedrockScript, bedrockHome, "https://github.com", release.CloneURL()},
+		Env:            []string{stepsEnv + "=" + StepsShape(p)},
+		TimeoutSeconds: fetchSeconds,
+	}}
+	if release.IsCommitPin(p.BedrockVersion) {
+		steps = append(steps, TriggerStep{
+			ID: "BuildBedrock", Image: goImage, Entrypoint: "sh", Args: []string{"-c", buildBedrockScript},
+			Env: append([]string{"GOBIN=" + bedrockHome}, goInstallEnv...), TimeoutSeconds: buildSeconds,
+		})
+	}
+	steps = append(steps, TriggerStep{ID: "Check", Image: openTofuImage, Entrypoint: bedrockPath, Args: []string{"org", "check"}, Env: []string{}, TimeoutSeconds: checkSeconds})
+	seconds := planSeconds
+	if command == ApplyCommand {
+		seconds = applySeconds
+	}
+
+	return append(steps, TriggerStep{ID: commandStepID(command), Image: openTofuImage, Entrypoint: bedrockPath, Args: []string{"org", command}, Env: runEnv, TimeoutSeconds: seconds})
+}
+
+// commandStepID names the last step after its command (Plan, Apply).
+func commandStepID(command string) string {
+	return strings.ToUpper(command[:1]) + command[1:]
+}
+
+// TriggerBuildTimeoutSeconds is the whole build's timeout for the trigger that ends in
+// the command: the sum of its steps' timeouts.
+func (p *Placement) TriggerBuildTimeoutSeconds(command string) int {
+	total := 0
+	for _, step := range p.TriggerSteps(command) {
+		total += step.TimeoutSeconds
+	}
+	if !release.IsCommitPin(p.BedrockVersion) {
+		total += buildSeconds
+	}
+
+	return total
+}
+
+// TriggerSubstitutions are the substitutions both triggers carry: the shape of their
+// steps, which bedrock org plan and apply compare with their own; a hosting
+// organization's triggers add _LAYER and _ENVIRONMENT (cloud-build.tf).
+func (p *Placement) TriggerSubstitutions() map[string]string {
+	return map[string]string{"_BEDROCK_STEPS": StepsShape(p)}
 }

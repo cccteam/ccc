@@ -553,6 +553,12 @@ func resumeLeftPaused(ctx context.Context, clients *Clients, queue, version stri
 	return nil
 }
 
+// Sleep is the real waiting: it returns when the duration has passed, or the context's
+// error when that ends first.
+func Sleep(ctx context.Context, d time.Duration) error {
+	return sleepFor(ctx, d)
+}
+
 // sleep is the clients' waiting, the real one when none is set.
 func (c *Clients) sleep() SleepFunc {
 	if c.Sleep != nil {

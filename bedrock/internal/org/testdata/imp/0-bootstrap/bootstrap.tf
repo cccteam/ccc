@@ -24,9 +24,8 @@ locals {
 # Seeded resources
 #
 # The folder, project, and boot service account below already exist. They are
-# made by the root organization's creation, as the hand seed makes
-# them for a root organization, because this layer
-# cannot create the identity it will later run as. They are adopted here so
+# made by the root organization's creation, because this layer cannot create
+# the identity it will later run as. They are adopted here so
 # that from the first run onward they are ordinary managed resources rather
 # than undocumented console state. The README says what the creation made.
 #

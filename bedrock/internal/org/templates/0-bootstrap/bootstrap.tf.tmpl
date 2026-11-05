@@ -8,7 +8,7 @@ locals {
   # A layer is one directory of this repository, applied as one identity. Layer
   # names follow {prefix}-{environment}-gbl; their service accounts add -tofu.
   boot_layer_name = "${var.prefix}-boot-gbl"
-  org_layer_name  = "${var.prefix}-{{.SecondIdentity}}-gbl"
+  org_layer_name  = "${var.prefix}-org-gbl"
 
 {{.LabelsBlockQuoted "0-bootstrap" "boot"}}
 }
@@ -17,11 +17,10 @@ locals {
 # Seeded resources
 #
 # The folder, project, and boot service account below already exist. They are
-# {{if .IsRoot}}created by hand with gcloud during first-time setup{{else}}made by the root organization's creation, as the hand seed makes
-# them for a root organization{{end}}, because this layer
-# cannot create the identity it will later run as. They are adopted here so
+# made by the root organization's creation, because this layer cannot create
+# the identity it will later run as. They are adopted here so
 # that from the first run onward they are ordinary managed resources rather
-# than undocumented console state. {{if .IsRoot}}The commands are in this layer's README.{{else}}The README says what the creation made.{{end}}
+# than undocumented console state. The README says what the creation made.
 #
 # The state bucket is seeded too, and is the one seeded resource deliberately
 # left outside OpenTofu: this layer's own state lives in it, and a stack that
@@ -32,22 +31,15 @@ locals {
 # Everything else in this layer is created normally.
 # ---------------------------------------------------------------------------
 
-{{- if .IsRoot}}
-
-# The terraform folder holds nothing but the automation plane. A root
-# organization makes no other folder: its zones live in the boot project.
-{{- else}}
-
 # The terraform folder sits alongside the environment folders created by 1-org
 # and holds nothing but the automation plane. Keeping it out of the environment
 # hierarchy means an environment folder can be reorganized without touching the
 # identity that provisions it, and the org policies 1-org applies to the
 # environment folders never reach the identities that manage them.
-{{- end}}
 
 # The organization's folder, named after its prefix, holds everything the
-# layers make under the GCP organization: the terraform folder here{{if not .IsRoot}}, the
-# environment folders 1-org creates{{end}}. Sibling folders must differ in name, so
+# layers make under the GCP organization: the terraform folder here, the
+# environment folders 1-org creates. Sibling folders must differ in name, so
 # two bedrock organizations in one GCP organization each keep their own tree.
 # It is also the whole of this organization's reach: every role a layer
 # identity holds is granted on this folder, none at the organization node, so
@@ -78,9 +70,8 @@ import {
 
 # The boot project hosts the layer identities, the state bucket, the Cloud
 # Build connection and triggers that plan and apply the layers (cloud-build.tf),
-# {{if .IsRoot}}the three GitHub Apps' keys for every organization (github.tf), and the zones 1-dns makes, its one
-# downstream layer, which it is the quota and billing project for{{else}}acts as the quota and billing
-# project for every downstream layer{{end}}.
+# acts as the quota and billing
+# project for every downstream layer.
 #
 # random_project_id is off and the ID comes from a variable: the project already
 # exists with a suffix the seed script chose, and the module would otherwise
@@ -109,21 +100,6 @@ module "boot_project" {
   disable_services_on_destroy = !var.destroy
   deletion_policy             = var.destroy ? "DELETE" : "PREVENT"
   labels                      = local.labels
-
-{{- if .IsRoot}}
-
-  activate_apis = [
-    "cloudbuild.googleapis.com",           # the connection and the triggers that plan and apply the layers (cloud-build.tf)
-    "cloudresourcemanager.googleapis.com", # folders, IAM
-    "dns.googleapis.com",                  # the zones 1-dns makes here
-    "iam.googleapis.com",                  # service accounts
-    "iamcredentials.googleapis.com",       # the short-lived tokens a trigger's run impersonates a layer identity with
-    "logging.googleapis.com",              # the triggers' build logs
-    "secretmanager.googleapis.com",        # {{if .IsRoot}}the three GitHub Apps' key secrets (github.tf){{else}}the Cloud Build token secret (cloud-build.tf){{end}}
-    "serviceusage.googleapis.com",         # API enablement
-    "storage.googleapis.com",              # the state bucket
-  ]
-{{- else}}
 
   activate_apis = [
     "cloudbilling.googleapis.com",            # link the billing account to projects created by 1-org
@@ -155,7 +131,6 @@ module "boot_project" {
     "secretmanager.googleapis.com",
     "spanner.googleapis.com",
   ]
-{{- end}}
 }
 
 import {
@@ -164,7 +139,7 @@ import {
 }
 
 # The identity this layer runs as through the apply trigger, after the
-# {{if .IsRoot}}break-glass account's{{else}}creating identity's{{end}} first apply (cloud-build.tf). The seed{{if .IsRoot}} script{{end}}
+# creating identity's first apply (cloud-build.tf). The seed
 # creates it; it is adopted rather than recreated, because destroying it
 # mid-run would cut off the run doing the destroying.
 resource "google_service_account" "boot_tofu" {
@@ -218,17 +193,6 @@ resource "google_billing_account_iam_member" "boot_tofu" {
   member             = google_service_account.boot_tofu.member
 }
 
-{{- if .IsRoot}}
-
-# ---------------------------------------------------------------------------
-# DNS layer identity
-#
-# 1-dns makes the zones in this project and rules this repository's default
-# branch on GitHub, nothing else: its identity administers Cloud DNS in this
-# project and holds no role at the organization node.
-# ---------------------------------------------------------------------------
-{{- else}}
-
 # ---------------------------------------------------------------------------
 # Org layer identity
 #
@@ -237,55 +201,13 @@ resource "google_billing_account_iam_member" "boot_tofu" {
 # because the projects they act on do not exist yet, and nowhere higher: the
 # folder is the whole of this organization's reach.
 # ---------------------------------------------------------------------------
-{{- end}}
 
 resource "google_service_account" "org_tofu" {
   project      = module.boot_project.project_id
-  account_id   = "${var.prefix}-{{.SecondIdentity}}-gbl-tofu"
+  account_id   = "${var.prefix}-org-gbl-tofu"
   display_name = "OpenTofu SA - ${local.org_layer_name}"
-  description  = "Layer identity for ${local.org_layer_name}. Applies the {{.SecondLayer}} layer from the infrastructure repository's apply trigger."
+  description  = "Layer identity for ${local.org_layer_name}. Applies the 1-org layer from the infrastructure repository's apply trigger."
 }
-{{- if .IsRoot}}
-
-resource "google_project_iam_member" "org_tofu_dns" {
-  project = module.boot_project.project_id
-  role    = "roles/dns.admin"
-  member  = google_service_account.org_tofu.member
-}
-
-# ---------------------------------------------------------------------------
-# The creating identity
-#
-# bedrock org apply, in the apply trigger's run, creates each hosting
-# organization placement.json records without a folder yet (README,
-# "Creating a hosting organization") as this identity: it creates the
-# organization's folder at the organization node and the foundation under it,
-# applies that organization's 0-bootstrap the first time, pushes the rendered
-# repository, and takes its own creator grants off, so that nothing of it
-# stays under the new folder. For that it holds, granted by hand once by the
-# administrators (README, "The creating identity's grants"): Folder Creator at
-# the organization node and Billing Account User on the billing account, the
-# two roles the break-glass account held for the seed; here, the four shared
-# secrets' policy administration (github.tf), to grant the new organization's
-# identities their reads. Nothing else, and nothing on a folder it created
-# once the creation is handed off.
-# ---------------------------------------------------------------------------
-
-resource "google_service_account" "create_tofu" {
-  project      = module.boot_project.project_id
-  account_id   = "${var.prefix}-create-gbl-tofu"
-  display_name = "Creation SA - ${var.prefix}-create-gbl"
-  description  = "Creating identity for ${var.prefix}. Creates a hosting organization from the infrastructure repository's apply trigger: the folder at the organization node, the foundation under it, the first apply of its 0-bootstrap, and the hand-off."
-}
-
-# A pull request plans 1-dns as its plan identity, which reads the zones and
-# their record sets: Cloud DNS's read, on this project alone.
-resource "google_project_iam_member" "dns_plan" {
-  project = module.boot_project.project_id
-  role    = "roles/dns.reader"
-  member  = google_service_account.boot_plan["dns"].member
-}
-{{- else}}
 
 resource "google_folder_iam_member" "org_tofu" {
   # checkov:skip=CKV_GCP_44: iam.serviceAccountAdmin is granted on the organization's folder because 1-org creates service accounts inside projects that do not exist at bootstrap time, so project-level scoping is not possible. The identity has no keys and runs only from the infrastructure repository's apply trigger, on its default branch.
@@ -295,12 +217,11 @@ resource "google_folder_iam_member" "org_tofu" {
   role   = each.value
   member = google_service_account.org_tofu.member
 }
-{{- end}}
 
 # ---------------------------------------------------------------------------
 # The two boot layers' plan identities
 #
-# A pull request plans this layer and {{.SecondLayer}} as read-only identities of their
+# A pull request plans this layer and 1-org as read-only identities of their
 # own, in the boot project beside the apply identities: a plan as an apply
 # identity would run a pull request's code with the power to apply. They are
 # this layer's to make, with the apply identities, and their reads on the
@@ -309,15 +230,11 @@ resource "google_folder_iam_member" "org_tofu" {
 # ---------------------------------------------------------------------------
 
 locals {
-  # The two plan identities, named after their layers (boot, {{.SecondIdentity}}), with the
+  # The two plan identities, named after their layers (boot, org), with the
   # state prefixes each one reads (state-bucket.tf).
   boot_plans = {
     boot = { layer = "0-bootstrap", reads = ["0-bootstrap"] }
-{{- if .IsRoot}}
-    dns  = { layer = "1-dns", reads = ["1-dns"] }
-{{- else}}
     org  = { layer = "1-org", reads = ["0-bootstrap", "1-org"] }
-{{- end}}
   }
 }
 
@@ -358,10 +275,9 @@ resource "google_project_iam_member" "boot_plan_quota" {
 # that needs it, nothing at the organization node, whose names are shared by
 # every organization under it and held after a delete). The boot identity
 # manages the boot project's labels and metadata through the project module
-# when this layer runs through the apply trigger; the {{if .IsRoot}}break-glass account's
-# Owner covered the first apply.{{else}}creating identity's
+# when this layer runs through the apply trigger; the creating identity's
 # Owner covered the first apply. 1-org makes the same role in each project
-# it creates, for the org layer identity.{{end}}
+# it creates, for the org layer identity.
 resource "google_project_iam_custom_role" "project_updater" {
   project     = module.boot_project.project_id
   role_id     = "projectUpdater"
@@ -375,8 +291,6 @@ resource "google_project_iam_member" "boot_tofu_project_updater" {
   role    = google_project_iam_custom_role.project_updater.id
   member  = google_service_account.boot_tofu.member
 }
-
-{{- if not .IsRoot}}
 
 # 1-org declares on this project each environment's layer state entitlement:
 # the environment layer identity's slot in the state bucket and this project as
@@ -407,4 +321,3 @@ resource "google_billing_account_iam_member" "org_tofu" {
   role               = "roles/billing.user"
   member             = google_service_account.org_tofu.member
 }
-{{- end}}

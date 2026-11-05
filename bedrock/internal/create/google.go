@@ -1,7 +1,7 @@
 // google.go is the creation's seam to Google Cloud: what the creating identity makes
 // and grants under the new organization's folder (Cloud Resource Manager, Cloud
 // Billing, Service Usage, IAM, Cloud Storage) and the shared secrets' policies in the
-// root organization's boot project (Secret Manager), each as the creating identity
+// root organization's root project (Secret Manager), each as the creating identity
 // (impersonated by the apply trigger's runner), or a fake in tests.
 
 package create
@@ -9,6 +9,7 @@ package create
 import (
 	"context"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -57,6 +58,9 @@ type Google interface {
 	RevokeProject(ctx context.Context, id, member string, roles []string) error
 	// LinkBilling links the project to the billing account.
 	LinkBilling(ctx context.Context, id, billingAccount string) error
+	// GrantBillingAccount adds the member to the role on the billing account's policy; a
+	// member already in the role is left as it is.
+	GrantBillingAccount(ctx context.Context, billingAccount, role, member string) error
 	// EnableServices enables the APIs in the project and waits for them.
 	EnableServices(ctx context.Context, id string, services []string) error
 	// ServiceAccountExists reports whether the service account (by email) exists.
@@ -101,10 +105,12 @@ func NewGoogleAs(ctx context.Context, identity string) (Google, error) {
 		return nil, errors.Wrapf(err, "impersonate.CredentialsTokenSource(): %s", identity)
 	}
 
-	return newGoogle(ctx, option.WithTokenSource(source))
+	return NewGoogle(ctx, option.WithTokenSource(source))
 }
 
-func newGoogle(ctx context.Context, opts ...option.ClientOption) (Google, error) {
+// NewGoogle opens the Google clients with the process's default credentials, or with the
+// options given (a token source); the root organization's engine builds on it.
+func NewGoogle(ctx context.Context, opts ...option.ClientOption) (Google, error) {
 	g := &google{opts: opts, regional: map[string]*secretmanager.Client{}}
 	var err error
 	if g.folders, err = resourcemanager.NewFoldersClient(ctx, opts...); err != nil {
@@ -305,6 +311,32 @@ func (g *google) ProjectNumber(ctx context.Context, id string) (string, error) {
 	}
 
 	return strings.TrimPrefix(project.GetName(), "projects/"), nil
+}
+
+func (g *google) GrantBillingAccount(ctx context.Context, billingAccount, role, member string) error {
+	resource := "billingAccounts/" + billingAccount
+	p, err := g.billing.BillingAccounts.GetIamPolicy(resource).Context(ctx).Do()
+	if err != nil {
+		return errors.Wrapf(err, "cloudbilling.BillingAccounts.GetIamPolicy(): %s", billingAccount)
+	}
+	added := false
+	for _, b := range p.Bindings {
+		if b.Role == role && b.Condition == nil {
+			if slices.Contains(b.Members, member) {
+				return nil
+			}
+			b.Members = append(b.Members, member)
+			added = true
+		}
+	}
+	if !added {
+		p.Bindings = append(p.Bindings, &cloudbilling.Binding{Role: role, Members: []string{member}})
+	}
+	if _, err := g.billing.BillingAccounts.SetIamPolicy(resource, &cloudbilling.SetIamPolicyRequest{Policy: p}).Context(ctx).Do(); err != nil {
+		return errors.Wrapf(err, "cloudbilling.BillingAccounts.SetIamPolicy(): %s", billingAccount)
+	}
+
+	return nil
 }
 
 func (g *google) LinkBilling(ctx context.Context, id, billingAccount string) error {

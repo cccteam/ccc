@@ -1,7 +1,7 @@
 // orgsecrets.go is bedrock org secrets, the root organization's commands on the GitHub
 // Apps' keys it holds for every organization: check, which proves a version of a key with
 // GitHub before bedrock secret pin and the pull request's apply move the alias to it
-// (0-bootstrap/README.md, "Rotating a GitHub App's key").
+// (README.md, "The GitHub Apps' keys").
 
 package cli
 
@@ -21,7 +21,7 @@ func newOrgSecrets(d deps) *cobra.Command {
 		Short: "The GitHub Apps' keys a root organization holds for every organization",
 		Long: `secrets is the root organization's view of the three secrets it holds for every
 organization in the Google Cloud organization: the infrastructure, deployer and release GitHub
-Apps' private keys, one secret per app in its boot project, each read through its alias
+Apps' private keys, one secret per app in its root project, each read through its alias
 current by every pipeline in every organization. A key is added as a version with bedrock
 secret add, proven with secrets check, and pinned with bedrock secret pin, whose pull request's
 apply moves the alias.`,

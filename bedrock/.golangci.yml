@@ -129,6 +129,14 @@ linters:
             - google.golang.org/api/dns/v1
             - google.golang.org/api/googleapi
             - golang.org/x/net/publicsuffix
+            # The root organization's engine makes the Cloud Build connection and the
+            # repository link through the v2 REST client and the triggers through v1; a
+            # bucket grant's condition is the IAM expression type, and a trigger's or a
+            # custom role's update names its fields with a field mask.
+            - google.golang.org/api/cloudbuild/v1
+            - google.golang.org/api/cloudbuild/v2
+            - google.golang.org/genproto/googleapis/type/expr
+            - google.golang.org/protobuf/types/known/fieldmaskpb
     exhaustive:
       default-signifies-exhaustive: true
     funlen:

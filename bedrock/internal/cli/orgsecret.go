@@ -1,7 +1,7 @@
 // orgsecret.go is the organization form of secret add and pin: run in the root
 // organization's infrastructure repository, they take one of the three secrets it holds
 // for every organization (the infrastructure, deployer and release GitHub Apps' private
-// keys, in its boot project) in place of an application's environment and variable. A
+// keys, in its root project) in place of an application's environment and variable. A
 // hosting organization's repository refuses both, naming the root organization.
 
 package cli
@@ -127,7 +127,7 @@ func tooManyOrgArgs(args []string, name, use string, want int) error {
 		return nil
 	}
 
-	return errors.Newf("%s lives in the boot project and takes no environment: %s (given %s)", name, use, strings.Join(args, " "))
+	return errors.Newf("%s lives in the root project and takes no environment: %s (given %s)", name, use, strings.Join(args, " "))
 }
 
 // orgSecretPlace is the secret's project and container: --project and --container as

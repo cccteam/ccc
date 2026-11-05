@@ -1,4 +1,4 @@
-// leftovers.go lists the grants the first-time setup leaves a person with and which are
+// leftovers.go lists the grants a hand apply leaves a person with and which are
 // removed by hand once the apply trigger applies the layers: Owner on each project it
 // created, which Google gives a project's creator; Folder Admin and Folder Editor on each
 // folder it created, which Google gives a folder's creator; and the roles the seed grants
@@ -81,7 +81,7 @@ type PolicyReader interface {
 // PolicyReaderFunc opens a PolicyReader.
 type PolicyReaderFunc func(ctx context.Context) (PolicyReader, error)
 
-// Leftover is one grant a person still holds from the first-time setup.
+// Leftover is one grant a person still holds from a hand apply.
 type Leftover struct {
 	// On is where the grant sits: a project or a folder.
 	On string
@@ -96,7 +96,7 @@ type Leftover struct {
 	Role string
 	// Outside says the member is a principal outside the organization, on its folder:
 	// not the break-glass account, not an identity in one of the organization's
-	// projects. The other leftovers are a person's, from the first-time setup.
+	// projects. The other leftovers are a person's, from a hand apply.
 	Outside bool
 }
 

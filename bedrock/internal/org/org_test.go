@@ -87,7 +87,7 @@ func TestPlacementValidate(t *testing.T) {
 	}{
 		{name: "the fixture", mutate: func(*Placement) {}},
 		{name: "the hosting kind named", mutate: func(p *Placement) { p.Kind = HostingKind }},
-		{name: "a kind that is neither", mutate: func(p *Placement) { p.Kind = "edge" }, wantErr: `kind "edge" is not one of hosting, root: a hosting organization holds applications in its environments (the default, left out), a root organization holds DNS zones alone`},
+		{name: "a kind that is neither", mutate: func(p *Placement) { p.Kind = "edge" }, wantErr: `kind "edge" is not one of hosting, root: a hosting organization holds applications in its environments (the default, left out), a root organization holds the GitHub Apps' keys`},
 		{name: "domains on a hosting organization", mutate: func(p *Placement) { p.Domains = map[string]Domain{"clientbay.example": {}} }, wantErr: "domains is set, and a hosting organization holds no zone but the apps domain's and the vanity domains': a root organization (kind) holds the zones that hand names onward"},
 		{name: "a long prefix", mutate: func(p *Placement) { p.Prefix = "impulse" }, wantErr: "prefix"},
 		{name: "no organization domain", mutate: func(p *Placement) { p.OrganizationDomain = " " }, wantErr: "organizationDomain is empty"},
@@ -172,12 +172,12 @@ func TestPlacementValidate(t *testing.T) {
 		{name: "no release app slug", mutate: func(p *Placement) { p.GithubReleaseAppSlug = "" }, wantErr: `githubReleaseAppSlug "" is not a GitHub App's slug (lowercase letters, digits and single hyphens, as in github.com/apps/<slug>)`},
 		{name: "a release app slug in capitals", mutate: func(p *Placement) { p.GithubReleaseAppSlug = "Imp-Release" }, wantErr: `githubReleaseAppSlug "Imp-Release" is not a GitHub App's slug`},
 		{name: "a release app slug with its bot suffix", mutate: func(p *Placement) { p.GithubReleaseAppSlug = "imp-release[bot]" }, wantErr: `githubReleaseAppSlug "imp-release[bot]" is not a GitHub App's slug`},
-		{name: "no machine account", mutate: func(p *Placement) { p.GithubMachineAccount = "" }, wantErr: "githubMachineAccount is empty: the GitHub login of the organization's machine account, an owner of the organization, which authorizes the Cloud Build GitHub connection in the browser and owns the personal access token that can stand in for it"},
-		{name: "a machine account with a space", mutate: func(p *Placement) { p.GithubMachineAccount = "imp machine" }, wantErr: `githubMachineAccount "imp machine" is not a GitHub login (letters, digits and single hyphens, at most 39 characters)`},
-		{name: "a machine account starting with a hyphen", mutate: func(p *Placement) { p.GithubMachineAccount = "-imp" }, wantErr: `githubMachineAccount "-imp" is not a GitHub login`},
-		{name: "a machine account with two hyphens in a row", mutate: func(p *Placement) { p.GithubMachineAccount = "imp--machine" }, wantErr: `githubMachineAccount "imp--machine" is not a GitHub login`},
-		{name: "a machine account longer than GitHub allows", mutate: func(p *Placement) { p.GithubMachineAccount = strings.Repeat("a", 40) }, wantErr: "is not a GitHub login"},
-		{name: "a machine account of 39 characters", mutate: func(p *Placement) { p.GithubMachineAccount = strings.Repeat("a", 39) }},
+		{name: "no Bot Account", mutate: func(p *Placement) { p.GithubBotAccount = "" }, wantErr: "githubBotAccount is empty: the login of the organization's GitHub Bot Account"},
+		{name: "a Bot Account with a space", mutate: func(p *Placement) { p.GithubBotAccount = "imp machine" }, wantErr: `githubBotAccount "imp machine" is not a GitHub login (letters, digits and single hyphens, at most 39 characters)`},
+		{name: "a Bot Account starting with a hyphen", mutate: func(p *Placement) { p.GithubBotAccount = "-imp" }, wantErr: `githubBotAccount "-imp" is not a GitHub login`},
+		{name: "a Bot Account with two hyphens in a row", mutate: func(p *Placement) { p.GithubBotAccount = "imp--machine" }, wantErr: `githubBotAccount "imp--machine" is not a GitHub login`},
+		{name: "a Bot Account longer than GitHub allows", mutate: func(p *Placement) { p.GithubBotAccount = strings.Repeat("a", 40) }, wantErr: "is not a GitHub login"},
+		{name: "a Bot Account of 39 characters", mutate: func(p *Placement) { p.GithubBotAccount = strings.Repeat("a", 39) }},
 		{name: "no infrastructure team", mutate: func(p *Placement) { p.GithubInfrastructureTeam = "" }},
 		{name: "project numbers for the environments", mutate: func(p *Placement) { p.ProjectNumbers = map[string]string{"tst": "123456789012"} }},
 		{name: "a project number in an unknown environment", mutate: func(p *Placement) { p.ProjectNumbers = map[string]string{"qa": "1"} }, wantErr: `projectNumbers names "qa", which is not one of boot, shr, net, spn, tst, stg, prd`},
@@ -191,7 +191,7 @@ func TestPlacementValidate(t *testing.T) {
 		{name: "a larger runner's cap alone", mutate: func(p *Placement) { p.CiLargeRunnerMaximum = 4 }, wantErr: "ciLargeRunner, ciLargeRunnerSize and ciLargeRunnerMaximum are the GitHub organization's larger runner"},
 		{name: "a token secret in this organization's boot project", mutate: func(p *Placement) {
 			p.CloudBuildTokenSecretVersion = "projects/imp-boot-gbl-core-a1b2/locations/us-central1/secrets/github-github-oauthtoken-abcdef/versions/1"
-		}, wantErr: "cloudBuildTokenSecretVersion names a secret in imp-boot-gbl-core-a1b2, and a hosting organization's connections read the token the root organization imr recorded once, in its boot project imr-boot-gbl-core-c3d4 (root.project)"},
+		}, wantErr: "cloudBuildTokenSecretVersion names a secret in imp-boot-gbl-core-a1b2, and a hosting organization's connections read the token the root organization imr recorded once, in its root project imr-root-gbl-core-c3d4 (root.project)"},
 		{name: "the approving reviews left out", mutate: func(p *Placement) {
 			p.ApprovingReviews = nil
 		}},
@@ -217,9 +217,9 @@ func TestPlacementValidate(t *testing.T) {
 		}, wantErr: `is not a secret version's resource name (projects/<project>[/locations/<region>]/secrets/<secret>/versions/<number>, a number and never latest)`},
 		{name: "a token secret version that is a number alone", mutate: func(p *Placement) { p.CloudBuildTokenSecretVersion = "1" }, wantErr: `cloudBuildTokenSecretVersion "1" is not a secret version's resource name`},
 		{name: "a global token secret version", mutate: func(p *Placement) {
-			p.CloudBuildTokenSecretVersion = "projects/imr-boot-gbl-core-c3d4/secrets/github-token/versions/3"
+			p.CloudBuildTokenSecretVersion = "projects/imr-root-gbl-core-c3d4/secrets/github-token/versions/3"
 		}},
-		{name: "the installation id without the token", mutate: func(p *Placement) { p.CloudBuildTokenSecretVersion = "" }, wantErr: "cloudBuildInstallationId and cloudBuildTokenSecretVersion are recorded together: the browser authorization in the boot project's Cloud Build console gives both (0-bootstrap/README.md, \"The Cloud Build GitHub authorization\")"},
+		{name: "the installation id without the token", mutate: func(p *Placement) { p.CloudBuildTokenSecretVersion = "" }, wantErr: "cloudBuildInstallationId and cloudBuildTokenSecretVersion are recorded together: the root organization's bootstrap records both, the Cloud Build GitHub App's installation it finds and the Bot Account's token secret it makes (README.md, \"Bootstrapped by one command\"), and the creation copies them into a hosting organization's placement"},
 		{name: "the token without the installation id", mutate: func(p *Placement) { p.CloudBuildInstallationID = "" }, wantErr: "cloudBuildInstallationId and cloudBuildTokenSecretVersion are recorded together"},
 		{name: "no bedrock pin yet", mutate: func(p *Placement) { p.BedrockVersion, p.BedrockSHA256 = "", "" }},
 		{name: "a release pin without its checksum", mutate: func(p *Placement) { p.BedrockSHA256 = "" }, wantErr: "bedrockVersion v0.5.0 is a release, and bedrockSha256 \"\" is not the SHA-256 checksum of its bedrock-linux-amd64: bedrock upgrade v0.5.0 records it from the release's checksums.txt"},
@@ -336,7 +336,7 @@ func renderGolden(t *testing.T, dir string) {
 // TestNamesFromPlacement renders the fixture organization and reads back every name a
 // rendered file gives an account or an address, which must come from the placement: an
 // address is at the organization's domain, at a contact domain, or a service account's;
-// a machine account named anywhere is the placement's. A name a template carried as fixed
+// a Bot Account named anywhere is the placement's. A name a template carried as fixed
 // text, the account or the domains of the deployment bedrock was first tried in, would be
 // none of these.
 func TestNamesFromPlacement(t *testing.T) {
@@ -364,12 +364,12 @@ func TestNamesFromPlacement(t *testing.T) {
 			atLeast: 10,
 		},
 		{
-			name:    "every machine account named is the placement's",
-			pattern: regexp.MustCompile("machine account,?\\s+`?([A-Za-z0-9][A-Za-z0-9-]*)"),
+			name:    "every Bot Account named is the placement's",
+			pattern: regexp.MustCompile("Bot Account,?\\s+`?([A-Za-z0-9][A-Za-z0-9-]*)"),
 			fromPlacement: func(login string) bool {
-				return login == p.GithubMachineAccount
+				return login == p.GithubBotAccount
 			},
-			atLeast: 4,
+			atLeast: 3,
 		},
 	}
 	for _, tt := range tests {
@@ -392,42 +392,28 @@ func TestNamesFromPlacement(t *testing.T) {
 	}
 }
 
-// TestMachineAccount pins the organization's machine account where the GitHub
+// TestBotAccount pins the organization's Bot Account where the GitHub
 // authorization names it: the browser step and the personal access token in 2-env's
 // README, the connection's comment and the token variable's description.
-func TestMachineAccount(t *testing.T) {
+func TestBotAccount(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
 		name string
 		path string
-		root bool
 		want []string
 	}{
 		{
-			name: "the root organization's 0-bootstrap README: the browser step in the boot project, as the break-glass account signed in to GitHub as the machine account, and the token",
-			path: "0-bootstrap/README.md",
-			root: true,
-			want: []string{
-				"### 2. The Cloud Build GitHub authorization\n",
-				"The person at the browser is signed in as the\nbreak-glass account, Owner on the boot project from step 1; the GitHub\naccount signed in is the organization's machine account,\n`imp-machine` (`githubMachineAccount` in `placement.json`)",
-				"belongs to the `imp-example`\norganization and is an owner of it",
-				"Sign in to GitHub as\n   the machine account `imp-machine`, install or select",
-				"Record both in `placement.json`, as `cloudBuildInstallationId` and\n   `cloudBuildTokenSecretVersion`",
-				"classic personal access token of\n`imp-machine` with the `repo`, `read:user` and `read:org` scopes",
-			},
-		},
-		{
 			name: "2-env's README points at it",
 			path: "2-env/README.md",
-			want: []string{"## The GitHub authorization\n", "before the first apply of `0-bootstrap` (`0-bootstrap/README.md`, \"2. The\nCloud Build GitHub authorization\")", "signed in to GitHub as the organization's machine account\n`imp-machine` (`githubMachineAccount` in `placement.json`)"},
+			want: []string{"## The GitHub authorization\n", "access token of the organization's Bot Account `imp-bot`\n(`githubBotAccount` in `placement.json`), which the root organization\n`imr`'s bootstrap stored once in Secret Manager in its root\nproject", "(the root\n`README.md`, \"Bootstrapped by one command\")"},
 		},
-		{name: "the environment connection's comment", path: "2-env/cloud-build.tf", want: []string{"machine account imp-machine, before the first apply of 0-bootstrap"}},
+		{name: "the environment connection's comment", path: "2-env/cloud-build.tf", want: []string{"installation with a token held in Secret Manager: the Bot Account\n# imp-bot's personal access token, which the root organization\n# imr's bootstrap stored once in its root project"}},
 		{
 			name: "a hosting organization's 0-bootstrap README: the authorization is the root organization's, recorded by the creation",
 			path: "0-bootstrap/README.md",
 			want: []string{
-				"the connection from the Cloud Build\n   authorization the root organization recorded (`cloudBuildInstallationId`\n   and `cloudBuildTokenSecretVersion`, which name the machine account's token\n   in that organization's boot project",
+				"the connection from the Cloud Build\n   authorization the root organization recorded (`cloudBuildInstallationId`\n   and `cloudBuildTokenSecretVersion`, which name the Bot Account's token\n   in that organization's root project",
 			},
 		},
 	}
@@ -436,9 +422,6 @@ func TestMachineAccount(t *testing.T) {
 			t.Parallel()
 
 			got := renderedFile(t, tt.path)
-			if tt.root {
-				got = rootRenderedFile(t, tt.path)
-			}
 			for _, want := range tt.want {
 				if !strings.Contains(got, want) {
 					t.Errorf("%s lacks %q", tt.path, want)
@@ -448,63 +431,10 @@ func TestMachineAccount(t *testing.T) {
 	}
 }
 
-// TestBootstrapRolesNamed reads the root organization's READMEs, which tell the
-// break-glass account what to hold for the seed (a hosting organization is created, not
-// seeded): each names every role of org preflight's table, by title and id, and the
-// preflight command, so a role added to the check cannot be missing from the steps; the
-// four-role list the check replaced is gone.
-func TestBootstrapRolesNamed(t *testing.T) {
-	t.Parallel()
-
-	tests := []struct {
-		name   string
-		path   string
-		want   []string
-		absent []string
-	}{
-		{
-			name: "0-bootstrap's seed step: the role table, then preflight before the seed",
-			path: "0-bootstrap/README.md",
-			want: []string{
-				"| Role | Granted on | Needed for |\n",
-				"gcloud auth application-default login\nbedrock org preflight\n\nexport ORG_ID=123456789012\n",
-			},
-			absent: []string{"who holds\nOrganization Administrator, Project Creator, and Organization Policy\nAdministrator"},
-		},
-		{
-			name: "the root README's seed step",
-			path: "README.md",
-			want: []string{"2. **Seed.** In a terminal, as the break-glass account: `bedrock org\n   preflight` first, which checks that the account holds each of these roles\n   above the organization's folder:\n"},
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-
-			got := rootRenderedFile(t, tt.path)
-			want := slices.Clone(tt.want)
-			for _, role := range BootstrapRoles {
-				want = append(want, role.Title+" (`"+role.Role+"`)")
-			}
-			for _, w := range want {
-				if !strings.Contains(got, w) {
-					t.Errorf("%s lacks %q", tt.path, w)
-				}
-			}
-			for _, a := range tt.absent {
-				if strings.Contains(got, a) {
-					t.Errorf("%s still carries %q", tt.path, a)
-				}
-			}
-		})
-	}
-}
-
-// TestGithubAppSteps reads the steps for the organization's GitHub Apps: the root README
-// gives the release and deployer apps' permissions, their installation, the release
-// app's two organization secrets and the deployer key's commands; 0-bootstrap's README
-// and 2-env's add and pin each key with bedrock secret, never by a gcloud command or an
-// edit of the pin by hand.
+// TestGithubAppSteps reads what the READMEs say about the organization's GitHub Apps: all
+// three are the root organization's bootstrap's, their keys live in its root project and
+// are read by alias, nothing is added or pinned here, and the spend budget is the one
+// step a billing administrator takes by hand after the creation.
 func TestGithubAppSteps(t *testing.T) {
 	t.Parallel()
 
@@ -515,18 +445,16 @@ func TestGithubAppSteps(t *testing.T) {
 		absent []string
 	}{
 		{
-			name: "the root README: the two apps' permissions, installation and keys",
+			name: "the root README: the three apps are the root organization's bootstrap's, their keys in its root project",
 			path: "README.md",
 			want: []string{
-				"## The two GitHub Apps\n",
-				"   - the release app: Contents, Issues and Pull requests, each read and\n     write;\n",
-				"   - the deployer app: Checks, Deployments, Issues and Pull requests, each\n     read and write.\n",
-				"Install App, on the organization,\n   for all repositories",
-				"5. In a terminal, in the root organization `imr`'s\n   repository, as one of its key operators, for each of the two apps:\n   `bedrock secret add`, `bedrock org secrets check` and `bedrock secret pin`\n   with `github-deployer-key` and `github-release-key`",
-				"Both keys live in Secret Manager in the root\norganization `imr`'s boot project, which holds them for every\norganization and rotates them in one place",
-				"Nothing is added in this\n   repository: `2-env`'s outputs name each key's alias `current`\n   (`imr-boot-gbl-github-deployer-key`, `imr-boot-gbl-github-release-key`, in that organization's\n   boot project)",
-				"([GitHub prerequisites](https://github.com/cccteam/ccc/blob/master/bedrock/README.md#github-prerequisites))",
+				"## The GitHub Apps\n",
+				"All three are the root organization `imr`'s: its bootstrap\nmade them from bedrock's declaration of each, owned by the\n`imp-example` organization and installed on all its repositories,",
+				"their keys live in Secret Manager in its root project, which holds them for\nevery organization and rotates them in one place (that organization's\n`README.md`, \"The GitHub Apps' keys\"); no key reaches GitHub.",
+				"records the same App IDs (`githubInfrastructureAppId`, `githubDeployerAppId`,\n`githubReleaseAppId`) and the release app's slug (`githubReleaseAppSlug`",
+				"Nothing is added in this repository: `2-env`'s outputs name each key's alias\n`current` (`imr-root-gbl-github-deployer-key`, `imr-root-gbl-github-release-key`, in that\norganization's root project)",
 			},
+			absent: []string{"## The two GitHub Apps", "Install App, on the organization", "boot project, which holds them", "machine account"},
 		},
 		{
 			name: "the root README: the consent screen and the role groups",
@@ -534,34 +462,38 @@ func TestGithubAppSteps(t *testing.T) {
 			want: []string{
 				"3. **The consent screen.** In each environment project's Google Cloud\n   console, before the first application's OAuth client is made there",
 				"## Created by the root organization\n",
-				"2. **The billing grants and the budget**, after the creation.",
+				"2. **The spend budget**, after the creation. In the Billing console, a billing\n   administrator sets the spend budget (`0-bootstrap/README.md`, \"The spend\n   budget\"); the two layer identities' Billing Account User, which `1-org`\n   needs the day it links a project it creates, is the creation's.",
 				"with the audience **Internal**",
 				"`<group prefix><role>@imp.example`",
 				"set \"Who can view members\" so that the group's members can",
 			},
 		},
 		{
-			name: "0-bootstrap: the infrastructure app's id recorded here and its key the root organization's, the budget beside the billing grants",
+			name: "0-bootstrap: the infrastructure app made by the root organization's bootstrap, its key in the root project, the budget the one hand step",
 			path: "0-bootstrap/README.md",
 			want: []string{
-				"4. In `placement.json`: the App ID as `githubInfrastructureAppId`, then\n   `bedrock org render`. The key itself lives in the root organization\n   `imr`'s boot project (`root` in `placement.json`), added,\n   proven and pinned there by its key operators",
-				"### Billing grants and the budget, by a billing administrator\n",
+				"The app is the root organization's: its bootstrap made\nit from bedrock's declaration (the root `README.md`, \"Bootstrapped by one\ncommand\")",
+				"organization records the same App ID (`githubInfrastructureAppId` in\n`placement.json`, filled in by the creation).",
+				"The key itself lives in the root organization `imr`'s root\nproject (`root` in `placement.json`), added, proven and pinned there by its key\noperators",
+				"### The spend budget, by a billing administrator\n",
 				"## Created by the root organization\n",
 				"3. **The first apply of `1-org`**, the same way, with the infrastructure\n   GitHub App's token for its GitHub provider",
-				"In the Billing console, as the same billing administrator, set the spend\nbudget",
+				"hold `roles/billing.user` on the billing account `012345-6789AB-CDEF01` since the\ncreation, which granted it as the root organization's creating identity, a\nBilling Account Administrator.",
+				"In the Billing console, as a billing administrator, set the spend budget:",
 				"## The GitHub Apps' keys\n",
-				"`imr-boot-gbl-core-c3d4`; `root` in\n`placement.json`), one secret per app for every bedrock organization in the\nGoogle Cloud organization: `imr-boot-gbl-github-infrastructure-key`,\n`imr-boot-gbl-github-deployer-key` and `imr-boot-gbl-github-release-key`.",
+				"`imr-root-gbl-core-c3d4`; `root` in\n`placement.json`), one secret per app for every bedrock organization in the\nGoogle Cloud organization: `imr-root-gbl-github-infrastructure-key`,\n`imr-root-gbl-github-deployer-key` and `imr-root-gbl-github-release-key`.",
 				"`bedrock secret\nadd` and `pin` refuse here and name that organization",
 				"the root organization gives this\norganization's boot identity `secretPolicyAdmin` on the three secrets",
 			},
-			absent: []string{"gcloud secrets versions add", "github-deployer-key <env>", "bedrock secret pin github-", "## Rotating a GitHub App's key", "githubDeployerKeyVersion", "key container"},
+			absent: []string{"gcloud secrets versions add", "github-deployer-key <env>", "bedrock secret pin github-", "## Rotating a GitHub App's key", "githubDeployerKeyVersion", "key container", "Billing grants and the budget", "boot project's Cloud Build console", "machine account"},
 		},
 		{
 			name: "2-env: the deployer key is the root organization's, read by its alias",
 			path: "2-env/README.md",
 			want: []string{
 				"## The deployer and release GitHub Apps' keys\n",
-				"its key is a secret in the root organization\n`imr`'s boot project (`imr-boot-gbl-github-deployer-key`, in\n`imr-boot-gbl-core-c3d4`; `root` in `placement.json`), held there for every\norganization and read by its alias `current`, which that organization pins\nand moves (`0-bootstrap/README.md`, \"The GitHub Apps' keys\")",
+				"its key is a secret in the root organization\n`imr`'s root project (`imr-root-gbl-github-deployer-key`, in\n`imr-root-gbl-core-c3d4`; `root` in `placement.json`), held there for every\norganization and read by its alias `current`, which that organization pins\nand moves (that organization's `README.md`, \"The GitHub Apps' keys\")",
+				"The connection authorizes with the Bot Account's token: a classic personal\naccess token of the organization's Bot Account `imp-bot`",
 				"This layer\ncarries the alias's resource name to the applications' pipelines through its\noutput `github_deployer_key_secret_version` and grants their identities its\nread: every application's deploy identity, and in tst its apply identity too,",
 			},
 			absent: []string{"gcloud secrets versions add", "github-deployer-key <env>", "github_deployer_key_secret_versions", "pinned version", "bedrock secret pin github-", "key container"},
@@ -621,9 +553,9 @@ func TestReleaseKeyGrants(t *testing.T) {
 			path: "2-env/locals.tf",
 			want: []string{
 				"  github_release_app_id             = 5080645\n",
-				"  github_release_key_secret         = \"imr-boot-gbl-github-release-key\"\n",
-				"  github_release_key_secret_version = \"projects/imr-boot-gbl-core-c3d4/secrets/imr-boot-gbl-github-release-key/versions/current\"\n",
-				"  keys_project = \"imr-boot-gbl-core-c3d4\"\n",
+				"  github_release_key_secret         = \"imr-root-gbl-github-release-key\"\n",
+				"  github_release_key_secret_version = \"projects/imr-root-gbl-core-c3d4/secrets/imr-root-gbl-github-release-key/versions/current\"\n",
+				"  keys_project = \"imr-root-gbl-core-c3d4\"\n",
 			},
 		},
 		{
@@ -641,7 +573,7 @@ func TestReleaseKeyGrants(t *testing.T) {
 			path: "0-bootstrap/github.tf",
 			want: []string{
 				"resource \"google_secret_manager_secret_iam_member\" \"org_tofu_keys\" {\n  for_each = toset([\"deployer\", \"release\"])\n\n  project   = local.keys_project\n  secret_id = local.key_secrets[each.key]\n  role      = local.keys_policy_admin_role\n  member    = google_service_account.org_tofu.member\n}\n",
-				"  keys_policy_admin_role = \"projects/imr-boot-gbl-core-c3d4/roles/secretPolicyAdmin\"\n",
+				"  keys_policy_admin_role = \"projects/imr-root-gbl-core-c3d4/roles/secretPolicyAdmin\"\n",
 			},
 			absent: []string{"resource \"google_secret_manager_secret\" ", "version_aliases", "roles/secretmanager.admin\"\n  member    = google_service_account.org_tofu"},
 		},
@@ -708,8 +640,8 @@ func TestDeployerKeyGrants(t *testing.T) {
 			name: "locals.tf names the root organization's secret and its alias",
 			path: "2-env/locals.tf",
 			want: []string{
-				"  github_deployer_key_secret         = \"imr-boot-gbl-github-deployer-key\"\n",
-				"  github_deployer_key_secret_version = \"projects/imr-boot-gbl-core-c3d4/secrets/imr-boot-gbl-github-deployer-key/versions/current\"\n",
+				"  github_deployer_key_secret         = \"imr-root-gbl-github-deployer-key\"\n",
+				"  github_deployer_key_secret_version = \"projects/imr-root-gbl-core-c3d4/secrets/imr-root-gbl-github-deployer-key/versions/current\"\n",
 			},
 			absent: []string{"var.github_deployer_app_id", "var.github_deployer_key_secret_versions"},
 		},
@@ -1749,19 +1681,19 @@ func TestViewPhrases(t *testing.T) {
 		{name: "the bucket before the seed", placement: Placement{Prefix: "acme"}, check: func(v *view) string { return v.Bucket() }, want: "acme-boot-gbl-state-REPLACEME"},
 		{name: "the bucket after the seed", placement: Placement{Prefix: "acme", StateBucket: "acme-boot-gbl-state-1a2b"}, check: func(v *view) string { return v.Bucket() }, want: "acme-boot-gbl-state-1a2b"},
 		{name: "the layer order", placement: Placement{}, check: func(v *view) string { return v.LayerOrderProse() }, want: "0-bootstrap, 1-org, 2-shr and 2-spn, then 2-env for tst, stg and prd, then 2-net"},
-		{name: "the layer order of a root organization", placement: Placement{Kind: RootKind}, check: func(v *view) string { return v.LayerOrderProse() }, want: "0-bootstrap, then 1-dns"},
-		{name: "the second layer, its identity and the rerun example, per kind", placement: Placement{}, check: func(v *view) string {
-			hosting := v.SecondLayer() + " " + v.SecondIdentity() + " " + v.RerunExample()
+		{name: "the layer order of a root organization, which has no layer", placement: Placement{Kind: RootKind}, check: func(v *view) string { return v.LayerOrderProse() }, want: ""},
+		{name: "the rerun example, per kind", placement: Placement{}, check: func(v *view) string {
+			hosting := v.RerunExample()
 			v.Kind = RootKind
 
-			return hosting + "|" + v.SecondLayer() + " " + v.SecondIdentity() + " " + v.RerunExample()
-		}, want: "1-org org _LAYER=2-env,_ENVIRONMENT=tst|1-dns dns _LAYER=1-dns"},
+			return hosting + "|" + v.RerunExample()
+		}, want: "_LAYER=2-env,_ENVIRONMENT=tst|"},
 		{name: "no domains", placement: Placement{Kind: RootKind}, check: func(v *view) string {
-			return v.DomainsHCL() + " " + strconv.Itoa(v.DelegationCount()) + " [" + v.DomainsProse() + "]"
-		}, want: "{} 0 []"},
+			return strconv.Itoa(v.DelegationCount()) + " [" + v.DomainsProse() + "]"
+		}, want: "0 []"},
 		{
-			name: "the domains and their labels as HCL, in name order, with the zones' names and project",
-			placement: Placement{Kind: RootKind, Prefix: "acme", Projects: map[string]string{"boot": "acme-boot-gbl-core-1a2b"}, Domains: map[string]Domain{
+			name: "the domains and their labels in name order, with the zones' names and project",
+			placement: Placement{Kind: RootKind, Prefix: "acme", Projects: map[string]string{"root": "acme-root-gbl-core-1a2b"}, Domains: map[string]Domain{
 				"b.example": {Labels: map[string]Delegation{
 					"z": {Organization: "rgb", NameServers: []string{"ns-cloud-d1.googledomains.com.", "ns-cloud-d2.googledomains.com."}},
 					"a": {Organization: "imp", NameServers: []string{"ns-cloud-c1.googledomains.com.", "ns-cloud-c2.googledomains.com."}},
@@ -1769,9 +1701,9 @@ func TestViewPhrases(t *testing.T) {
 				"a.example": {},
 			}},
 			check: func(v *view) string {
-				return v.DomainsHCL() + "\n" + v.DomainsProse() + " " + strconv.Itoa(v.DelegationCount()) + " " + v.ZoneName("b.example") + " " + v.ZoneProject()
+				return v.DomainsProse() + " " + strconv.Itoa(v.DelegationCount()) + " " + v.ZoneName("b.example") + " " + v.ZoneProject()
 			},
-			want: "{\n  \"a.example\" = {\n    labels = {}\n  }\n  \"b.example\" = {\n    labels = {\n      \"a\" = { organization = \"imp\", name_servers = [\"ns-cloud-c1.googledomains.com.\", \"ns-cloud-c2.googledomains.com.\"] }\n      \"z\" = { organization = \"rgb\", name_servers = [\"ns-cloud-d1.googledomains.com.\", \"ns-cloud-d2.googledomains.com.\"] }\n    }\n  }\n}\n`a.example` and `b.example` 2 acme-boot-gbl-dns-b-example acme-boot-gbl-core-1a2b",
+			want: "`a.example` and `b.example` 2 acme-root-gbl-dns-b-example acme-root-gbl-core-1a2b",
 		},
 		{name: "the approving reviews, left out and at 0, 2 and 12, as a count and as prose", placement: Placement{}, check: func(v *view) string {
 			parts := []string{strconv.Itoa(v.ApprovingReviewCount()) + " " + v.ApprovingReviewsProse()}
@@ -1796,7 +1728,7 @@ func TestViewPhrases(t *testing.T) {
 			check: func(v *view) string {
 				return v.BootProject() + " " + v.InfrastructureRepository() + " " + v.InfrastructureKeySecret() + " " + v.DeployerKeySecret()
 			},
-			want: "acme-boot-gbl-core-1a2b acme/acme-infrastructure zo-boot-gbl-github-infrastructure-key zo-boot-gbl-github-deployer-key",
+			want: "acme-boot-gbl-core-1a2b acme/acme-infrastructure zo-root-gbl-github-infrastructure-key zo-root-gbl-github-deployer-key",
 		},
 		{name: "the boot project before the seed", placement: Placement{Prefix: "acme"}, check: func(v *view) string { return v.BootProject() }, want: "acme-boot-gbl-core-REPLACEME"},
 		{
@@ -1817,7 +1749,7 @@ func TestViewPhrases(t *testing.T) {
 			check: func(v *view) string {
 				return v.CloudBuildInstallationIDHCL() + " " + v.CloudBuildTokenSecretVersionHCL() + " " + v.GithubDeployerAppIDHCL() + " " + v.DeployerKeyVersionNameHCL() + " " + v.EnvironmentProjectNumbersHCL()
 			},
-			want: "12345678 \"projects/acme-boot-gbl-core-1a2b/locations/us-central1/secrets/github-token/versions/1\" 5080800 \"projects/zo-boot-gbl-core-9f8e/secrets/zo-boot-gbl-github-deployer-key/versions/current\" {\n    tst = \"43\"\n    prd = \"45\"\n  }",
+			want: "12345678 \"projects/acme-boot-gbl-core-1a2b/locations/us-central1/secrets/github-token/versions/1\" 5080800 \"projects/zo-boot-gbl-core-9f8e/secrets/zo-root-gbl-github-deployer-key/versions/current\" {\n    tst = \"43\"\n    prd = \"45\"\n  }",
 		},
 		{
 			name:      "identities, backends and hosts under the recorded projects, REPLACEME for the rest",
@@ -2603,13 +2535,9 @@ func TestLayerRuns(t *testing.T) {
 			},
 		},
 		{
-			name:     "a root organization's two layers, both in the boot project",
+			name:     "a root organization has no layer run",
 			kind:     RootKind,
-			projects: map[string]string{"boot": "acme-boot-gbl-core-1a2b"},
-			want: []string{
-				"0-bootstrap|0-bootstrap|acme-boot-gbl-tofu@acme-boot-gbl-core-1a2b.iam.gserviceaccount.com|acme-boot-gbl-plan@acme-boot-gbl-core-1a2b.iam.gserviceaccount.com",
-				"1-dns|1-dns|acme-dns-gbl-tofu@acme-boot-gbl-core-1a2b.iam.gserviceaccount.com|acme-dns-gbl-plan@acme-boot-gbl-core-1a2b.iam.gserviceaccount.com",
-			},
+			projects: map[string]string{"root": "acme-root-gbl-core-1a2b"},
 		},
 	}
 	for _, tt := range tests {
@@ -2659,7 +2587,7 @@ func TestTriggers(t *testing.T) {
 			name:   "the connection and the repository link, from the placement's authorization",
 			mutate: func(*Placement) {},
 			want: []string{
-				"  cloud_build_installation_id      = 12345678\n  cloud_build_token_secret_version = \"projects/imr-boot-gbl-core-c3d4/locations/us-central1/secrets/github-github-oauthtoken-fedcba/versions/1\"\n  connected                        = local.cloud_build_installation_id != null && local.cloud_build_token_secret_version != null\n",
+				"  cloud_build_installation_id      = 12345678\n  cloud_build_token_secret_version = \"projects/imr-root-gbl-core-c3d4/secrets/imr-root-gbl-github-token/versions/1\"\n  connected                        = local.cloud_build_installation_id != null && local.cloud_build_token_secret_version != null\n",
 				"resource \"google_cloudbuildv2_connection\" \"github\" {\n  count = local.connected ? 1 : 0\n\n  project  = module.boot_project.project_id\n  location = local.region\n  name     = \"${var.prefix}-boot-${local.region_code}-github\"\n\n  github_config {\n    app_installation_id = local.cloud_build_installation_id\n\n    authorizer_credential {\n      oauth_token_secret_version = local.cloud_build_token_secret_version\n    }\n  }\n",
 				"resource \"google_cloudbuildv2_repository\" \"infrastructure\" {\n  count = local.connected ? 1 : 0\n\n  project           = module.boot_project.project_id\n  location          = local.region\n  name              = \"${var.prefix}-boot-${local.region_code}-infrastructure-repo\"\n  parent_connection = google_cloudbuildv2_connection.github[0].id\n  remote_uri        = \"https://github.com/${var.github_organization}/${var.infrastructure_repository}.git\"\n}\n",
 				"  environment_project_numbers = {\n    tst = \"100000000002\"\n    stg = \"100000000003\"\n    prd = \"100000000004\"\n  }\n  token_readers = local.connected ? merge(\n    { boot = module.boot_project.project_number },\n    local.environment_project_numbers,\n  ) : {}\n",
@@ -2837,10 +2765,10 @@ func TestRunnerIdentities(t *testing.T) {
 			name: "the root organization's three key secrets, named; the org identity's policy administration of two; no workload identity pool",
 			path: "0-bootstrap/github.tf",
 			want: []string{
-				`    infrastructure = "imr-boot-gbl-github-infrastructure-key"`,
-				`    deployer       = "imr-boot-gbl-github-deployer-key"`,
-				`    release        = "imr-boot-gbl-github-release-key"`,
-				`  keys_project = "imr-boot-gbl-core-c3d4"`,
+				`    infrastructure = "imr-root-gbl-github-infrastructure-key"`,
+				`    deployer       = "imr-root-gbl-github-deployer-key"`,
+				`    release        = "imr-root-gbl-github-release-key"`,
+				`  keys_project = "imr-root-gbl-core-c3d4"`,
 				"resource \"google_secret_manager_secret_iam_member\" \"org_tofu_keys\" {\n  for_each = toset([\"deployer\", \"release\"])\n\n  project   = local.keys_project\n  secret_id = local.key_secrets[each.key]\n  role      = local.keys_policy_admin_role\n  member    = google_service_account.org_tofu.member\n}\n",
 				"resource \"google_secret_manager_secret_iam_member\" \"boot_plan_keys\" {\n  for_each = local.boot_plan_key_reads\n\n  project   = local.keys_project\n  secret_id = local.key_secrets[each.value.key]\n  role      = \"roles/secretmanager.viewer\"\n  member    = google_service_account.boot_plan[each.value.plan].member\n}\n",
 			},
@@ -3170,6 +3098,14 @@ resource "github_repository" "infrastructure" {
   repository  = github_repository.infrastructure.name
   target      = "branch"
   enforcement = "active"
+
+  # bedrock itself, acting as the infrastructure app, bypasses these rules, which it
+  # writes: the same actor the root organization's ruleset names.
+  bypass_actors {
+    actor_id    = var.github_infrastructure_app_id
+    actor_type  = "Integration"
+    bypass_mode = "always"
+  }
 
   conditions {
     ref_name {

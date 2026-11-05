@@ -3,7 +3,7 @@
 #
 # The pipeline talks back on a pull request as the organization's deployer
 # GitHub App: a deployment carrying the environment's URL, a comment, the
-# guard's refusals. The app's key is a secret in the root organization's boot
+# guard's refusals. The app's key is a secret in the root organization's root
 # project (local.keys_project, local.github_deployer_key_secret), one for
 # every organization, read by its alias current, which that organization pins
 # and moves (never a number here, never latest). This layer grants the read

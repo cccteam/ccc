@@ -31,10 +31,10 @@
 # the Cloud Build GitHub authorization (cloudBuildInstallationId,
 # cloudBuildTokenSecretVersion; README, "The Cloud Build GitHub
 # authorization"),
-# which the root organization made once, in its boot project's Cloud Build
-# console, and this placement carries (the same two values as that
-# organization's). Until then the rest of the layer applies and nothing runs.
-# The token secret lives in that organization's boot project; this layer
+# which the root organization's bootstrap made once, in its root project, and
+# this placement carries (the same two values as that organization's). Until
+# then the rest of the layer applies and nothing runs.
+# The token secret lives in that organization's root project; this layer
 # grants this project's Cloud Build service agent its read, for the triggers'
 # connection, and each environment project's, for its 2-env connection, by
 # the numbers placement.json records (projectNumbers), with the policy
@@ -48,7 +48,7 @@ locals {
   # The Cloud Build GitHub App's installation on the organization and the
   # token secret's version, from placement.json; null until recorded.
   cloud_build_installation_id      = 12345678
-  cloud_build_token_secret_version = "projects/imr-boot-gbl-core-c3d4/locations/us-central1/secrets/github-github-oauthtoken-fedcba/versions/1"
+  cloud_build_token_secret_version = "projects/imr-root-gbl-core-c3d4/secrets/imr-root-gbl-github-token/versions/1"
   connected                        = local.cloud_build_installation_id != null && local.cloud_build_token_secret_version != null
 
   # The token secret's resource name without its version, in either of the
@@ -205,7 +205,7 @@ resource "google_project_iam_member" "runner_builds" {
 }
 
 # bedrock org check, both triggers' step before the plan or the apply, lists the
-# grants the first-time setup left (the leftover report): it finds the
+# grants a hand apply left (the leftover report): it finds the
 # organization's folder and its projects (Browser: resourcemanager.folders.get,
 # which Security Reviewer lacks and a folder search needs) and reads their IAM
 # policies (Security Reviewer), on the folder, for both runners.

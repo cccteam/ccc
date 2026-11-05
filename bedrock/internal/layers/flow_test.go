@@ -42,8 +42,8 @@ const (
 	infraAppID       = "5080700"
 	installation     = int64(77)
 	bucket           = "imp-boot-gbl-state-a1b2"
-	deployerVersion  = "projects/imr-boot-gbl-core-c3d4/secrets/imr-boot-gbl-github-deployer-key/versions/current"
-	infraVersion     = "projects/imr-boot-gbl-core-c3d4/secrets/imr-boot-gbl-github-infrastructure-key/versions/current"
+	deployerVersion  = "projects/imr-root-gbl-core-c3d4/secrets/imr-root-gbl-github-deployer-key/versions/current"
+	infraVersion     = "projects/imr-root-gbl-core-c3d4/secrets/imr-root-gbl-github-infrastructure-key/versions/current"
 )
 
 // appKey is the RSA key the apps' tokens are minted with in tests, made once.
@@ -713,7 +713,7 @@ func TestPlanOrgToken(t *testing.T) {
 		{
 			name:    "the app not recorded",
 			mutate:  func(p *org.Placement) { p.GithubInfrastructureAppID = "" },
-			wantErr: "1-org's GitHub provider needs the infrastructure GitHub App (0-bootstrap/README.md, \"The infrastructure GitHub App\"): create it and record its App ID as githubInfrastructureAppId in placement.json; its key is the alias current of imr-boot-gbl-github-infrastructure-key in the root organization's boot project, added and pinned there (bedrock secret add github-infrastructure-key, bedrock secret pin github-infrastructure-key <version>)",
+			wantErr: "1-org's GitHub provider needs the infrastructure GitHub App, which the root organization's bootstrap made and the creation recorded (githubInfrastructureAppId in placement.json); its key is the alias current of imr-root-gbl-github-infrastructure-key in the root organization's root project, added and pinned there (bedrock secret add github-infrastructure-key, bedrock secret pin github-infrastructure-key <version>)",
 		},
 	}
 	for _, tt := range tests {

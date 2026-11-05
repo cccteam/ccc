@@ -10,6 +10,7 @@ package create
 import (
 	"context"
 	"fmt"
+	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -57,50 +58,58 @@ func (f *creation) repository(ctx context.Context, h *org.Placement) (string, er
 // initial commit, unless the branch carries the placement already (a run that stopped
 // after the push), and answers the commit.
 func (f *creation) push(ctx context.Context, dir string, h *org.Placement) (string, error) {
-	owner, repo, branch := h.GithubOrganization, h.SourceRepo, h.GithubDefaultBranch
-	ref, err := f.gh.Ref(ctx, owner, repo, "heads/"+branch)
+	message := "chore: the foundation of " + h.Prefix + ", created by the root organization " + f.req.Root.Prefix + "\n\nRendered by bedrock org create from " + org.RecordsDir + "/" + h.Prefix + "/" + org.PlacementFile + " in " + f.req.Root.SourceRepo + " at " + short(f.req.Commit) + ". The apply trigger applies 0-bootstrap, then 1-org, from this push."
+
+	return Push(ctx, f.gh, dir, h.GithubOrganization, h.SourceRepo, h.GithubDefaultBranch, message, f.out)
+}
+
+// Push puts the directory's files on the repository's branch as one commit on the
+// branch's head, unless the branch carries placement.json already (a run that stopped
+// after its push), and answers the commit. The first applies' inits leave each layer's
+// providers under .terraform and its lock file beside them: the lock file is committed,
+// as a person commits the one their first init writes, the providers never are; a local
+// state is never pushed either.
+func Push(ctx context.Context, gh *github.Client, dir, owner, repo, branch, message string, out io.Writer) (string, error) {
+	ref, err := gh.Ref(ctx, owner, repo, "heads/"+branch)
 	if err != nil {
 		return "", errors.Wrapf(err, "reading %s of %s/%s", branch, owner, repo)
 	}
-	if _, err := f.gh.Contents(ctx, owner, repo, org.PlacementFile, branch); err == nil {
-		fmt.Fprintf(f.out, "%s of %s/%s carries the foundation already (%s).\n", branch, owner, repo, short(ref.Object.SHA))
+	if _, err := gh.Contents(ctx, owner, repo, org.PlacementFile, branch); err == nil {
+		fmt.Fprintf(out, "%s of %s/%s carries the foundation already (%s).\n", branch, owner, repo, short(ref.Object.SHA))
 
 		return ref.Object.SHA, nil
 	} else if !github.NotFound(err) {
 		return "", errors.Wrapf(err, "reading %s on %s", org.PlacementFile, branch)
 	}
-	entries, err := f.blobs(ctx, dir, owner, repo)
+	entries, err := blobs(ctx, gh, dir, owner, repo)
 	if err != nil {
 		return "", err
 	}
-	tree, err := f.gh.CreateTree(ctx, owner, repo, "", entries)
+	tree, err := gh.CreateTree(ctx, owner, repo, "", entries)
 	if err != nil {
 		return "", errors.Wrapf(err, "creating the tree of %d file(s) in %s/%s", len(entries), owner, repo)
 	}
-	message := "chore: the foundation of " + h.Prefix + ", created by the root organization " + f.req.Root.Prefix + "\n\nRendered by bedrock org create from " + org.RecordsDir + "/" + h.Prefix + "/" + org.PlacementFile + " in " + f.req.Root.SourceRepo + " at " + short(f.req.Commit) + ". The apply trigger applies 0-bootstrap, then 1-org, from this push."
-	commit, err := f.gh.CreateCommit(ctx, owner, repo, message, tree, []string{ref.Object.SHA})
+	commit, err := gh.CreateCommit(ctx, owner, repo, message, tree, []string{ref.Object.SHA})
 	if err != nil {
 		return "", errors.Wrapf(err, "creating the foundation commit in %s/%s", owner, repo)
 	}
-	if err := f.gh.UpdateRef(ctx, owner, repo, "heads/"+branch, commit, false); err != nil {
+	if err := gh.UpdateRef(ctx, owner, repo, "heads/"+branch, commit, false); err != nil {
 		return "", errors.Wrapf(err, "moving %s of %s/%s to %s", branch, owner, repo, short(commit))
 	}
-	fmt.Fprintf(f.out, "Pushed the foundation to %s/%s at %s (%d files): its apply trigger runs on it.\n", owner, repo, short(commit), len(entries))
+	fmt.Fprintf(out, "Pushed the foundation to %s/%s at %s (%d files): its apply trigger runs on it.\n", owner, repo, short(commit), len(entries))
 
 	return commit, nil
 }
 
 // blobs stores every file of the rendered directory as a blob and answers the tree
-// entries, in path order. The first applies' inits leave each layer's providers under
-// .terraform and its lock file beside them: the lock file is committed, as a person
-// commits the one their first init writes, the providers never are.
-func (f *creation) blobs(ctx context.Context, dir, owner, repo string) ([]github.TreeEntry, error) {
+// entries, in path order.
+func blobs(ctx context.Context, gh *github.Client, dir, owner, repo string) ([]github.TreeEntry, error) {
 	var paths []string
 	err := filepath.WalkDir(dir, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
-		if d.IsDir() && d.Name() == providersDir {
+		if d.IsDir() && (d.Name() == providersDir || d.Name() == ".git") {
 			return filepath.SkipDir
 		}
 		if !d.IsDir() && !strings.HasPrefix(d.Name(), localState) {
@@ -119,7 +128,7 @@ func (f *creation) blobs(ctx context.Context, dir, owner, repo string) ([]github
 		if err != nil {
 			return nil, errors.Wrapf(err, "os.ReadFile(): %s", path)
 		}
-		sha, err := f.gh.CreateBlob(ctx, owner, repo, content)
+		sha, err := gh.CreateBlob(ctx, owner, repo, content)
 		if err != nil {
 			return nil, errors.Wrapf(err, "storing %s", path)
 		}
@@ -195,7 +204,7 @@ func (f *creation) handOff(ctx context.Context, h *org.Placement, marker *Marker
 		"- repository `" + marker.Repository + "`, with the rendered foundation as its first push, which its apply trigger runs on: every layer, as its own identity, with nothing left to apply by hand",
 		"- the creating identity's own grants taken off everything it made; the break-glass account holds Folder Admin on the folder",
 		"",
-		"This pull request records the folder in `placement.json` (`hostingOrganizations`), from which 0-bootstrap grants the new boot identity the shared secrets' policy administration, and the placement as created under `" + org.RecordsDir + "/" + h.Prefix + "/`. Nothing under the folder is the root organization's to refresh. Left to a billing administrator: `roles/billing.user` on the billing account for the new organization's boot and org identities, and its spend budget (its `0-bootstrap/README.md`, \"Created by the root organization\").",
+		"This pull request records the folder in `placement.json` (`hostingOrganizations`), from which 0-bootstrap grants the new boot identity the shared secrets' policy administration, and the placement as created under `" + org.RecordsDir + "/" + h.Prefix + "/`. Nothing under the folder is the root organization's to refresh. Left to a billing administrator: the new organization's spend budget (its `0-bootstrap/README.md`, \"Created by the root organization\"); its boot and org identities hold Billing Account User already, granted by the creation.",
 	}, "\n")
 	commit, err := f.gh.CreateCommit(ctx, owner, repo, title+"\n\n"+body, tree, []string{base.Object.SHA})
 	if err != nil {

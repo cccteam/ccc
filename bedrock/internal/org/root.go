@@ -1,17 +1,20 @@
-// root.go is the root kind of organization: a bedrock organization with no environments
-// that holds DNS zones alone, one per Google Cloud organization that hosts applications.
-// A customer delegates a shared domain to it once (mydomain.com, or a label such as
-// apps.mydomain.com), and each application's name under that domain is handed onward, as
-// one NS record set, to the zone the application's hosting organization serves it from, so
-// a customer's second application lands in another hosting organization with nothing
-// moving at the customer's registrar. Its layers are the bootstrap every organization gets
-// and 1-dns in place of the organization and environment layers; its zones live in the
-// boot project.
+// root.go is the root kind of organization: the bedrock organization at the top of a
+// Google Cloud organization that holds what every hosting organization there shares, and
+// creates the hosting organizations. It has no layers and no terraform. bedrock org
+// bootstrap makes it once, by API, as the break-glass account: its folder at the
+// organization node, its root project with the three GitHub Apps' keys and the GitHub
+// Bot Account's token as secrets, the Cloud Build connection and the two triggers, the
+// state bucket, a zone per domain delegated to it, and its repository on GitHub with
+// the default branch ruled. From then on its apply trigger keeps the record true (the
+// aliases the pins name, the zones, the labels handed onward, the runner group) and
+// creates each hosting organization the record lists without a folder yet, from a pull
+// request, as the creating identity.
 
 package org
 
 import (
 	"maps"
+	"regexp"
 	"slices"
 	"strings"
 
@@ -21,8 +24,9 @@ import (
 )
 
 // The kinds of organization a placement describes (Placement.Kind): hosting, the
-// default, which holds applications in its environments; and zones, which holds DNS zones
-// alone and hands labels of its domains onward to the hosting organizations' zones.
+// default, which holds applications in its environments; and root, which holds the
+// GitHub Apps' keys, the zones of the domains delegated to it and the records of the
+// hosting organizations it creates.
 const (
 	HostingKind = "hosting"
 	RootKind    = "root"
@@ -31,24 +35,17 @@ const (
 // Kinds are the kinds a placement may name.
 var Kinds = []string{HostingKind, RootKind}
 
-// dnsLayer is the one layer of a root organization after the bootstrap: the zones and
-// their NS record sets, in the boot project, and the rule on this repository's default
-// branch.
-const dnsLayer = "1-dns"
+// orgIdentity is the name 0-bootstrap gives a hosting organization's second layer's
+// identities (<prefix>-org-gbl-tofu, <prefix>-org-gbl-plan).
+const orgIdentity = "org"
 
-// The identity names of the second layer of each kind, as 0-bootstrap names the layer's
-// apply and plan identities (<prefix>-<name>-gbl-tofu, <prefix>-<name>-gbl-plan).
-const (
-	orgIdentity = "org"
-	dnsIdentity = "dns"
-)
+// RootProjectKey is the key of a root organization's one project in placement.json
+// (projects.root): the root project, which holds the secrets, the zones, the connection,
+// the triggers and the state bucket.
+const RootProjectKey = "root"
 
-// RootLayers are a root organization's layers, in apply order.
-var RootLayers = []string{bootstrapLayer, dnsLayer}
-
-// rootProjectKeys are a root organization's projects by key: the boot project alone,
-// where its zones live.
-var rootProjectKeys = []string{bootProject}
+// rootProjectKeys are a root organization's projects by key: the root project alone.
+var rootProjectKeys = []string{RootProjectKey}
 
 // nameServerCount is how many name servers Cloud DNS assigns a zone, and how many a
 // label handed onward names.
@@ -81,39 +78,18 @@ func (p *Placement) IsRoot() bool {
 	return p.Kind == RootKind
 }
 
-// Layers are the organization's layers in apply order, by its kind: the six layers of
-// the hosting model, or the bootstrap and 1-dns.
+// Layers are the organization's layers in apply order: the six layers of the hosting
+// model; a root organization has none, since bedrock keeps it by API.
 func (p *Placement) Layers() []string {
 	if p.IsRoot() {
-		return RootLayers
+		return nil
 	}
 
 	return HostingLayers
 }
 
-// SecondLayer is the layer after the bootstrap, whose identity 0-bootstrap creates and
-// whose GitHub provider takes the infrastructure GitHub App's token: 1-org, or 1-dns for
-// a root organization.
-func (p *Placement) SecondLayer() string {
-	if p.IsRoot() {
-		return dnsLayer
-	}
-
-	return orgLayer
-}
-
-// SecondIdentity is the name 0-bootstrap gives the second layer's identities
-// (<prefix>-org-gbl-tofu, <prefix>-dns-gbl-tofu).
-func (p *Placement) SecondIdentity() string {
-	if p.IsRoot() {
-		return dnsIdentity
-	}
-
-	return orgIdentity
-}
-
 // ProjectKeys are the organization's projects by key, in layer order, by its kind: the
-// boot project, the shared projects and the environment projects, or the boot project
+// boot project, the shared projects and the environment projects, or the root project
 // alone.
 func (p *Placement) ProjectKeys() []string {
 	if p.IsRoot() {
@@ -125,10 +101,11 @@ func (p *Placement) ProjectKeys() []string {
 
 // RerunExample is the substitutions a person starts the apply trigger by hand with, as
 // the READMEs and the triggers' comments show them: 2-env for one environment in the
-// hosting model, 1-dns for a root organization.
+// hosting model. A root organization's apply trigger takes none: it applies the whole
+// record every run.
 func (p *Placement) RerunExample() string {
 	if p.IsRoot() {
-		return "_LAYER=" + dnsLayer
+		return ""
 	}
 
 	return "_LAYER=" + envLayer + ",_ENVIRONMENT=" + Environments[0]
@@ -144,39 +121,87 @@ func (p *Placement) LabelNames(domain string) []string {
 	return slices.Sorted(maps.Keys(p.Domains[domain].Labels))
 }
 
-// ZoneProject is where a root organization's zones are: the boot project, empty until
-// the placement records the seed's value (projects.boot).
+// ZoneProject is where a root organization's zones are: the root project, empty until
+// the bootstrap records it (projects.root).
 func (p *Placement) ZoneProject() string {
-	return p.Projects[bootProject]
+	return p.Projects[RootProjectKey]
 }
 
-// ZoneName is the name 1-dns gives a domain's zone in the boot project:
-// <prefix>-boot-gbl-dns-<the domain with hyphens for its dots>, the shape 2-net gives a
+// ZoneName is the name a root organization gives a domain's zone in the root project:
+// <prefix>-root-gbl-dns-<the domain with hyphens for its dots>, the shape 2-net gives a
 // vanity domain's zone in the network project.
 func (p *Placement) ZoneName(domain string) string {
-	return p.Prefix + "-" + bootProject + "-gbl-dns-" + strings.ReplaceAll(domain, ".", "-")
+	return p.Prefix + "-" + RootProjectKey + "-gbl-dns-" + strings.ReplaceAll(domain, ".", "-")
 }
 
 // validateKind refuses a kind that is neither of the two.
 func (p *Placement) validateKind() error {
 	if p.Kind != "" && !slices.Contains(Kinds, p.Kind) {
-		return errors.Newf("kind %q is not one of %s: a hosting organization holds applications in its environments (the default, left out), a root organization holds DNS zones alone", p.Kind, strings.Join(Kinds, ", "))
+		return errors.Newf("kind %q is not one of %s: a hosting organization holds applications in its environments (the default, left out), a root organization holds the GitHub Apps' keys, the zones of the domains delegated to it and the hosting organizations' records", p.Kind, strings.Join(Kinds, ", "))
 	}
 
 	return nil
 }
 
-// validateRoot holds a root organization's placement to what its two layers render
-// from: the fields every organization has, one region (the boot project's, where the
-// connection, the triggers and the state bucket are), the domains and their labels, and
-// none of the fields that describe applications or environments, which it has neither of.
+// billingAccountRE is a billing account's id as Cloud Billing spells it.
+var billingAccountRE = regexp.MustCompile(`^[0-9A-F]{6}-[0-9A-F]{6}-[0-9A-F]{6}$`)
+
+// ValidateDraft holds the placement bedrock org bootstrap drafts, from its flags, the
+// discovery and the prompts, to the rules before anything is made: what Validate holds a
+// finished placement to, less what the bootstrap itself records (the project and the
+// bucket, the apps and their keys, the Bot Account and the Cloud Build authorization).
+func (p *Placement) ValidateDraft() error {
+	if !prefixRE.MatchString(p.Prefix) {
+		return errors.Newf("prefix %q is not 2 to 4 lowercase alphanumeric characters starting with a letter", p.Prefix)
+	}
+	if !p.IsRoot() {
+		return errors.New("the bootstrap drafts a root organization (kind root)")
+	}
+	for name, value := range map[string]string{
+		"organizationDomain": p.OrganizationDomain, "organizationId": p.OrganizationID, "billingAccount": p.BillingAccount,
+		"githubOrganization": p.GithubOrganization, "sourceRepo": p.SourceRepo, "githubDefaultBranch": p.GithubDefaultBranch, "breakGlassAccount": p.BreakGlassAccount,
+	} {
+		if strings.TrimSpace(value) == "" {
+			return errors.Newf("%s is empty", name)
+		}
+	}
+	if !projectNumberRE.MatchString(p.OrganizationID) {
+		return errors.Newf("organizationId %q is not an organization's numeric id", p.OrganizationID)
+	}
+	if !billingAccountRE.MatchString(p.BillingAccount) {
+		return errors.Newf("billingAccount %q is not a billing account's id (XXXXXX-XXXXXX-XXXXXX, uppercase hexadecimal)", p.BillingAccount)
+	}
+	if !githubLoginRE.MatchString(p.GithubOrganization) {
+		return errors.Newf("githubOrganization %q is not a GitHub organization's login", p.GithubOrganization)
+	}
+	if len(p.Regions) != 1 || p.Regions[0].Name == "" || !regionCodeRE.MatchString(p.Regions[0].Code) {
+		return errors.New("regions needs one entry, the region the connection, the triggers and the state bucket are in, with its name and a three-character code (us-central1, uc1)")
+	}
+	for _, validate := range []func() error{p.validateDirectoryCustomer, p.validateAppNames, p.validateApprovingReviews, p.validateKeyHolding, p.validateCiLargeRunner, p.validateDomains} {
+		if err := validate(); err != nil {
+			return err
+		}
+	}
+	for k, v := range p.Labels {
+		if !labelRE.MatchString(k) || v == "" {
+			return errors.Newf("label %q = %q is not a lowercase key with a value", k, v)
+		}
+	}
+
+	return nil
+}
+
+// validateRoot holds a root organization's placement to what the bootstrap and the
+// apply keep: the fields every organization has, one region (the root project's, where
+// the connection, the triggers and the state bucket are), the domains and their labels,
+// and none of the fields that describe applications or environments, which it has
+// neither of.
 func (p *Placement) validateRoot() error {
 	for name, value := range map[string]string{
-		"appsDomain": p.AppsDomain, "spanner.config": p.Spanner.Config, "githubReleaseAppSlug": p.GithubReleaseAppSlug,
-		"githubInfrastructureTeam": p.GithubInfrastructureTeam,
+		"appsDomain": p.AppsDomain, "spanner.config": p.Spanner.Config, "githubInfrastructureTeam": p.GithubInfrastructureTeam,
 	} {
 		if value != "" {
-			return errors.Newf("%s is set, and a root organization has no use for it: it holds DNS zones alone, no applications and no environments", name)
+			return errors.Newf("%s is set, and a root organization has no use for it: it holds no application and no environment", name)
 		}
 	}
 	for name, set := range map[string]bool{
@@ -186,8 +211,11 @@ func (p *Placement) validateRoot() error {
 		"outOfService": len(p.OutOfService) > 0, "hostnames": len(p.Hostnames) > 0,
 	} {
 		if set {
-			return errors.Newf("%s is set, and a root organization has no use for it: it holds DNS zones alone, no applications and no environments", name)
+			return errors.Newf("%s is set, and a root organization has no use for it: it holds no application and no environment", name)
 		}
+	}
+	if p.ZoneReplacement {
+		return errors.New("zoneReplacement is set, and a root organization has no use for it: its apply never deletes a zone (a domain taken out of domains leaves its zone standing, reported as a finding); to make a zone again, delete it by hand in the root project (gcloud dns managed-zones delete) and the next apply makes it, on new name servers the domain's registrar is then pointed at")
 	}
 	if len(p.Regions) != 1 {
 		return errors.Newf("regions has %d entries; a root organization runs in one, where its connection, its triggers and its state bucket are", len(p.Regions))
@@ -282,4 +310,25 @@ func (p *Placement) validateDelegation(where string, d Delegation) error {
 	}
 
 	return nil
+}
+
+// RegionCode is the three-character code bedrock's names carry for a region, from the
+// region's name: the initial of each word and the number (us-central1: uc1; us-west3:
+// uw3; europe-west4: ew4; northamerica-northeast1: nn1). A name of another shape is
+// refused.
+func RegionCode(name string) (string, error) {
+	i := strings.IndexFunc(name, func(r rune) bool { return r >= '0' && r <= '9' })
+	if i <= 0 {
+		return "", errors.Newf("%q is not a region name of the shape <area>-<direction><number> (us-central1)", name)
+	}
+	words := strings.Split(name[:i], "-")
+	if len(words) != 2 || words[0] == "" || words[1] == "" {
+		return "", errors.Newf("%q is not a region name of the shape <area>-<direction><number> (us-central1)", name)
+	}
+	code := words[0][:1] + words[1][:1] + name[i:]
+	if !regionCodeRE.MatchString(code) {
+		return "", errors.Newf("%q gives the code %q, not three characters (us-central1 gives uc1): choose the code by hand in placement.json", name, code)
+	}
+
+	return code, nil
 }

@@ -171,25 +171,6 @@ func (c *Client) RepositoryInstallation(ctx context.Context, owner, repo string)
 	return out.ID, nil
 }
 
-// App is a GitHub App as GitHub describes it to the app itself.
-type App struct {
-	ID   int64  `json:"id"`
-	Slug string `json:"slug"`
-	Name string `json:"name"`
-}
-
-// App is the app the client's JWT signs as: GitHub's answer to the app itself, which it
-// gives for a JWT signed with the app's own key alone. The client's token is the app's
-// JWT, not an installation token.
-func (c *Client) App(ctx context.Context) (*App, error) {
-	var out App
-	if err := c.do(ctx, http.MethodGet, "/app", nil, &out); err != nil {
-		return nil, err
-	}
-
-	return &out, nil
-}
-
 // InstallationToken mints a token for the installation, good for an hour. The client's
 // token is the app's JWT.
 func (c *Client) InstallationToken(ctx context.Context, installation int64) (string, error) {

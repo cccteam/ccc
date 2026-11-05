@@ -18,8 +18,8 @@ func TestOrgCreate(t *testing.T) {
 	t.Parallel()
 
 	dir := rootRepo(t)
-	if code, out := runOrg(t, "org", "new", dir); code != 0 {
-		t.Fatalf("org new: %d\n%s", code, out)
+	if code, out := runOrg(t, "org", "render", "--dir", dir); code != 0 {
+		t.Fatalf("org render: %d\n%s", code, out)
 	}
 	record := org.RecordPath(dir, "rgb")
 
@@ -64,9 +64,10 @@ func TestOrgCreate(t *testing.T) {
 	}
 	wantOut := []string{
 		"Recorded rgb: boot project " + filled.Projects["boot"] + ", state bucket " + filled.StateBucket + ", repository imp-example/rgb-infrastructure, under the root organization imr.\n",
-		"The merge of this pull request creates rgb, as the creating identity (imr-create-gbl-tofu@imr-boot-gbl-core-c3d4.iam.gserviceaccount.com):",
-		"a Google Cloud organization administrator grants the creating identity\nFolder Creator (roles/resourcemanager.folderCreator) at the organization node",
-		"Billing Account User (roles/billing.user) on 012345-6789AB-CDEF01",
+		"The merge of this pull request creates rgb, as the creating identity (imr-create-gbl-tofu@imr-root-gbl-core-c3d4.iam.gserviceaccount.com):",
+		"Nothing is granted by hand before the merge: the creating identity holds Folder Creator at the",
+		"Billing Account Administrator on 012345-6789AB-CDEF01 since the bootstrap",
+		"a billing administrator sets its spend budget",
 	}
 	for _, want := range wantOut {
 		if !strings.Contains(out, want) {

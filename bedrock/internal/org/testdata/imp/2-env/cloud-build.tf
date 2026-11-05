@@ -5,20 +5,19 @@
 # One connection per environment project. The Cloud Build GitHub App is
 # installed on the imp-example organization (one installation ID for
 # every connection), and the connection proves it may act for that
-# installation with a GitHub OAuth token held in Secret Manager. That token is
-# produced once per organization by a browser step that cannot be scripted,
-# in the boot project's Cloud Build console, signed in to GitHub as the
-# machine account imp-machine, before the first apply of 0-bootstrap
-# (0-bootstrap/README.md, "The Cloud Build GitHub authorization"). The console
-# writes the token as a regional secret in the boot project, and placement.json
-# records the installation and the token secret's version
-# (cloudBuildInstallationId, cloudBuildTokenSecretVersion), which every
-# connection is rendered from: the boot project's, which the layers' triggers
-# watch this repository through, and each environment's. 0-bootstrap grants
-# this project's Cloud Build service agent the token's read, by the project
-# number placement.json records (projectNumbers).
+# installation with a token held in Secret Manager: the Bot Account
+# imp-bot's personal access token, which the root organization
+# imr's bootstrap stored once in its root project, for every
+# organization in the Google Cloud organization (the root README.md,
+# "Bootstrapped by one command"). placement.json records the installation and
+# the token secret's version (cloudBuildInstallationId,
+# cloudBuildTokenSecretVersion), copied from that organization's by the
+# creation, which every connection is rendered from: the boot project's, which
+# the layers' triggers watch this repository through, and each environment's.
+# 0-bootstrap grants this project's Cloud Build service agent the token's
+# read, by the project number placement.json records (projectNumbers).
 #
-# Until the browser step has run, placement.json records neither value and
+# Until the creation has recorded them, placement.json records neither value and
 # everything below but the service agent is skipped: the environment
 # (identities, registries, records bucket, the tst instance) applies without
 # its connection, and the application layer's triggers wait on it.

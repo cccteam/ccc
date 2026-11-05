@@ -30,20 +30,15 @@
 # The connection and the repository link exist once placement.json records
 # the Cloud Build GitHub authorization (cloudBuildInstallationId,
 # cloudBuildTokenSecretVersion; README, "The Cloud Build GitHub
-# authorization"){{if .IsRoot}}: the browser step, in this project's Cloud Build console,
-# before this layer's first apply, made once for every organization in the
-# Google Cloud organization. Until then the rest of the layer applies and
-# nothing runs. The token secret the browser step writes lives in this
-# project; each created hosting organization's boot identity administers its
-# policy (github.tf) and grants its own Cloud Build service agents the read{{else}},
-# which the root organization made once, in its boot project's Cloud Build
-# console, and this placement carries (the same two values as that
-# organization's). Until then the rest of the layer applies and nothing runs.
-# The token secret lives in that organization's boot project; this layer
+# authorization"),
+# which the root organization's bootstrap made once, in its root project, and
+# this placement carries (the same two values as that organization's). Until
+# then the rest of the layer applies and nothing runs.
+# The token secret lives in that organization's root project; this layer
 # grants this project's Cloud Build service agent its read, for the triggers'
 # connection, and each environment project's, for its 2-env connection, by
 # the numbers placement.json records (projectNumbers), with the policy
-# administration the root organization gave the boot identity (github.tf){{end}}.
+# administration the root organization gave the boot identity (github.tf).
 # ---------------------------------------------------------------------------
 
 locals {
@@ -71,10 +66,9 @@ locals {
   token_secret   = local.connected ? local.token_parts[local.token_regional ? 5 : 3] : "unrecorded"
 
   # The Cloud Build service agents that read the token: this project's, for
-  # the triggers' connection{{if .IsRoot}}, and no other, since a root organization has no
-  # environment project{{else}}, and each environment project's placement.json
+  # the triggers' connection, and each environment project's placement.json
   # records a number for (projectNumbers), for the environment's 2-env
-  # connection. A project not recorded yet is granted once it is{{end}}.
+  # connection. A project not recorded yet is granted once it is.
   environment_project_numbers = {{.EnvironmentProjectNumbersHCL}}
   token_readers = local.connected ? merge(
     { boot = module.boot_project.project_number },
@@ -82,7 +76,7 @@ locals {
   ) : {}
 
   # The two runner identities, with the keys each reads (github.tf): the
-  # planner posts the plans as the deployer app and mints {{.SecondLayer}}'s GitHub
+  # planner posts the plans as the deployer app and mints 1-org's GitHub
   # token from the infrastructure app's key; the applier mints the same token.
   runners = {
     planner = google_service_account.planner
@@ -162,8 +156,8 @@ resource "google_cloudbuildv2_repository" "infrastructure" {
 # The plan trigger's builds run as the planner, the apply trigger's as the
 # applier. Neither holds a layer's roles: each impersonates the layer
 # identities of its kind for that layer's tofu (roles/iam.serviceAccountTokenCreator
-# on each, granted here for the four identities this layer owns{{if not .IsRoot}} and in 1-org
-# for the ones it creates{{end}}), so a plan runs with a plan identity's reads and an
+# on each, granted here for the four identities this layer owns and in 1-org
+# for the ones it creates), so a plan runs with a plan identity's reads and an
 # apply with the apply identity's writes, as before. What each holds itself:
 # the build logs (Cloud Logging, which a build as a user-specified service
 # account writes to), the connection's read token (bedrock org plan and apply
@@ -207,7 +201,7 @@ resource "google_project_iam_member" "runner_builds" {
 }
 
 # bedrock org check, both triggers' step before the plan or the apply, lists the
-# grants the first-time setup left (the leftover report): it finds the
+# grants a hand apply left (the leftover report): it finds the
 # organization's folder and its projects (Browser: resourcemanager.folders.get,
 # which Security Reviewer lacks and a folder search needs) and reads their IAM
 # policies (Security Reviewer), on the folder, for both runners.
@@ -224,7 +218,7 @@ resource "google_folder_iam_member" "runner_policy_reader" {
 
 # Cloud Build runs a build as the trigger's service account on the service
 # agent's say-so, and whoever creates the trigger acts as that account: the
-# {{if .IsRoot}}break-glass account's{{else}}creating identity's{{end}} Owner covers the first apply, the boot identity
+# creating identity's Owner covers the first apply, the boot identity
 # every apply after it.
 resource "google_service_account_iam_member" "runner_agent_user" {
   for_each = local.runners
@@ -244,11 +238,9 @@ resource "google_service_account_iam_member" "runner_boot_tofu_user" {
   member             = google_service_account.boot_tofu.member
 }
 
-# The applier applies this layer as the boot identity and {{.SecondLayer}} as the {{.SecondIdentity}}
+# The applier applies this layer as the boot identity and 1-org as the org
 # identity; the planner plans them as the two plan identities (bootstrap.tf).
-{{- if not .IsRoot}}
 # 1-org grants the same on the identities it creates.
-{{- end}}
 resource "google_service_account_iam_member" "applier_boot_tofu" {
   service_account_id = google_service_account.boot_tofu.name
   role               = "roles/iam.serviceAccountTokenCreator"
@@ -260,16 +252,6 @@ resource "google_service_account_iam_member" "applier_org_tofu" {
   role               = "roles/iam.serviceAccountTokenCreator"
   member             = google_service_account.applier.member
 }
-{{- if .IsRoot}}
-
-# The applier creates a hosting organization as the creating identity
-# (bootstrap.tf), in the same run as the layers' applies.
-resource "google_service_account_iam_member" "applier_create_tofu" {
-  service_account_id = google_service_account.create_tofu.name
-  role               = "roles/iam.serviceAccountTokenCreator"
-  member             = google_service_account.applier.member
-}
-{{- end}}
 
 resource "google_service_account_iam_member" "boot_plan_planner" {
   for_each = local.boot_plans
@@ -313,8 +295,8 @@ resource "google_secret_manager_secret_iam_member" "runner_keys" {
   member    = local.runners[each.value.runner].member
 }
 
-# The markers: one object per layer run under applied/ (applied/<layer>{{if not .IsRoot}},
-# applied/2-env/<env>{{end}}), holding the commit of the run's last successful
+# The markers: one object per layer run under applied/ (applied/<layer>,
+# applied/2-env/<env>), holding the commit of the run's last successful
 # apply, which bedrock org apply reads to decide what a push changed and
 # writes after each apply. The applier reaches nothing else in the bucket.
 resource "google_storage_bucket_iam_member" "applier_markers" {
@@ -351,7 +333,7 @@ locals {
   run_env      = ["BUILD_ID=$BUILD_ID", "PROJECT_ID=$PROJECT_ID", "LOCATION=$LOCATION"]
   substitutions = {
     _LAYER         = "" # a layer to apply again by hand, with no change check; empty for the push's changes
-    _ENVIRONMENT   = "" # {{if .IsRoot}}unused here: a root organization has no environment layer{{else}}with _LAYER=2-env, one environment; empty for the three in order{{end}}
+    _ENVIRONMENT   = "" # with _LAYER=2-env, one environment; empty for the three in order
     _BEDROCK_STEPS = "{{.StepsVersion}}" # the shape of these steps, which bedrock org plan and apply compare with their own
   }
 
@@ -366,12 +348,10 @@ locals {
   # with the pin it moves, and applies it when the pin changes kind.
   fetch_bedrock = <<-EOT
 {{.FetchBedrockScript}}
-  EOT
-{{- if .CommitPin}}
+  EOT{{- if .CommitPin}}
   build_bedrock = <<-EOT
 {{.BuildBedrockScript}}
-  EOT
-{{- end}}
+  EOT{{- end}}
 
   steps = [
     {
@@ -381,8 +361,7 @@ locals {
       args       = ["-c", local.fetch_bedrock, "/builder/home", "https://github.com", "{{.BedrockRepository}}"]
       env        = ["{{.StepsEnv}}={{.StepsVersion}}"]
       timeout    = "{{.FetchSeconds}}s"
-    },
-{{- if .CommitPin}}
+    },{{- if .CommitPin}}
     {
       id         = "BuildBedrock"
       name       = "{{.GoImage}}"
@@ -390,8 +369,7 @@ locals {
       args       = ["-c", local.build_bedrock]
       env        = {{.GoInstallEnvHCL}}
       timeout    = "{{.BuildSeconds}}s"
-    },
-{{- end}}
+    },{{- end}}
     {
       id         = "Check"
       name       = "{{.OpenTofuImage}}"
@@ -403,8 +381,8 @@ locals {
   ]
 }
 
-# The plan trigger's name is also the check {{.SecondLayer}} requires on this
-# repository's default branch ({{.SecondLayer}}/github.tf, local.layers_plan_check): a
+# The plan trigger's name is also the check 1-org requires on this
+# repository's default branch (1-org/github.tf, local.layers_plan_check): a
 # renamed trigger is a change in both files.
 resource "google_cloudbuild_trigger" "plan" {
   count = local.connected ? 1 : 0

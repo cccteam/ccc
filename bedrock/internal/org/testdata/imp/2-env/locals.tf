@@ -115,22 +115,22 @@ locals {
   # browser step has run; the connection then exists (cloud-build.tf) and
   # until then the environment applies without it.
   cloud_build_installation_id      = 12345678
-  cloud_build_token_secret_version = "projects/imr-boot-gbl-core-c3d4/locations/us-central1/secrets/github-github-oauthtoken-fedcba/versions/1"
+  cloud_build_token_secret_version = "projects/imr-root-gbl-core-c3d4/secrets/imr-root-gbl-github-token/versions/1"
   connected                        = local.cloud_build_installation_id != null && local.cloud_build_token_secret_version != null
 
-  # The GitHub Apps' keys live in the root organization imr's boot
+  # The GitHub Apps' keys live in the root organization imr's root
   # project (placement.json, keys), one secret per app, and every reader
   # names a secret's alias current, which that organization pins
   # (github-apps.tf).
-  keys_project = "imr-boot-gbl-core-c3d4"
+  keys_project = "imr-root-gbl-core-c3d4"
 
   # The deployer GitHub App the pipelines talk back on a pull request as: its
   # App ID from placement.json (githubDeployerAppId; null until recorded) and
   # its private key's alias, by resource name. This layer's outputs carry both
   # to the applications' pipelines.
   github_deployer_app_id             = 5080800
-  github_deployer_key_secret         = "imr-boot-gbl-github-deployer-key"
-  github_deployer_key_secret_version = "projects/imr-boot-gbl-core-c3d4/secrets/imr-boot-gbl-github-deployer-key/versions/current"
+  github_deployer_key_secret         = "imr-root-gbl-github-deployer-key"
+  github_deployer_key_secret_version = "projects/imr-root-gbl-core-c3d4/secrets/imr-root-gbl-github-deployer-key/versions/current"
 
   # The release GitHub App each application's release trigger cuts the
   # releases as (release-please, run in Cloud Build as the application's
@@ -139,8 +139,8 @@ locals {
   # both to the applications' stacks, and in tst it grants each release
   # identity the read.
   github_release_app_id             = 5080645
-  github_release_key_secret         = "imr-boot-gbl-github-release-key"
-  github_release_key_secret_version = "projects/imr-boot-gbl-core-c3d4/secrets/imr-boot-gbl-github-release-key/versions/current"
+  github_release_key_secret         = "imr-root-gbl-github-release-key"
+  github_release_key_secret_version = "projects/imr-root-gbl-core-c3d4/secrets/imr-root-gbl-github-release-key/versions/current"
 
   # Role sets. Project-level roles are the price of a shared environment
   # project; the design brief tests how far IAM conditions on

@@ -185,6 +185,18 @@ func (g *FakeGoogle) RevokeProject(_ context.Context, id, member string, roles [
 	return nil
 }
 
+// GrantBillingAccount records the grant on the billing account.
+func (g *FakeGoogle) GrantBillingAccount(_ context.Context, billingAccount, role, member string) error {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	if err := g.call("GrantBillingAccount", billingAccount, role, member); err != nil {
+		return err
+	}
+	g.Grants = append(g.Grants, "billingAccounts/"+billingAccount+" "+role+" "+member)
+
+	return nil
+}
+
 // LinkBilling records the link.
 func (g *FakeGoogle) LinkBilling(_ context.Context, id, billingAccount string) error {
 	g.mu.Lock()

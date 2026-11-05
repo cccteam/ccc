@@ -67,6 +67,10 @@ func TestLeftovers(t *testing.T) {
 			{Role: "roles/owner", Members: []string{account}},
 			{Role: "roles/iam.serviceAccountTokenCreator", Members: []string{account, "serviceAccount:imp-org-gbl-applier@imp-boot-gbl-core-7a8b.iam.gserviceaccount.com"}},
 		},
+		"imp-root-gbl-core-7a8b": {
+			{Role: "roles/owner", Members: []string{account}},
+			{Role: "roles/iam.serviceAccountTokenCreator", Members: []string{account, "serviceAccount:imp-root-gbl-applier@imp-root-gbl-core-7a8b.iam.gserviceaccount.com"}},
+		},
 		"imp-tst-gbl-core-1a2b": {
 			{Role: "roles/owner", Members: []string{"user:seed@imp.example", "serviceAccount:imp-tst-gbl-tofu@imp-tst-gbl-core-1a2b.iam.gserviceaccount.com"}},
 			{Role: "roles/editor", Members: []string{"user:someone@imp.example"}},
@@ -82,7 +86,7 @@ func TestLeftovers(t *testing.T) {
 		"100": {
 			{Role: FolderAdminRole, Members: []string{account, "serviceAccount:imp-boot-gbl-tofu@imp-boot-gbl-core-7a8b.iam.gserviceaccount.com"}},
 			{Role: FolderEditorRole, Members: []string{account}},
-			{Role: "roles/resourcemanager.projectCreator", Members: []string{account, "serviceAccount:imp-org-gbl-tofu@imp-boot-gbl-core-7a8b.iam.gserviceaccount.com", "serviceAccount:imr-create-gbl-tofu@imr-boot-gbl-core-c3d4.iam.gserviceaccount.com"}},
+			{Role: "roles/resourcemanager.projectCreator", Members: []string{account, "serviceAccount:imp-org-gbl-tofu@imp-boot-gbl-core-7a8b.iam.gserviceaccount.com", "serviceAccount:imr-create-gbl-tofu@imr-root-gbl-core-c3d4.iam.gserviceaccount.com"}},
 			{Role: "roles/browser", Members: []string{"serviceAccount:imp-boot-gbl-plan@imp-boot-gbl-core-7a8b.iam.gserviceaccount.com", "serviceAccount:service-100000000001@gcp-sa-pam.iam.gserviceaccount.com"}},
 			{Role: "roles/resourcemanager.folderViewer", Members: []string{"group:auditors@imp.example", "user:someone@imp.example"}},
 		},
@@ -101,14 +105,16 @@ func TestLeftovers(t *testing.T) {
 		projects       map[string]string
 		folder         string
 		wantLeftovers  []Leftover
+		wantPlace      string
 		wantUnrecorded string
 		wantFound      bool
 		wantErr        string
 	}{
 		{
-			name:     "every project and the folders: the grants, projects first in the placement's order, then the folders",
-			projects: map[string]string{"boot": "imp-boot-gbl-core-7a8b", "tst": "imp-tst-gbl-core-1a2b", "stg": "imp-stg-gbl-core-3c4d", "prd": "imp-prd-gbl-core-5e6f"},
-			folder:   "100",
+			name:      "every project and the folders: the grants, projects first in the placement's order, then the folders",
+			projects:  map[string]string{"boot": "imp-boot-gbl-core-7a8b", "tst": "imp-tst-gbl-core-1a2b", "stg": "imp-stg-gbl-core-3c4d", "prd": "imp-prd-gbl-core-5e6f"},
+			folder:    "100",
+			wantPlace: "project boot (imp-boot-gbl-core-7a8b)",
 			wantLeftovers: []Leftover{
 				{On: OnProject, Key: "boot", ID: "imp-boot-gbl-core-7a8b", Member: account, Role: "roles/owner"},
 				{On: OnProject, Key: "boot", ID: "imp-boot-gbl-core-7a8b", Member: account, Role: "roles/iam.serviceAccountTokenCreator"},
@@ -117,7 +123,7 @@ func TestLeftovers(t *testing.T) {
 				{On: OnProject, Key: "prd", ID: "imp-prd-gbl-core-5e6f", Member: "user:other@imp.example", Role: "roles/owner"},
 				{On: OnFolder, Key: "imp", ID: "100", Member: account, Role: FolderEditorRole},
 				{On: OnFolder, Key: "imp", ID: "100", Member: account, Role: "roles/resourcemanager.projectCreator"},
-				{On: OnFolder, Key: "imp", ID: "100", Member: "serviceAccount:imr-create-gbl-tofu@imr-boot-gbl-core-c3d4.iam.gserviceaccount.com", Role: "roles/resourcemanager.projectCreator", Outside: true},
+				{On: OnFolder, Key: "imp", ID: "100", Member: "serviceAccount:imr-create-gbl-tofu@imr-root-gbl-core-c3d4.iam.gserviceaccount.com", Role: "roles/resourcemanager.projectCreator", Outside: true},
 				{On: OnFolder, Key: "imp", ID: "100", Member: "group:auditors@imp.example", Role: "roles/resourcemanager.folderViewer", Outside: true},
 				{On: OnFolder, Key: "imp", ID: "100", Member: "user:someone@imp.example", Role: "roles/resourcemanager.folderViewer", Outside: true},
 				{On: OnFolder, Key: "terraform", ID: "101", Member: "user:seed@imp.example", Role: FolderAdminRole},
@@ -132,16 +138,20 @@ func TestLeftovers(t *testing.T) {
 			wantUnrecorded: "tst,prd",
 		},
 		{
-			name:     "a root organization: its boot project and its folder, no environment to name",
-			kind:     RootKind,
-			projects: map[string]string{"boot": "imp-boot-gbl-core-7a8b"},
-			folder:   "100",
+			name:      "a root organization: its root project and its folder, no environment to name; a hosting organization's identities on the folder are outside it",
+			kind:      RootKind,
+			projects:  map[string]string{"root": "imp-root-gbl-core-7a8b"},
+			folder:    "100",
+			wantPlace: "project root (imp-root-gbl-core-7a8b)",
 			wantLeftovers: []Leftover{
-				{On: OnProject, Key: "boot", ID: "imp-boot-gbl-core-7a8b", Member: account, Role: "roles/owner"},
-				{On: OnProject, Key: "boot", ID: "imp-boot-gbl-core-7a8b", Member: account, Role: "roles/iam.serviceAccountTokenCreator"},
+				{On: OnProject, Key: "root", ID: "imp-root-gbl-core-7a8b", Member: account, Role: "roles/owner"},
+				{On: OnProject, Key: "root", ID: "imp-root-gbl-core-7a8b", Member: account, Role: "roles/iam.serviceAccountTokenCreator"},
+				{On: OnFolder, Key: "imp", ID: "100", Member: "serviceAccount:imp-boot-gbl-tofu@imp-boot-gbl-core-7a8b.iam.gserviceaccount.com", Role: "roles/resourcemanager.folderAdmin", Outside: true},
 				{On: OnFolder, Key: "imp", ID: "100", Member: account, Role: FolderEditorRole},
 				{On: OnFolder, Key: "imp", ID: "100", Member: account, Role: "roles/resourcemanager.projectCreator"},
-				{On: OnFolder, Key: "imp", ID: "100", Member: "serviceAccount:imr-create-gbl-tofu@imr-boot-gbl-core-c3d4.iam.gserviceaccount.com", Role: "roles/resourcemanager.projectCreator", Outside: true},
+				{On: OnFolder, Key: "imp", ID: "100", Member: "serviceAccount:imp-org-gbl-tofu@imp-boot-gbl-core-7a8b.iam.gserviceaccount.com", Role: "roles/resourcemanager.projectCreator", Outside: true},
+				{On: OnFolder, Key: "imp", ID: "100", Member: "serviceAccount:imr-create-gbl-tofu@imr-root-gbl-core-c3d4.iam.gserviceaccount.com", Role: "roles/resourcemanager.projectCreator", Outside: true},
+				{On: OnFolder, Key: "imp", ID: "100", Member: "serviceAccount:imp-boot-gbl-plan@imp-boot-gbl-core-7a8b.iam.gserviceaccount.com", Role: "roles/browser", Outside: true},
 				{On: OnFolder, Key: "imp", ID: "100", Member: "group:auditors@imp.example", Role: "roles/resourcemanager.folderViewer", Outside: true},
 				{On: OnFolder, Key: "imp", ID: "100", Member: "user:someone@imp.example", Role: "roles/resourcemanager.folderViewer", Outside: true},
 				{On: OnFolder, Key: "terraform", ID: "101", Member: "user:seed@imp.example", Role: FolderAdminRole},
@@ -182,7 +192,7 @@ func TestLeftovers(t *testing.T) {
 				t.Errorf("folder found = %v, want %v", found, tt.wantFound)
 			}
 			if len(leftovers) > 0 {
-				if got, want := leftovers[0].Place(), "project boot (imp-boot-gbl-core-7a8b)"; got != want {
+				if got, want := leftovers[0].Place(), tt.wantPlace; got != want {
 					t.Errorf("Place() = %q, want %q", got, want)
 				}
 			}

@@ -43,8 +43,7 @@ func Plan(ctx context.Context, clients *Clients, req *Request, out io.Writer) er
 	if err != nil {
 		return err
 	}
-	fmt.Fprint(out, r.creationPreview())
-	posts := r.previewPosts()
+	var posts []post
 	if len(runs) == 0 {
 		fmt.Fprintln(out, "No layer changes in this pull request: nothing to plan.")
 
@@ -134,13 +133,13 @@ func (r *run) namedRuns() (runs []org.LayerRun, named bool, err error) {
 	return runs, true, nil
 }
 
-// tokenFor mints the GitHub token of the layer with the GitHub provider (1-org, or 1-dns
-// in a root organization) when that layer is among the runs and has a state: a run that
+// tokenFor mints the GitHub token of the layer with the GitHub provider (1-org) when that
+// layer is among the runs and has a state: a run that
 // has never applied is not planned (planOne), and before an organization's first apply
 // the key's alias the token is minted from is not set yet.
 func (r *run) tokenFor(ctx context.Context, runs []org.LayerRun) (string, error) {
 	for _, lr := range runs {
-		if lr.Layer != r.p.SecondLayer() {
+		if lr.Layer != orgLayer {
 			continue
 		}
 		absent, err := r.stateAbsent(ctx, lr)
@@ -209,7 +208,7 @@ func (r *run) planOne(ctx context.Context, lr org.LayerRun, githubToken string) 
 		return res
 	}
 	defer t.close()
-	if lr.Layer == r.p.SecondLayer() {
+	if lr.Layer == orgLayer {
 		t.withGitHub(githubToken)
 	}
 	if err := t.init(ctx); err != nil {
@@ -258,10 +257,9 @@ type post struct {
 	marker, body string
 }
 
-// comment posts the plans, and what the merge creates, on the pull request as the
-// deployer app: one comment per run and one for the creations, each found by its marker
-// line and updated when it is there, created when not. The plans stay in the log when
-// the deployer app is not recorded.
+// comment posts the plans on the pull request as the deployer app: one comment per run,
+// each found by its marker line and updated when it is there, created when not. The
+// plans stay in the log when the deployer app is not recorded.
 func (r *run) comment(ctx context.Context, number int, posts []post) error {
 	if len(posts) == 0 {
 		return nil
@@ -292,11 +290,7 @@ func (r *run) comment(ctx context.Context, number int, posts []post) error {
 			return err
 		}
 	}
-	what := "the plans"
-	if len(posts) == 1 && posts[0].marker == markerOf(creationsName) {
-		what = "what the merge creates"
-	}
-	fmt.Fprintf(r.out, "Posted %s on pull request #%d as the deployer app.\n", what, number)
+	fmt.Fprintf(r.out, "Posted the plans on pull request #%d as the deployer app.\n", number)
 
 	return nil
 }

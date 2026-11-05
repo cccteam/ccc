@@ -1,0 +1,329 @@
+package root_test
+
+import (
+	"bytes"
+	"context"
+	"crypto/rand"
+	"crypto/rsa"
+	"crypto/x509"
+	"encoding/pem"
+	"fmt"
+	"io"
+	"net/http"
+	"regexp"
+	"slices"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/cccteam/ccc/bedrock/internal/github"
+	"github.com/cccteam/ccc/bedrock/internal/github/githubtest"
+	"github.com/cccteam/ccc/bedrock/internal/org"
+	"github.com/cccteam/ccc/bedrock/internal/root"
+	"github.com/cccteam/ccc/bedrock/internal/root/roottest"
+)
+
+// granted answers every permission asked about.
+type granted struct{}
+
+func (granted) OrganizationPermissions(_ context.Context, _ string, permissions []string) ([]string, error) {
+	return permissions, nil
+}
+
+func (granted) BillingAccountPermissions(_ context.Context, _ string, permissions []string) ([]string, error) {
+	return permissions, nil
+}
+
+func (granted) Close() error {
+	return nil
+}
+
+// draft is the placement as the command drafts it from the flags, the discovery and the
+// prompts, before the bootstrap fills it.
+func draft() *org.Placement {
+	return &org.Placement{
+		Kind: org.RootKind, Prefix: "imr", OrganizationDomain: "imp.example", OrganizationID: "123456789012", DirectoryCustomerID: "C0a1b2c3d",
+		BillingAccount: "012345-6789AB-CDEF01", BreakGlassAccount: "bedrock@imp.example", GithubOrganization: "imp-example", GithubDefaultBranch: "master",
+		SourceRepo: "imr-root-infrastructure", Regions: []org.Region{{Name: "us-central1", Code: "uc1"}},
+		Domains: map[string]org.Domain{"clientbay.example": {}}, KeyOperators: []string{"group:key-operators@imp.example"},
+		BedrockVersion: "v0.5.0", BedrockSHA256: strings.Repeat("ab", 32), Labels: map[string]string{"bedrock-lab": "true"},
+	}
+}
+
+// keyPair is an app's key: the PEM the bootstrap stores and the public key GitHub's
+// stand-in verifies with.
+func keyPair(t *testing.T) ([]byte, *rsa.PublicKey) {
+	t.Helper()
+
+	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	return pem.EncodeToMemory(&pem.Block{Type: "RSA PRIVATE KEY", Bytes: x509.MarshalPKCS1PrivateKey(key)}), &key.PublicKey
+}
+
+// registerApp puts an app into GitHub's stand-in, installed on the organization when
+// installed is set, and answers its PEM.
+func registerApp(t *testing.T, srv *githubtest.Server, m org.AppManifest, id int64, installed bool) []byte {
+	t.Helper()
+
+	keyPEM, public := keyPair(t)
+	app := &githubtest.App{
+		Key:    public,
+		Record: github.App{ID: id, Slug: m.Name, Name: m.Name, Owner: github.Account{Login: "imp-example", Type: "Organization"}, Permissions: m.Permissions, PEM: string(keyPEM)},
+	}
+	if installed {
+		app.Installations = []github.Installation{{ID: id + 1, AppID: id, Account: github.Account{Login: "imp-example", Type: "Organization"}, RepositorySelection: github.AllRepositories}}
+	}
+	srv.Apps[fmt.Sprint(id)] = app
+
+	return keyPEM
+}
+
+// bootstrapWorld is the lab before the bootstrap: nothing on Google Cloud, the GitHub
+// organization with the Bot Account as an owner and the Cloud Build app installed.
+func bootstrapWorld(t *testing.T) (*roottest.Fake, *githubtest.Server, *root.Clients) {
+	t.Helper()
+
+	fake := roottest.New()
+	srv := githubtest.New(t)
+	srv.Login = "imp-bot"
+	srv.Memberships["imp-example"] = "admin"
+	srv.PublicApps["google-cloud-build"] = github.App{ID: 10529, Slug: "google-cloud-build", Name: "Google Cloud Build"}
+	srv.OrgInstallations["imp-example"] = []github.OrgInstallation{{ID: 55, AppID: 10529, AppSlug: "google-cloud-build", RepositorySelection: github.AllRepositories}}
+	clients := &root.Clients{
+		GitHub:      func(token string) *github.Client { return github.New(srv.URL, token) },
+		Permissions: func(context.Context) (org.PermissionTester, error) { return granted{}, nil },
+		Sleep:       func(context.Context, time.Duration) error { return nil },
+	}
+	fake.Clients(clients)
+
+	return fake, srv, clients
+}
+
+// TestBootstrapBroughtApps: with the three apps brought, the bootstrap makes the folder,
+// the project, the bucket and the four secrets, holds each app to its manifest, pins each
+// key, finds the Cloud Build installation, makes and pushes the repository, makes the
+// rest through the engine, takes its own Owner off, and leaves a clean check.
+func TestBootstrapBroughtApps(t *testing.T) {
+	t.Parallel()
+
+	fake, srv, clients := bootstrapWorld(t)
+	p := draft()
+	brought := map[org.AppRole]root.BroughtApp{}
+	for i, m := range p.AppManifests() {
+		id := int64(5000 + i)
+		keyPEM := registerApp(t, srv, m, id, true)
+		brought[m.Role] = root.BroughtApp{ID: fmt.Sprint(id), Key: keyPEM}
+	}
+	dir := t.TempDir()
+	var out bytes.Buffer
+	res, err := root.Bootstrap(context.Background(), clients, &root.BootstrapRequest{Placement: p, Dir: dir, Token: []byte("test-token"), Brought: brought}, &out)
+	if err != nil {
+		t.Fatalf("Bootstrap() error = %v\n%s", err, out.String())
+	}
+	project := res.Placement.Projects[org.RootProjectKey]
+	if !strings.HasPrefix(project, "imr-root-gbl-core-") || res.Placement.StateBucket != "imr-root-gbl-state-"+strings.TrimPrefix(project, "imr-root-gbl-core-") || res.Placement.ProjectNumbers[org.RootProjectKey] == "" {
+		t.Errorf("project %q, bucket %q, numbers %v", project, res.Placement.StateBucket, res.Placement.ProjectNumbers)
+	}
+	if res.Placement.GithubBotAccount != "imp-bot" || res.Placement.CloudBuildInstallationID != "55" || res.Placement.CloudBuildTokenSecretVersion != "projects/"+project+"/secrets/imr-root-gbl-github-token/versions/1" {
+		t.Errorf("bot %q, installation %q, token %q", res.Placement.GithubBotAccount, res.Placement.CloudBuildInstallationID, res.Placement.CloudBuildTokenSecretVersion)
+	}
+	if res.Placement.GithubInfrastructureAppID != "5000" || res.Placement.GithubDeployerAppID != "5001" || res.Placement.GithubReleaseAppID != "5002" || res.Placement.GithubReleaseAppSlug != "imp-example-release" {
+		t.Errorf("apps %q %q %q %q", res.Placement.GithubInfrastructureAppID, res.Placement.GithubDeployerAppID, res.Placement.GithubReleaseAppID, res.Placement.GithubReleaseAppSlug)
+	}
+	for _, key := range org.Secrets {
+		if res.Placement.KeyVersion(key) != "1" {
+			t.Errorf("%s pinned at %q, want 1", key, res.Placement.KeyVersion(key))
+		}
+	}
+	if !res.Report.Clean() {
+		t.Errorf("the check after the bootstrap is not clean: %v %v", whats(res.Report), res.Report.Findings)
+	}
+	for _, want := range []string{
+		"The token is imp-bot's, an owner of imp-example: the Bot Account.",
+		"Created the folder imr at the organization node: 900000000001.",
+		"Created the project " + project + " under the folder.",
+		"Put the Bot Account's token into imr-root-gbl-github-token as version 1",
+		"the infrastructure app: App 5000 (imp-example-infrastructure), brought, holds what bedrock declares and is installed on imp-example.",
+		"Google's Cloud Build GitHub App is installed on imp-example as installation 55",
+		"Created the repository imp-example/imr-root-infrastructure, private, default branch master.",
+		"Pushed the foundation to imp-example/imr-root-infrastructure at",
+		"grants: grants serviceAccount:imr-create-gbl-tofu@" + project + ".iam.gserviceaccount.com roles/resourcemanager.folderCreator at the organization node",
+		"Cloud Build: creates the trigger imr-root-uc1-apply",
+		"Took bedrock@imp.example's Owner off " + project + "; it keeps Folder Admin on folder 900000000001.",
+		"The root organization stands as placement.json says: nothing to change.",
+		"Bootstrapped the imr root organization as bedrock@imp.example",
+	} {
+		if !strings.Contains(out.String(), want) {
+			t.Errorf("output lacks %q:\n%s", want, out.String())
+		}
+	}
+	if !slices.Contains(fake.Calls, "GrantFolder(folders/900000000001, roles/resourcemanager.folderAdmin, user:bedrock@imp.example)") || !slices.Contains(fake.Calls, "RevokeProject(projects/"+project+", user:bedrock@imp.example, roles/owner)") {
+		t.Errorf("the break-glass account's grants: %v", fake.Calls)
+	}
+	if !slices.Contains(srv.Created, "imp-example/imr-root-infrastructure") {
+		t.Errorf("the repository was not made: %v", srv.Created)
+	}
+	repo := srv.Repos["imp-example/imr-root-infrastructure"]
+	if len(repo.Rulesets) != 1 || len(repo.Rulesets[0].BypassActors) != 1 || repo.Rulesets[0].BypassActors[0].ActorID != 5000 {
+		t.Errorf("the repository's rulesets: %+v", repo.Rulesets)
+	}
+	placement, err := org.ReadPlacement(dir + "/placement.json")
+	if err != nil {
+		t.Fatalf("the rendered placement does not read: %v", err)
+	}
+	if placement.Projects[org.RootProjectKey] != project {
+		t.Errorf("the rendered placement records project %q", placement.Projects[org.RootProjectKey])
+	}
+	for _, name := range []string{"README.md", "JOURNAL.md", ".gitignore"} {
+		if !slices.ContainsFunc(srv.Calls, func(c string) bool { return c == "POST /repos/imp-example/imr-root-infrastructure/git/blobs" }) {
+			t.Errorf("no blob was pushed for %s", name)
+		}
+	}
+
+	// A second run finds everything and changes nothing.
+	out.Reset()
+	again, err := root.Bootstrap(context.Background(), clients, &root.BootstrapRequest{Placement: res.Placement, Dir: dir, Token: []byte("test-token"), Brought: brought}, &out)
+	if err != nil {
+		t.Fatalf("Bootstrap() again error = %v\n%s", err, out.String())
+	}
+	if !again.Report.Clean() || strings.Contains(out.String(), "Created the") || !strings.Contains(out.String(), "The project "+project+" exists.") {
+		t.Errorf("the second run:\n%s", out.String())
+	}
+}
+
+// TestBootstrapBrowserFlow: without the apps brought, the bootstrap serves the page, each
+// app is made from its manifest (GitHub's redirect with the code) and installed (seen by
+// the app's own listing), and the keys go into the secrets.
+func TestBootstrapBrowserFlow(t *testing.T) {
+	t.Parallel()
+
+	fake, srv, clients := bootstrapWorld(t)
+	p := draft()
+	// The browser: it reads the page, posts nothing to GitHub (GitHub's stand-in has no
+	// manifest page), and instead follows the redirect GitHub would send, with a code the
+	// stand-in converts; then it installs each app, which the stand-in records.
+	opened := make(chan string, 1)
+	browser := func(url string) error {
+		opened <- url
+
+		return nil
+	}
+	go func() {
+		url := <-opened
+		manifests := p.AppManifests()
+		for i, m := range manifests {
+			page := get(t, url+"/")
+			// The app's own form: its state, then its manifest with the app's name.
+			form := regexp.MustCompile(`state=([0-9a-f]+)"><input type="hidden" name="manifest" value="{&#34;name&#34;:&#34;` + regexp.QuoteMeta(m.Name) + `&#34;`).FindStringSubmatch(page)
+			if form == nil {
+				t.Errorf("the page has no form for %s:\n%s", m.Name, page)
+
+				return
+			}
+			id := int64(6000 + i)
+			registerApp(t, srv, m, id, false)
+			srv.Conversions["code-"+m.Name] = &srv.Apps[fmt.Sprint(id)].Record
+			get(t, url+"/made?code=code-"+m.Name+"&state="+form[1])
+			// The install: the app's installation appears in its own listing.
+			srv.Apps[fmt.Sprint(id)].Installations = []github.Installation{{ID: id + 1, AppID: id, Account: github.Account{Login: "imp-example", Type: "Organization"}, RepositorySelection: github.AllRepositories}}
+			get(t, url+"/installed?installation_id="+fmt.Sprint(id+1)+"&setup_action=install")
+		}
+	}()
+	dir := t.TempDir()
+	var out bytes.Buffer
+	res, err := root.Bootstrap(context.Background(), clients, &root.BootstrapRequest{Placement: p, Dir: dir, Token: []byte("test-token"), OpenURL: browser, FlowTimeout: time.Minute}, &out)
+	if err != nil {
+		t.Fatalf("Bootstrap() error = %v\n%s", err, out.String())
+	}
+	if res.Placement.GithubInfrastructureAppID != "6000" || res.Placement.GithubDeployerAppID != "6001" || res.Placement.GithubReleaseAppID != "6002" {
+		t.Errorf("apps %q %q %q", res.Placement.GithubInfrastructureAppID, res.Placement.GithubDeployerAppID, res.Placement.GithubReleaseAppID)
+	}
+	if !strings.Contains(out.String(), "In your browser, as an owner of the imp-example organization, make and install imp-example-infrastructure, imp-example-deployer, imp-example-release: http://127.0.0.1:") || !strings.Contains(out.String(), "the deployer app: made App 6001 (imp-example-deployer) and installed it on imp-example.") {
+		t.Errorf("output:\n%s", out.String())
+	}
+	project := res.Placement.Projects[org.RootProjectKey]
+	stored, err := fake.AccessSecretVersion(context.Background(), "projects/"+project+"/secrets/imr-root-gbl-github-deployer-key/versions/1")
+	if err != nil || string(stored) != srv.Apps["6001"].Record.PEM {
+		t.Errorf("the deployer key in Secret Manager = %q, %v", stored, err)
+	}
+	if !res.Report.Clean() {
+		t.Errorf("the check after the bootstrap is not clean: %v %v", whats(res.Report), res.Report.Findings)
+	}
+}
+
+// get fetches a page of the flow, following no redirect.
+func get(t *testing.T, url string) string {
+	t.Helper()
+
+	client := &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, url, http.NoBody)
+	if err != nil {
+		t.Errorf("GET %s: %v", url, err)
+
+		return ""
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		t.Errorf("GET %s: %v", url, err)
+
+		return ""
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+
+	return string(body)
+}
+
+// TestBootstrapRefusals: a token of a member who is not an owner, an app brought that is
+// not as declared, and the Cloud Build app not installed are each refused with what to
+// do, before or after what was made (which a run again finds).
+func TestBootstrapRefusals(t *testing.T) {
+	t.Parallel()
+
+	t.Run("the token is a member's, not an owner's", func(t *testing.T) {
+		t.Parallel()
+
+		_, srv, clients := bootstrapWorld(t)
+		srv.Memberships["imp-example"] = "member"
+		_, err := root.Bootstrap(context.Background(), clients, &root.BootstrapRequest{Placement: draft(), Dir: t.TempDir(), Token: []byte("test-token")}, &bytes.Buffer{})
+		if want := "imp-bot, whose token this is, is a member of the imp-example organization, not an owner"; err == nil || !strings.Contains(err.Error(), want) {
+			t.Errorf("error = %v, want %q", err, want)
+		}
+	})
+	t.Run("a brought app lacks a permission", func(t *testing.T) {
+		t.Parallel()
+
+		_, srv, clients := bootstrapWorld(t)
+		p := draft()
+		brought := map[org.AppRole]root.BroughtApp{}
+		for i, m := range p.AppManifests() {
+			id := int64(7000 + i)
+			brought[m.Role] = root.BroughtApp{ID: fmt.Sprint(id), Key: registerApp(t, srv, m, id, true)}
+		}
+		delete(srv.Apps["7001"].Record.Permissions, org.PermissionChecks)
+		_, err := root.Bootstrap(context.Background(), clients, &root.BootstrapRequest{Placement: p, Dir: t.TempDir(), Token: []byte("test-token"), Brought: brought}, &bytes.Buffer{})
+		if want := "the deployer app, brought as App 7001, is not as bedrock declares it: the deployer app lacks the Checks permission (write)"; err == nil || !strings.Contains(err.Error(), want) {
+			t.Errorf("error = %v, want %q", err, want)
+		}
+	})
+	t.Run("the Cloud Build app is not installed", func(t *testing.T) {
+		t.Parallel()
+
+		_, srv, clients := bootstrapWorld(t)
+		srv.OrgInstallations["imp-example"] = nil
+		p := draft()
+		brought := map[org.AppRole]root.BroughtApp{}
+		for i, m := range p.AppManifests() {
+			id := int64(8000 + i)
+			brought[m.Role] = root.BroughtApp{ID: fmt.Sprint(id), Key: registerApp(t, srv, m, id, true)}
+		}
+		var out bytes.Buffer
+		_, err := root.Bootstrap(context.Background(), clients, &root.BootstrapRequest{Placement: p, Dir: t.TempDir(), Token: []byte("test-token"), Brought: brought}, &out)
+		if want := "Google's Cloud Build GitHub App (github.com/apps/google-cloud-build) is not installed on the imp-example organization: install it there as the Bot Account (imp-bot), for all repositories, and run bedrock org bootstrap again"; err == nil || !strings.Contains(err.Error(), want) {
+			t.Errorf("error = %v, want %q", err, want)
+		}
+	})
+}
