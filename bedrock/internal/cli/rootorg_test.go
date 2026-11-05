@@ -70,7 +70,7 @@ func TestRootOrgCommands(t *testing.T) {
 					"     imr-boot-gbl-core-<suffix>, the boot identity imr-boot-gbl-tofu with its roles on the\n" +
 					"     organization's folder and on the boot project, and the state bucket imr-boot-gbl-state-<suffix>. Nothing of the\n" +
 					"     organization's sits at the organization node.",
-				"2. In this repository, the seed's values: boot_project_id and terraform_folder_id in\n     0-bootstrap/terraform.tfvars, boot_project_id in 1-dns, and in placement.json the\n     bucket (stateBucket) and the boot project's id and number (projects.boot,\n     projectNumbers.boot)",
+				"2. In this repository, the seed's values: boot_project_id and terraform_folder_id in\n     0-bootstrap/terraform.tfvars, boot_project_id in 1-dns, and in placement.json the\n     bucket (stateBucket), the boot project's id and number (projects.boot,\n     projectNumbers.boot) and the organization's Cloud Identity customer\n     (directoryCustomerId, from gcloud organizations describe)",
 				"a connection named\n     imr-boot-uc1-github in us-central1",
 				"4. In a terminal, in 0-bootstrap: the apply on local state, the connection imported\n     into it first, then the migration of its state into the bucket.",
 				"5. In a terminal, as a billing administrator of 012345-6789AB-CDEF01: roles/billing.user on\n     it for the boot identity.",

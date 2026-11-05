@@ -498,7 +498,6 @@ required checks, the rulesets' names.
 | `gcp_secondary_region` | Secondary region, published as an output. | `string` | `"us-west3"` | no |
 | `layer_roles` | Project roles per role set; a bare ID names a custom role from `custom-roles.tf`. | `map(list(string))` | `app`, `net`, `shr`, `spn`; see below | no |
 | `org_policies` | Constraints applied to every folder. | `list(object)` | see below | no |
-| `organization_domain` | Domain of the GCP organization. | `string` | n/a | yes |
 | `plan_roles` | Project roles per role set for the plan identities; a bare ID names a custom role from `custom-roles.tf`. | `map(list(string))` | `app`, `net`, `shr`, `spn`; see below | no |
 | `prefix` | Short org-wide prefix used in resource names. | `string` | `"imp"` | no |
 | `projects` | Every project, keyed by environment code. | `map(object)` | the six above | no |

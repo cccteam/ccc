@@ -59,7 +59,3 @@ provider "google-beta" {
 provider "github" {
   owner = var.github_organization
 }
-
-data "google_organization" "this" {
-  domain = var.organization_domain
-}

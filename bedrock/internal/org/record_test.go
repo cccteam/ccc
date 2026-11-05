@@ -269,7 +269,7 @@ func TestRenderSeeded(t *testing.T) {
 	}
 	wants := map[string][]string{
 		"0-bootstrap/terraform.tfvars": {`boot_project_id        = "rgb-boot-gbl-core-e5f6"`, `organization_folder_id = "900000000001"`, `terraform_folder_id    = "900000000002"`},
-		"1-org/terraform.tfvars":       {`boot_project_id     = "rgb-boot-gbl-core-e5f6"`},
+		"1-org/terraform.tfvars":       {`boot_project_id    = "rgb-boot-gbl-core-e5f6"`},
 		"2-env/terraform.tfvars":       {`boot_project_id = "rgb-boot-gbl-core-e5f6"`},
 	}
 	for path, lines := range wants {

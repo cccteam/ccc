@@ -297,7 +297,7 @@ func TestRun(t *testing.T) {
 		"0-bootstrap/cloud-build.tf":   {"100000000104"},
 		"0-bootstrap/terraform.tfvars": {`boot_project_id        = "rgb-boot-gbl-core-e5f6"`, `organization_folder_id = "` + orgFolder + `"`, `terraform_folder_id    = "` + tfFolder + `"`},
 		"0-bootstrap/initialize.tf":    {`bucket = "rgb-boot-gbl-state-e5f6"`},
-		"1-org/terraform.tfvars":       {`boot_project_id     = "rgb-boot-gbl-core-e5f6"`},
+		"1-org/terraform.tfvars":       {`boot_project_id    = "rgb-boot-gbl-core-e5f6"`},
 		"README.md":                    {"# rgb"},
 	}
 	for path, wants := range wantFiles {

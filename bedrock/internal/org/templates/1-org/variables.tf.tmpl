@@ -294,11 +294,6 @@ variable "org_policies" {
   }
 }
 
-variable "organization_domain" {
-  description = "(Required) Domain name of the GCP Organization."
-  type        = string
-}
-
 variable "plan_roles" {
   description = <<-EOT
     Project-level roles granted to each plan identity on its own project: the

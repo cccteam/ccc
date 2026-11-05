@@ -375,8 +375,12 @@ In a terminal, in this directory. Fill in `terraform.tfvars` first:
 `boot_project_id`, `organization_folder_id` and `terraform_folder_id` from step 1. Then record the
 seed's values in `placement.json` at the repository root (`stateBucket`,
 `projects.boot` and `projectNumbers.boot`, the number from
-`gcloud projects describe "${BOOT_PROJECT_ID}" --format='value(projectNumber)'`),
-and the bedrock the triggers run: `bedrock upgrade`, in this repository,
+`gcloud projects describe "${BOOT_PROJECT_ID}" --format='value(projectNumber)'`;
+and `directoryCustomerId`, the organization's Cloud Identity customer, from
+`gcloud organizations describe "${ORG_ID}" --format='value(owner.directoryCustomerId)'`,
+which each organization this one creates names in its domain-restricted
+sharing policy, since no identity of an organization may look the organization
+up), and the bedrock the triggers run: `bedrock upgrade`, in this repository,
 which records the release (or a commit, `bedrock upgrade <commit>`) as
 `bedrockVersion` and `bedrockSha256` and runs `bedrock org render`: the
 backend blocks, this layer's bucket grants and the triggers all name the
@@ -671,7 +675,6 @@ manages budgets.
 {{- if not .IsRoot}}
 | `org_layer_roles` | Roles granted to the org layer identity on the organization's folder. | `list(string)` | eleven roles, see `variables.tf` | no |
 {{- end}}
-| `organization_domain` | Domain of the GCP organization. | `string` | n/a | yes |
 | `prefix` | Short org-wide prefix used in resource names. | `string` | `"imp"` | no |
 | `state_bucket` | The seeded state bucket, granted on here for the four identities and the applier. | `string` | the placement's `stateBucket` | no |
 | `organization_folder_id` | Numeric ID of the seeded organization folder, named after the prefix, without `folders/`. Adopted, not created{{if not .IsRoot}}; 1-org creates the environment folders under it{{end}}. |

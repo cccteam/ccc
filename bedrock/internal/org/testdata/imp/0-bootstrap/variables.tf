@@ -108,11 +108,6 @@ variable "org_layer_roles" {
   ]
 }
 
-variable "organization_domain" {
-  description = "(Required) Domain name of the GCP Organization (e.g. \"imp.example\")."
-  type        = string
-}
-
 variable "prefix" {
   description = "Short org-wide prefix used in resource names (e.g. \"imp\")."
   type        = string

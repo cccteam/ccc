@@ -307,8 +307,12 @@ In a terminal, in this directory. Fill in `terraform.tfvars` first:
 `boot_project_id`, `organization_folder_id` and `terraform_folder_id` from step 1. Then record the
 seed's values in `placement.json` at the repository root (`stateBucket`,
 `projects.boot` and `projectNumbers.boot`, the number from
-`gcloud projects describe "${BOOT_PROJECT_ID}" --format='value(projectNumber)'`),
-and the bedrock the triggers run: `bedrock upgrade`, in this repository,
+`gcloud projects describe "${BOOT_PROJECT_ID}" --format='value(projectNumber)'`;
+and `directoryCustomerId`, the organization's Cloud Identity customer, from
+`gcloud organizations describe "${ORG_ID}" --format='value(owner.directoryCustomerId)'`,
+which each organization this one creates names in its domain-restricted
+sharing policy, since no identity of an organization may look the organization
+up), and the bedrock the triggers run: `bedrock upgrade`, in this repository,
 which records the release (or a commit, `bedrock upgrade <commit>`) as
 `bedrockVersion` and `bedrockSha256` and runs `bedrock org render`: the
 backend blocks, this layer's bucket grants and the triggers all name the
@@ -484,7 +488,6 @@ them with each record, and a creation refused for one says which.
 | `github_organization` | The GitHub organization of the infrastructure and application repositories. | `string` | `"imp-example"` | no |
 | `infrastructure_repository` | This repository's name, the one the connection links and the triggers watch. | `string` | `"imr-root-infrastructure"` | no |
 | `manage_billing_iam` | Whether this layer manages the `roles/billing.user` grant. Needs Billing Account Administrator to apply. | `bool` | `true` | no |
-| `organization_domain` | Domain of the GCP organization. | `string` | n/a | yes |
 | `prefix` | Short org-wide prefix used in resource names. | `string` | `"imp"` | no |
 | `state_bucket` | The seeded state bucket, granted on here for the four identities and the applier. | `string` | the placement's `stateBucket` | no |
 | `organization_folder_id` | Numeric ID of the seeded organization folder, named after the prefix, without `folders/`. Adopted, not created. |

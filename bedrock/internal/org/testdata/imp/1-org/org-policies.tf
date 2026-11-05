@@ -72,7 +72,7 @@ resource "google_org_policy_policy" "allowed_member_domains" {
 
     rules {
       values {
-        allowed_values = [data.google_organization.this.directory_customer_id]
+        allowed_values = [local.directory_customer_id]
       }
     }
   }

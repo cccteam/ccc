@@ -30,7 +30,3 @@ provider "google" {
 provider "google-beta" {
   user_project_override = false
 }
-
-data "google_organization" "this" {
-  domain = var.organization_domain
-}

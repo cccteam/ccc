@@ -207,7 +207,6 @@ manages budgets.
 | `infrastructure_repository` | This repository's name, the one the connection links and the triggers watch. | `string` | `"imp-impulse-infrastructure"` | no |
 | `manage_billing_iam` | Whether this layer manages the two `roles/billing.user` grants. Needs Billing Account Administrator to apply. | `bool` | `true` | no |
 | `org_layer_roles` | Roles granted to the org layer identity on the organization's folder. | `list(string)` | eleven roles, see `variables.tf` | no |
-| `organization_domain` | Domain of the GCP organization. | `string` | n/a | yes |
 | `prefix` | Short org-wide prefix used in resource names. | `string` | `"imp"` | no |
 | `state_bucket` | The seeded state bucket, granted on here for the four identities and the applier. | `string` | the placement's `stateBucket` | no |
 | `organization_folder_id` | Numeric ID of the seeded organization folder, named after the prefix, without `folders/`. Adopted, not created; 1-org creates the environment folders under it. |

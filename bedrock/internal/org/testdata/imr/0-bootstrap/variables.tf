@@ -90,11 +90,6 @@ variable "manage_billing_iam" {
   default     = true
 }
 
-variable "organization_domain" {
-  description = "(Required) Domain name of the GCP Organization (e.g. \"imp.example\")."
-  type        = string
-}
-
 variable "prefix" {
   description = "Short org-wide prefix used in resource names (e.g. \"imr\")."
   type        = string

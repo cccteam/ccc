@@ -94,6 +94,9 @@ func Fill(root, h *Placement) error {
 	if root.Projects[bootProject] == "" || root.StateBucket == "" {
 		return errors.New("the root organization's placement records no boot project or no state bucket yet (projects.boot, stateBucket): the seed's values come first (0-bootstrap/README.md)")
 	}
+	if root.DirectoryCustomerID == "" {
+		return errors.New("the root organization's placement records no directoryCustomerId: the Google Cloud organization's Cloud Identity customer, recorded with the seed's values (0-bootstrap/README.md, step 3), which the new organization's 1-org names in its domain-restricted sharing policy")
+	}
 	if h.Prefix == root.Prefix {
 		return errors.Newf("prefix %q is the root organization's own; a hosting organization has a prefix of its own", h.Prefix)
 	}
@@ -106,7 +109,7 @@ func Fill(root, h *Placement) error {
 	if h.SourceRepo == "" {
 		h.SourceRepo = h.Prefix + "-infrastructure"
 	}
-	h.OrganizationDomain, h.OrganizationID = root.OrganizationDomain, root.OrganizationID
+	h.OrganizationDomain, h.OrganizationID, h.DirectoryCustomerID = root.OrganizationDomain, root.OrganizationID, root.DirectoryCustomerID
 	h.GithubOrganization, h.GithubMachineAccount, h.GithubDefaultBranch = root.GithubOrganization, root.GithubMachineAccount, root.GithubDefaultBranch
 	h.GithubInfrastructureAppID, h.GithubDeployerAppID, h.GithubReleaseAppID = root.GithubInfrastructureAppID, root.GithubDeployerAppID, root.GithubReleaseAppID
 	if h.GithubReleaseAppSlug == "" {

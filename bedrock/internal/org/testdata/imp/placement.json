@@ -2,6 +2,7 @@
   "prefix": "imp",
   "organizationDomain": "imp.example",
   "organizationId": "123456789012",
+  "directoryCustomerId": "C0a1b2c3d",
   "billingAccount": "012345-6789AB-CDEF01",
   "appsDomain": "apps.imp.example",
   "vanityDomains": ["harborlights.example"],

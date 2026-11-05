@@ -281,8 +281,9 @@ By hand, before the Cloud Build triggers can run (the commands are in 0-bootstra
      organization's sits at the organization node.
   2. In this repository, the seed's values: boot_project_id and terraform_folder_id in
      0-bootstrap/terraform.tfvars, boot_project_id in 1-dns, and in placement.json the
-     bucket (stateBucket) and the boot project's id and number (projects.boot,
-     projectNumbers.boot); then bedrock org render, for the backend blocks, the bucket's
+     bucket (stateBucket), the boot project's id and number (projects.boot,
+     projectNumbers.boot) and the organization's Cloud Identity customer
+     (directoryCustomerId, from gcloud organizations describe); then bedrock org render, for the backend blocks, the bucket's
      grants and the triggers.
   3. In the boot project's Cloud Build console, as %s (the break-glass
      account, Owner on the boot project from the seed), signed in to GitHub as the

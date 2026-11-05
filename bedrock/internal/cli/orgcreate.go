@@ -185,7 +185,7 @@ The merge of this pull request creates %s, as the creating identity (%s):
   - the creating identity's own grants off everything it made, a marker in this
     organization's state bucket, and the hand-off pull request here, which records the
     folder (placement.json, hostingOrganizations) and the placement as created.
-Before the merge, by hand, once per root organization (0-bootstrap/README.md, "The creation
+Before the merge, by hand, once per root organization (0-bootstrap/README.md, "The creating
 identity's grants"): a Google Cloud organization administrator grants the creating identity
 Folder Creator (roles/resourcemanager.folderCreator) at the organization node, and a billing
 administrator grants it Billing Account User (roles/billing.user) on %s. After the merge, for

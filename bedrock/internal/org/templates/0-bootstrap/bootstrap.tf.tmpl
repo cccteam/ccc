@@ -1,6 +1,9 @@
 locals {
-  org_id   = trimprefix(data.google_organization.this.name, "organizations/")
-  org_name = data.google_organization.this.name
+  # The organization, from placement.json rather than looked up: an identity of
+  # this organization holds nothing at the organization node, not even the read
+  # that resolves the domain.
+  org_id   = "{{.OrganizationID}}"
+  org_name = "organizations/{{.OrganizationID}}"
 
   # A layer is one directory of this repository, applied as one identity. Layer
   # names follow {prefix}-{environment}-gbl; their service accounts add -tofu.

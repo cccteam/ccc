@@ -110,6 +110,13 @@ type Placement struct {
 	OrganizationDomain string `json:"organizationDomain"`
 	// OrganizationID is the organization's numeric ID, for the seed steps.
 	OrganizationID string `json:"organizationId"`
+	// DirectoryCustomerID is the Google Cloud organization's Cloud Identity customer (C and
+	// eight lowercase alphanumerics), which 1-org names in the domain-restricted sharing
+	// policy: recorded with the seed's values in a root organization (gcloud organizations
+	// describe, owner.directoryCustomerId) and copied into each hosting organization's
+	// record by bedrock org create, since an identity of an organization holds no read at
+	// the organization node to look the organization up with.
+	DirectoryCustomerID string `json:"directoryCustomerId,omitempty"`
 	// BillingAccount is the billing account projects are linked to.
 	BillingAccount string `json:"billingAccount"`
 	// AppsDomain is the domain the applications' hostnames hang under, never the
@@ -519,7 +526,7 @@ func (p *Placement) Validate() error {
 		}
 	}
 	for _, validate := range []func() error{
-		p.validateMachineAccount, p.validateGithubApps, p.validateApprovingReviews, p.validateCloudBuild,
+		p.validateDirectoryCustomer, p.validateMachineAccount, p.validateGithubApps, p.validateApprovingReviews, p.validateCloudBuild,
 		p.validateBedrockPin, p.validateProjects,
 	} {
 		if err := validate(); err != nil {
@@ -583,6 +590,28 @@ func (p *Placement) validateHosting() error {
 
 // validateMachineAccount refuses a machine account that is not named or not a GitHub
 // login.
+// directoryCustomerRE is the shape of a Cloud Identity customer id: C and lowercase
+// alphanumerics (C0a1b2c3d).
+var directoryCustomerRE = regexp.MustCompile(`^C[0-9a-z]{6,12}$`)
+
+// validateDirectoryCustomer requires the organization's Cloud Identity customer id in a
+// hosting organization, whose 1-org names it in the domain-restricted sharing policy, and
+// checks its shape wherever it is recorded.
+func (p *Placement) validateDirectoryCustomer() error {
+	if p.DirectoryCustomerID == "" {
+		if p.IsRoot() {
+			return nil
+		}
+
+		return errors.New("directoryCustomerId is empty: the Google Cloud organization's Cloud Identity customer (C and eight lowercase alphanumerics), which 1-org names in the domain-restricted sharing policy; bedrock org create copies it from the root organization's placement, where it is recorded with the seed's values (gcloud organizations describe <id> --format='value(owner.directoryCustomerId)')")
+	}
+	if !directoryCustomerRE.MatchString(p.DirectoryCustomerID) {
+		return errors.Newf("directoryCustomerId %q is not a Cloud Identity customer id (C and lowercase alphanumerics, C0a1b2c3d for one)", p.DirectoryCustomerID)
+	}
+
+	return nil
+}
+
 func (p *Placement) validateMachineAccount() error {
 	if strings.TrimSpace(p.GithubMachineAccount) == "" {
 		return errors.New("githubMachineAccount is empty: the GitHub login of the organization's machine account, an owner of the organization, which authorizes the Cloud Build GitHub connection in the browser and owns the personal access token that can stand in for it")
