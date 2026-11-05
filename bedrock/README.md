@@ -2360,7 +2360,7 @@ fails on it.
 `org` renders and checks the organization foundation from the organization's placement.
 
 ```sh
-bedrock org bootstrap ../imr-infrastructure --prefix imr --github-organization impulseframework   # the root organization, the one thing made by hand: one command, as the break-glass account
+bedrock org bootstrap ../imr-root-infrastructure --prefix imr --github-organization impulseframework   # the root organization, the one thing made by hand: one command, as the break-glass account
 bedrock org new ../infrastructure --placement placement.json   # a hosting organization's foundation rendered from its placement (bedrock org create writes one)
 bedrock org preflight                                           # the break-glass account's three roles, which the bootstrap checks itself
 bedrock org render                                              # after a placement change
@@ -2441,8 +2441,8 @@ repositories, for each; `--no-browser` prints the address) or brought
 (`--infrastructure-app` with `--infrastructure-key`, and the deployer's and release's
 pairs) and held to the same declaration, each key going from GitHub into its secret and
 its version pinned; the Cloud Build installation found through the infrastructure app;
-the repository `<prefix>-infrastructure`, private in the GitHub organization, with the
-placement and the rendered README as its first commit; then everything the apply keeps
+the repository `<prefix>-root-infrastructure`, private in the GitHub organization, with
+the placement and the rendered README as its first commit; then everything the apply keeps
 true, through the same engine the apply trigger runs; last its own Owner off the root
 project, and the check. No key and no token touches the computer's disk. The three IAM
 grants above the folder are the bootstrap's own, never a hand step: Folder Creator at
