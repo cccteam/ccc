@@ -1482,14 +1482,17 @@ README says the rule in full ("Retiring a secret or a file store").
 
 In the root organization's infrastructure repository (the one whose `placement.json` at
 the root names the organization, `organizationId`, with `"kind": "root"`), the same two
-commands take one of the three secrets that organization holds for every organization in
-the Google Cloud organization, the private keys of the GitHub Apps, in place of an
-environment and a variable, with `org secrets check` between them:
+commands take one of the four secrets that organization holds for every organization in
+the Google Cloud organization, the private keys of the GitHub Apps and the Bot Account's
+token, in place of an environment and a variable, with `org secrets check` between them:
 
 ```sh
 bedrock secret add github-deployer-key --from-file deployer.pem   # a new version of the secret in the root project
 bedrock org secrets check github-deployer-key 2                   # GitHub accepts a token signed with it as the app
 bedrock secret pin github-deployer-key 2                          # placement.json, then org render: the alias
+bedrock secret add github-token                                   # the Bot Account's new token, asked for without echo
+bedrock org secrets check github-token 2                          # GitHub says whose it is: the Bot Account, an owner
+bedrock secret pin github-token 2                                 # placement.json (githubTokenVersion), then org render
 ```
 
 `github-infrastructure-key` is the key of the infrastructure GitHub App, the app the
@@ -2434,7 +2437,8 @@ missing, so a run that stopped finishes on the next run in the same directory, w
 account an owner of the GitHub organization); the organization's folder at the
 organization node, named after the prefix; the root project `<prefix>-root-gbl-core-
 <suffix>` under it, linked to the billing account with its APIs enabled, and the state
-bucket `<prefix>-root-gbl-state-<suffix>`; the token's secret; the three GitHub Apps,
+bucket `<prefix>-root-gbl-state-<suffix>`; the token's secret, its first version pinned
+(`githubTokenVersion`), every connection naming its alias `current`; the three GitHub Apps,
 infrastructure, deployer and release, made in the browser from the manifests bedrock
 declares (a page the command serves on the computer: Create, then Install for all
 repositories, for each; `--no-browser` prints the address) or brought
@@ -2457,8 +2461,9 @@ APIs; the runner identities `<prefix>-root-gbl-planner` and `<prefix>-root-gbl-a
 and the creating identity, with their roles on the root project and read roles on the
 folder, nothing higher (the applier impersonates the creating identity for a creation
 alone); the four secrets, `<prefix>-root-gbl-github-<app>-key` for each app and
-`<prefix>-root-gbl-github-token`, each key's alias `current` at the version the placement
-pins (`githubInfrastructureKeyVersion` and the two others), and their policies: the key
+`<prefix>-root-gbl-github-token`, each one's alias `current` at the version the placement
+pins (`githubInfrastructureKeyVersion`, the two other keys' and `githubTokenVersion`), and
+their policies: the key
 operators' adding and reading, the runners' reads, and each created hosting
 organization's boot identity's policy administration (`secretPolicyAdmin`, a role of the
 root project: a secret's IAM policy and nothing else); one public zone per domain
@@ -2585,8 +2590,11 @@ no person, so nobody's leaving breaks what runs as it. Its classic personal acce
 is what every Cloud Build connection authorizes with: the root organization's bootstrap
 reads it from `GITHUB_TOKEN` or asks for it without echo, checks that it is the account's
 and the account an owner, and stores it as the secret `<prefix>-root-gbl-github-token` in
-the root project, whose version the placement records (`cloudBuildTokenSecretVersion`)
-beside the Cloud Build GitHub App's installation (`cloudBuildInstallationId`); the
+the root project, pins the version (`githubTokenVersion`) and records the secret's alias
+`current` (`cloudBuildTokenSecretVersion`) beside the Cloud Build GitHub App's installation
+(`cloudBuildInstallationId`); the apply keeps the alias at the pinned version, so the token
+rotates like a key before it expires (`bedrock secret add github-token`, `org secrets
+check`, `secret pin`, the pull request) and every connection switches at the apply; the
 creation copies both into a hosting organization's placement, whose 0-bootstrap grants its
 own projects' Cloud Build service agents the token's read, so every connection, the root
 project's, each boot project's for the layers' triggers and each environment's for the
@@ -2646,8 +2654,11 @@ run's Google credentials, signs a token with it as the app `placement.json` reco
 asks GitHub for the app itself, which GitHub answers for the app's own key alone. It prints
 the app GitHub answered with, the version the alias `current` is pinned to and the pin to
 make; a version that is not the app's key, or an App ID that is another app's, is refused
-with GitHub's answer, and nothing moves either way. A hosting organization's repository
-refuses it, naming the root organization.
+with GitHub's answer, and nothing moves either way. For `github-token`, the Bot Account's
+token, it reads the version and asks GitHub whose it is: a personal access token (one a
+GitHub App issued is refused by its prefix), the Bot Account's (`githubBotAccount`), an
+owner of the GitHub organization. A hosting organization's repository refuses it, naming
+the root organization.
 
 `org render` rewrites the owned files from the placement, seeds the absent ones, and says
 what the triggers still lack in the placement; `org check` compares the owned files and

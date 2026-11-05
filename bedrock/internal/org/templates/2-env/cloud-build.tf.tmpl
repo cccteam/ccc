@@ -10,9 +10,11 @@
 # {{.RootOrganization}}'s bootstrap stored once in its root project, for every
 # organization in the Google Cloud organization (the root README.md,
 # "Bootstrapped by one command"). placement.json records the installation and
-# the token secret's version (cloudBuildInstallationId,
+# the token secret's alias current (cloudBuildInstallationId,
 # cloudBuildTokenSecretVersion), copied from that organization's by the
-# creation, which every connection is rendered from: the boot project's, which
+# creation, which every connection is rendered from (a rotation in that
+# organization moves the alias, and every connection follows): the boot
+# project's, which
 # the layers' triggers watch this repository through, and each environment's.
 # 0-bootstrap grants this project's Cloud Build service agent the token's
 # read, by the project number placement.json records (projectNumbers).

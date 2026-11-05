@@ -43,12 +43,21 @@ const (
 	// (githubReleaseKeyVersion), from which each application's release trigger in a
 	// hosting organization mints the token release-please cuts the releases with.
 	ReleaseKey = "github-release-key"
+	// Token is the GitHub Bot Account's token: the secret a root organization's bootstrap
+	// creates in its root project (<prefix>-root-gbl-github-token), the version its alias
+	// points at pinned in that placement.json (githubTokenVersion), which every Cloud
+	// Build connection in every organization authorizes with.
+	Token = "github-token"
 	// PlacementFile is the organization placement at the repository root.
 	PlacementFile = "placement.json"
 )
 
-// Secrets are the organization's secrets, by the name the commands take.
-var Secrets = []string{InfrastructureKey, DeployerKey, ReleaseKey}
+// Keys are the three GitHub Apps' keys, by the name the commands take; Secrets are every
+// organization secret the commands take, the keys and the Bot Account's token.
+var (
+	Keys    = []string{InfrastructureKey, DeployerKey, ReleaseKey}
+	Secrets = []string{InfrastructureKey, DeployerKey, ReleaseKey, Token}
+)
 
 // KeyAlias is the version alias every reader of a key names in place of a number
 // (projects/<project>/secrets/<secret>/versions/current): the root organization's
@@ -145,6 +154,7 @@ func (p *Placement) validateKeys() error {
 	}
 	for name, value := range map[string]string{
 		"githubInfrastructureKeyVersion": p.GithubInfrastructureKeyVersion, "githubDeployerKeyVersion": p.GithubDeployerKeyVersion, "githubReleaseKeyVersion": p.GithubReleaseKeyVersion,
+		"githubTokenVersion": p.GithubTokenVersion,
 	} {
 		if value != "" {
 			return errors.Newf("%s is set, and a hosting organization pins no key: the root organization %s pins the version in its own placement.json, and every reader here names the alias %s; remove it", name, p.Root.Organization, KeyAlias)
@@ -309,13 +319,15 @@ func (p *Placement) ReleaseKeySecret() string {
 	return p.RootOrganization() + "-" + RootProjectKey + "-gbl-github-release-key"
 }
 
-// SecretContainer is the secret's name in the project that holds the keys.
+// SecretContainer is the secret's name in the project that holds the keys and the token.
 func (p *Placement) SecretContainer(name string) string {
 	switch name {
 	case DeployerKey:
 		return p.DeployerKeySecret()
 	case ReleaseKey:
 		return p.ReleaseKeySecret()
+	case Token:
+		return p.RootOrganization() + "-" + RootProjectKey + "-gbl-github-token"
 	default:
 		return p.InfrastructureKeySecret()
 	}
@@ -377,13 +389,16 @@ func (p *Placement) ReleaseKeyVersionName() string {
 }
 
 // pinned is where the placement pins the secret's version, and app the App ID recorded
-// beside it (the release app's is required of a hosting organization's placement).
+// beside a key (the release app's is required of a hosting organization's placement; the
+// token has none).
 func (p *Placement) pinned(name string) *string {
 	switch name {
 	case DeployerKey:
 		return &p.GithubDeployerKeyVersion
 	case ReleaseKey:
 		return &p.GithubReleaseKeyVersion
+	case Token:
+		return &p.GithubTokenVersion
 	default:
 		return &p.GithubInfrastructureKeyVersion
 	}
@@ -395,6 +410,8 @@ func (p *Placement) app(name string) string {
 		return p.GithubDeployerAppID
 	case ReleaseKey:
 		return p.GithubReleaseAppID
+	case Token:
+		return ""
 	default:
 		return p.GithubInfrastructureAppID
 	}
@@ -407,6 +424,8 @@ func secretWhat(name string) string {
 		return "the deployer GitHub App's private key"
 	case ReleaseKey:
 		return "the release GitHub App's private key"
+	case Token:
+		return "the GitHub Bot Account's token, which every Cloud Build connection authorizes with"
 	default:
 		return "the infrastructure GitHub App's private key"
 	}
@@ -419,6 +438,8 @@ func pinKey(name string) string {
 		return "githubDeployerKeyVersion"
 	case ReleaseKey:
 		return "githubReleaseKeyVersion"
+	case Token:
+		return "githubTokenVersion"
 	default:
 		return "githubInfrastructureKeyVersion"
 	}
@@ -549,7 +570,7 @@ func PinSecret(ctx context.Context, open secret.ClientFunc, p *Placement, req *S
 	}
 	r := &SecretPinResult{Secret: req.Secret, Version: req.Version, Project: req.Project, Container: req.Container, File: filepath.Join(req.Dir, PlacementFile), Key: pinKey(req.Secret)}
 	pinned, app := p.pinned(req.Secret), p.app(req.Secret)
-	r.AppUnset = app == ""
+	r.AppUnset = req.Secret != Token && app == ""
 	if *pinned == req.Version {
 		r.Unchanged = true
 
@@ -606,19 +627,31 @@ func (r *SecretPinResult) Write(w io.Writer) {
 	fmt.Fprintf(w, "Pinned %s to version %s: %s in %s.\n", r.Secret, r.Version, r.Key, r.File)
 	fmt.Fprintf(w, "Secret Manager confirms version %s of %s in project %s is enabled.\n", r.Version, r.Container, r.Project)
 	r.writeAppUnset(w)
-	fmt.Fprintf(w, "Next: commit placement.json and the %d file(s) org render rewrote, and open the pull request; its apply moves the alias %s of %s to version %s, and every reader in every organization (%s) names the alias, so all of them switch at that apply and nothing changes before it. Then, on GitHub, delete the old key on the app's settings page once the next run has gone through clean.\n", r.Rendered, KeyAlias, r.Container, r.Version, keyReaders(r.Secret))
+	fmt.Fprintf(w, "Next: commit placement.json and the %d file(s) org render rewrote, and open the pull request; its apply moves the alias %s of %s to version %s, and every reader in every organization (%s) names the alias, so all of them switch at that apply and nothing changes before it. %s\n", r.Rendered, KeyAlias, r.Container, r.Version, keyReaders(r.Secret), retireOld(r.Secret))
 }
 
-// keyReaders names who reads the key, for the pin's next step.
+// keyReaders names who reads the secret, for the pin's next step.
 func keyReaders(name string) string {
 	switch name {
 	case DeployerKey:
 		return "each plan trigger's run posting the layers' plans, and every application's pipeline talking back on its pull requests"
 	case ReleaseKey:
 		return "every application's release trigger in the hosting organizations"
+	case Token:
+		return "every Cloud Build connection: the root project's, each boot project's for the layers' triggers and each environment's for the applications'"
 	default:
 		return "each organization's runs of the triggers that plan or apply its second layer"
 	}
+}
+
+// retireOld says what to delete on GitHub once the alias has moved: a key on the app's
+// settings page, or the Bot Account's old token.
+func retireOld(name string) string {
+	if name == Token {
+		return "Then, on GitHub, as the Bot Account, delete the old token once the apply has gone through clean."
+	}
+
+	return "Then, on GitHub, delete the old key on the app's settings page once the next run has gone through clean."
 }
 
 // writeAppUnset says, when the app's id is not recorded beside the key, where it goes.
@@ -634,21 +667,21 @@ func (r *SecretPinResult) writeAppUnset(w io.Writer) {
 	fmt.Fprintf(w, "placement.json records no %s: record the infrastructure app's App ID there, from the app's settings page, and run bedrock org render; until both are recorded a run of the triggers that plans or applies 1-org stops.\n", appKey(r.Secret))
 }
 
-// KeyVersion is the version placement.json pins for the key secret (github-<app>-key),
-// empty while none is pinned.
+// KeyVersion is the version placement.json pins for the secret (github-<app>-key, or
+// github-token), empty while none is pinned.
 func (p *Placement) KeyVersion(name string) string {
 	return *p.pinned(name)
 }
 
 // TokenSecretID is the id of the secret a root organization's bootstrap puts the Bot
 // Account's token in, in the root project (<prefix>-root-gbl-github-token), which every
-// Cloud Build connection authorizes with.
+// Cloud Build connection authorizes with through its alias current.
 func (p *Placement) TokenSecretID() string {
 	return p.Prefix + "-" + RootProjectKey + "-gbl-github-token"
 }
 
-// PinKeyVersion records the version of the key secret (github-<app>-key) the alias points
-// at: a number, never latest.
+// PinKeyVersion records the version of the secret (github-<app>-key, or github-token) the
+// alias points at: a number, never latest.
 func (p *Placement) PinKeyVersion(name, version string) error {
 	if !projectNumberRE.MatchString(version) {
 		return errors.Newf("version %q of %s is not a secret version's number (digits, never latest)", version, name)

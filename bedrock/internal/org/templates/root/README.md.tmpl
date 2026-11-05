@@ -152,7 +152,9 @@ Before it, by hand, where it happens:
    owner of the organization and acts for no person), with a classic personal
    access token of the `repo`, `read:user` and `read:org` scopes, which the
    bootstrap reads from `GITHUB_TOKEN` or asks for without echo and stores in
-   Secret Manager, where every Cloud Build connection authorizes with it; and
+   Secret Manager, where every Cloud Build connection authorizes with it
+   through its alias `current`, rotated like a key ("The GitHub Apps' keys",
+   below); and
    Google's Cloud Build GitHub App (`github.com/apps/google-cloud-build`),
    installed on the organization as the Bot Account, for all repositories.
 
@@ -161,8 +163,9 @@ stopped finishes on the next run in the same directory, whose `placement.json`
 then names everything. In order: the organization's folder `{{.Prefix}}` at the
 organization node (the break-glass account's Folder Admin on it, its key for a
 recovery by hand); the root project under it, linked to the billing account
-with its APIs enabled, and the state bucket; the token's secret; the three
-GitHub Apps, infrastructure, deployer and release, made in the browser from the
+with its APIs enabled, and the state bucket; the token's secret, its version
+pinned (`githubTokenVersion`); the three GitHub Apps, infrastructure, deployer
+and release, made in the browser from the
 manifests bedrock declares (a page the command serves: Create, then Install for
 all repositories, for each) or brought (`--infrastructure-app` with
 `--infrastructure-key`, and the others) and held to the same declaration, each
@@ -248,11 +251,12 @@ Their private keys live in Secret Manager in the root project, one secret per
 app for every bedrock organization in the Google Cloud organization
 (`{{.InfrastructureKeySecret}}`, `{{.DeployerKeySecret}}`, `{{.ReleaseKeySecret}}`),
 beside the Bot Account's token (`{{.TokenSecretID}}`), which every Cloud Build
-connection authorizes with. No key reaches GitHub. Every reader, here and in
-the hosting organizations, names a secret's alias `current`, which
-`placement.json` pins (`githubInfrastructureKeyVersion` and the two others) and
-the apply points at the pinned version, so a rotation switches every reader at
-once and nothing changes before the merge.
+connection authorizes with, held the same way. No key reaches GitHub. Every
+reader, here and in the hosting organizations, names a secret's alias
+`current`, which `placement.json` pins (`githubInfrastructureKeyVersion`, the
+two other keys' and `githubTokenVersion`) and the apply points at the pinned
+version, so a rotation switches every reader at once and nothing changes before
+the merge.
 
 Rotating a key, by a key operator (`keyOperators` in `placement.json`, the IAM
 members who may add a version and read it back; the runners read the keys, and
@@ -276,6 +280,28 @@ administration for its own grants):
 3. The pull request; its apply moves the alias, and every reader switches at
    once. Then, on GitHub, delete the old key on the app's settings page once
    the next run has gone through clean.
+
+Rotating the Bot Account's token, the same way, before it expires (GitHub
+mails the account ahead of the date):
+
+1. On GitHub, signed in as the Bot Account `{{.GithubBotAccount}}`: a new
+   classic personal access token with the `repo`, `read:user` and `read:org`
+   scopes and an expiration.
+2. In a terminal, in this repository:
+
+   ```bash
+   bedrock secret add github-token
+   bedrock org secrets check github-token <version>
+   bedrock secret pin github-token <version>
+   ```
+
+   `add` asks for the token without echo and puts it into its secret as a new
+   version; `check` reads the version back and proves it with GitHub: a
+   personal access token, the Bot Account's, an owner's; `pin` records the
+   version in `placement.json` (`githubTokenVersion`) and renders.
+3. The pull request; its apply moves the alias, and every Cloud Build
+   connection in every organization reads the new token from then on. Then, on
+   GitHub, as the Bot Account, delete the old token.
 
 ## Delegating a domain to this organization
 

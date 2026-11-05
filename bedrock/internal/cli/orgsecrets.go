@@ -1,7 +1,7 @@
-// orgsecrets.go is bedrock org secrets, the root organization's commands on the GitHub
-// Apps' keys it holds for every organization: check, which proves a version of a key with
-// GitHub before bedrock secret pin and the pull request's apply move the alias to it
-// (README.md, "The GitHub Apps' keys").
+// orgsecrets.go is bedrock org secrets, the root organization's commands on the secrets it
+// holds for every organization, the GitHub Apps' keys and the Bot Account's token: check,
+// which proves a version with GitHub before bedrock secret pin and the pull request's apply
+// move the alias to it (README.md, "The GitHub Apps' keys").
 
 package cli
 
@@ -12,19 +12,21 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/cccteam/ccc/bedrock/internal/deploy"
+	"github.com/cccteam/ccc/bedrock/internal/github"
 	"github.com/cccteam/ccc/bedrock/internal/org"
 )
 
 func newOrgSecrets(d deps) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "secrets",
-		Short: "The GitHub Apps' keys a root organization holds for every organization",
-		Long: `secrets is the root organization's view of the three secrets it holds for every
+		Short: "The GitHub Apps' keys and the Bot Account's token a root organization holds for every organization",
+		Long: `secrets is the root organization's view of the four secrets it holds for every
 organization in the Google Cloud organization: the infrastructure, deployer and release GitHub
 Apps' private keys, one secret per app in its root project, each read through its alias
-current by every pipeline in every organization. A key is added as a version with bedrock
-secret add, proven with secrets check, and pinned with bedrock secret pin, whose pull request's
-apply moves the alias.`,
+current by every pipeline in every organization, and the GitHub Bot Account's token
+(github-token), read through its alias current by every Cloud Build connection. A new value is
+added as a version with bedrock secret add, proven with secrets check, and pinned with bedrock
+secret pin, whose pull request's apply moves the alias.`,
 	}
 	cmd.AddCommand(newOrgSecretsCheck(d))
 
@@ -36,7 +38,7 @@ func newOrgSecretsCheck(d deps) *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:   "check <secret> <version>",
-		Short: "Prove a version of a GitHub App's key with GitHub before the alias moves to it",
+		Short: "Prove a version of a GitHub App's key, or of the Bot Account's token, with GitHub before the alias moves to it",
 		Long: `check proves a version of a GitHub App's key before anything reads it: the version must be
 enabled in Secret Manager, and a token signed with it, issued by the App ID placement.json
 records for the app (githubInfrastructureAppId, githubDeployerAppId, githubReleaseAppId),
@@ -45,8 +47,14 @@ reads the version with the run's Google credentials (gcloud auth application-def
 as a key operator placement.json names) and prints the app GitHub answered with, the version
 the alias current is pinned to, and the pin to make. Nothing moves: the alias stays where
 placement.json pins it until bedrock secret pin and the pull request's apply. A version that
-is not the app's key, or an App ID that is another app's, is refused with GitHub's answer. It
-runs in the root organization's infrastructure repository; a hosting organization's names
+is not the app's key, or an App ID that is another app's, is refused with GitHub's answer.
+
+For github-token, the Bot Account's token, the version must be enabled, a personal access
+token (one a GitHub App issued is refused by its prefix), and GitHub must say it is the Bot
+Account's (githubBotAccount) and the account an owner of the GitHub organization; it prints
+that, the version the alias is pinned to, and the pin to make.
+
+It runs in the root organization's infrastructure repository; a hosting organization's names
 the root organization instead.`,
 		Args: cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -64,7 +72,17 @@ the root organization instead.`,
 			if err != nil {
 				return err
 			}
-			r, err := org.CheckKey(cmd.Context(), d.secrets, d.keyAccess, d.appIdentity, p, &org.KeyCheckRequest{Secret: args[0], Version: args[1], Project: project, Container: container})
+			req := &org.KeyCheckRequest{Secret: args[0], Version: args[1], Project: project, Container: container}
+			if args[0] == org.Token {
+				r, err := org.CheckToken(cmd.Context(), d.secrets, d.keyAccess, d.tokenIdentity, p, req)
+				if err != nil {
+					return err
+				}
+				r.Write(cmd.OutOrStdout())
+
+				return nil
+			}
+			r, err := org.CheckKey(cmd.Context(), d.secrets, d.keyAccess, d.appIdentity, p, req)
 			if err != nil {
 				return err
 			}
@@ -90,6 +108,16 @@ func (d deps) keyAccess(ctx context.Context, version string) ([]byte, error) {
 	defer secrets.Close()
 
 	return secrets.Access(ctx, version)
+}
+
+// tokenIdentity asks GitHub whose a token is and that the account owns the organization,
+// through the deploy clients' GitHub.
+func (d deps) tokenIdentity(ctx context.Context, token, organization string) (string, error) {
+	if d.deploy == nil || d.deploy.GitHub == nil {
+		return "", errors.New("no GitHub client is wired for the check")
+	}
+
+	return github.BotAccount(ctx, d.deploy.GitHub, token, organization)
 }
 
 // appIdentity asks GitHub which app a key signs as, through the deploy clients' GitHub.

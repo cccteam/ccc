@@ -111,11 +111,12 @@ locals {
   # The Cloud Build GitHub authorization, from placement.json
   # (cloudBuildInstallationId, cloudBuildTokenSecretVersion): the Cloud Build
   # GitHub App's installation on the organization and the token secret's
-  # version in the boot project, which every connection names. Null until the
-  # browser step has run; the connection then exists (cloud-build.tf) and
-  # until then the environment applies without it.
+  # alias current in the root organization's root project, which every
+  # connection names. Null until the creation has recorded them; the
+  # connection then exists (cloud-build.tf) and until then the environment
+  # applies without it.
   cloud_build_installation_id      = 12345678
-  cloud_build_token_secret_version = "projects/imr-root-gbl-core-c3d4/secrets/imr-root-gbl-github-token/versions/1"
+  cloud_build_token_secret_version = "projects/imr-root-gbl-core-c3d4/secrets/imr-root-gbl-github-token/versions/current"
   connected                        = local.cloud_build_installation_id != null && local.cloud_build_token_secret_version != null
 
   # The GitHub Apps' keys live in the root organization imr's root

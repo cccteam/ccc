@@ -16,6 +16,9 @@ import (
 	"testing"
 	"time"
 
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
+
 	"github.com/cccteam/ccc/bedrock/internal/github"
 	"github.com/cccteam/ccc/bedrock/internal/github/githubtest"
 	"github.com/cccteam/ccc/bedrock/internal/org"
@@ -127,13 +130,13 @@ func TestBootstrapBroughtApps(t *testing.T) {
 	if !strings.HasPrefix(project, "imr-root-gbl-core-") || res.Placement.StateBucket != "imr-root-gbl-state-"+strings.TrimPrefix(project, "imr-root-gbl-core-") || res.Placement.ProjectNumbers[org.RootProjectKey] == "" {
 		t.Errorf("project %q, bucket %q, numbers %v", project, res.Placement.StateBucket, res.Placement.ProjectNumbers)
 	}
-	if res.Placement.GithubBotAccount != "imp-bot" || res.Placement.CloudBuildInstallationID != "55" || res.Placement.CloudBuildTokenSecretVersion != "projects/"+project+"/secrets/imr-root-gbl-github-token/versions/1" {
-		t.Errorf("bot %q, installation %q, token %q", res.Placement.GithubBotAccount, res.Placement.CloudBuildInstallationID, res.Placement.CloudBuildTokenSecretVersion)
+	if res.Placement.GithubBotAccount != "imp-bot" || res.Placement.CloudBuildInstallationID != "55" || res.Placement.CloudBuildTokenSecretVersion != "projects/"+project+"/secrets/imr-root-gbl-github-token/versions/current" || res.Placement.GithubTokenVersion != "1" {
+		t.Errorf("bot %q, installation %q, token %q pinned %q", res.Placement.GithubBotAccount, res.Placement.CloudBuildInstallationID, res.Placement.CloudBuildTokenSecretVersion, res.Placement.GithubTokenVersion)
 	}
 	if res.Placement.GithubInfrastructureAppID != "5000" || res.Placement.GithubDeployerAppID != "5001" || res.Placement.GithubReleaseAppID != "5002" || res.Placement.GithubReleaseAppSlug != "imp-example-release" {
 		t.Errorf("apps %q %q %q %q", res.Placement.GithubInfrastructureAppID, res.Placement.GithubDeployerAppID, res.Placement.GithubReleaseAppID, res.Placement.GithubReleaseAppSlug)
 	}
-	for _, key := range org.Secrets {
+	for _, key := range org.Keys {
 		if res.Placement.KeyVersion(key) != "1" {
 			t.Errorf("%s pinned at %q, want 1", key, res.Placement.KeyVersion(key))
 		}
@@ -145,7 +148,8 @@ func TestBootstrapBroughtApps(t *testing.T) {
 		"The token is imp-bot's, an owner of imp-example: the Bot Account.",
 		"Created the folder imr at the organization node: 900000000001.",
 		"Created the project " + project + " under the folder.",
-		"Put the Bot Account's token into imr-root-gbl-github-token as version 1",
+		"Put the Bot Account's token into imr-root-gbl-github-token as version 1, and pinned it: every Cloud Build connection authorizes with the alias current, which the apply points at the pinned version.",
+		"secrets: moves the alias current of imr-root-gbl-github-token from no version to version 1",
 		"the infrastructure app: App 5000 (imp-example-infrastructure), brought, holds what bedrock declares and is installed on imp-example.",
 		"Google's Cloud Build GitHub App is installed on imp-example as installation 55",
 		"Created the repository imp-example/imr-root-infrastructure, private, default branch master.",
@@ -275,6 +279,27 @@ func get(t *testing.T, url string) string {
 	body, _ := io.ReadAll(resp.Body)
 
 	return string(body)
+}
+
+// TestBootstrapNotServingYet: Secret Manager, enabled moments before, answers the first
+// call with PermissionDenied and SERVICE_DISABLED; the bootstrap tries again and goes on.
+func TestBootstrapNotServingYet(t *testing.T) {
+	t.Parallel()
+
+	fake, srv, clients := bootstrapWorld(t)
+	p := draft()
+	brought := map[org.AppRole]root.BroughtApp{}
+	for i, m := range p.AppManifests() {
+		brought[m.Role] = root.BroughtApp{ID: fmt.Sprint(5000 + i), Key: registerApp(t, srv, m, int64(5000+i), true)}
+	}
+	fake.RefuseOnce["Secret"] = status.Error(codes.PermissionDenied, "Secret Manager API has not been used in project imr-root-gbl-core-0000 before or it is disabled. Enable it by visiting https://console.developers.google.com/apis/api/secretmanager.googleapis.com/overview?project=imr-root-gbl-core-0000 then retry.")
+	var out bytes.Buffer
+	if _, err := root.Bootstrap(context.Background(), clients, &root.BootstrapRequest{Placement: p, Dir: t.TempDir(), Token: []byte("test-token"), Brought: brought}, &out); err != nil {
+		t.Fatalf("Bootstrap() error = %v\n%s", err, out.String())
+	}
+	if want := "Google answers that the Secret Manager API is not enabled yet, moments after the project's APIs were enabled; trying again in 15s."; !strings.Contains(out.String(), want) {
+		t.Errorf("output lacks %q:\n%s", want, out.String())
+	}
 }
 
 // TestBootstrapRefusals: a token an app was issued, a token of a member who is not an

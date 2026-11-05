@@ -48,13 +48,13 @@ Build triggers" below).
   `manage_billing_iam` is true ("The spend budget" below).
 - The Cloud Build side (`cloud-build.tf`): the GitHub connection
   `imp-boot-uc1-github` in the boot project, from the Cloud Build GitHub App's
-  installation and the token secret's version `placement.json` records
+  installation and the token secret's alias `placement.json` records
   (`cloudBuildInstallationId`, `cloudBuildTokenSecretVersion`; "Created by
   the root organization" below); the link of this repository
   (imp-example/imp-impulse-infrastructure) under it; the read of the token secret for
   the boot project's Cloud Build service agent and for each environment
   project's, by the numbers `placement.json` records (`projectNumbers`), since
-  the environments' connections (`2-env`) name the same version; the two
+  the environments' connections (`2-env`) name the same alias; the two
   runner identities `imp-org-gbl-planner` and `imp-org-gbl-applier`
   with their grants; and the two triggers, `imp-boot-uc1-layers-plan` on a pull
   request into `master` and `imp-boot-uc1-layers-apply` on a push
@@ -115,7 +115,8 @@ applies would, and left no person with a grant to trim:
    the custom roles, the key grants, the connection from the Cloud Build
    authorization the root organization recorded (`cloudBuildInstallationId`
    and `cloudBuildTokenSecretVersion`, which name the Bot Account's token
-   in that organization's root project: one authorization serves every
+   in that organization's root project by its alias `current`, so a rotation
+   there reaches every connection: one authorization serves every
    organization in the Google Cloud organization), the link of this
    repository under it, the two triggers, and the bucket's grants. Then the
    creating identity granted the boot identity and the org identity Billing

@@ -127,7 +127,7 @@ func TestOrgSecret(t *testing.T) {
 			name:    "an application's secret is refused on add",
 			args:    []string{"add", "tst", "APP_MAIL_API_KEY"},
 			value:   "k-1",
-			wantErr: "this is the organization's infrastructure repository (placement.json names organization 123456789012): secret add takes an organization secret here, github-infrastructure-key, github-deployer-key, github-release-key; an application's secret ([env] [VARIABLE]) is added from the application's repository",
+			wantErr: "this is the organization's infrastructure repository (placement.json names organization 123456789012): secret add takes an organization secret here, github-infrastructure-key, github-deployer-key, github-release-key, github-token; an application's secret ([env] [VARIABLE]) is added from the application's repository",
 		},
 		{
 			name:    "an application's layer flag is refused",
@@ -218,7 +218,7 @@ func TestOrgSecret(t *testing.T) {
 		{
 			name:    "an application's secret is refused on pin",
 			args:    []string{"pin", "tst", "APP_COOKIE_KEY", "3"},
-			wantErr: "secret pin takes an organization secret here, github-infrastructure-key, github-deployer-key, github-release-key; an application's secret ([env] [VARIABLE]) is pinned from the application's repository",
+			wantErr: "secret pin takes an organization secret here, github-infrastructure-key, github-deployer-key, github-release-key, github-token; an application's secret ([env] [VARIABLE]) is pinned from the application's repository",
 		},
 	}
 	for _, tt := range tests {
@@ -336,7 +336,7 @@ func TestOrgSecretCompletion(t *testing.T) {
 		args []string
 		want []string
 	}{
-		{name: "the secrets", args: []string{"pin", ""}, want: []string{"github-infrastructure-key", "github-deployer-key", "github-release-key"}},
+		{name: "the secrets", args: []string{"pin", ""}, want: []string{"github-infrastructure-key", "github-deployer-key", "github-release-key", "github-token"}},
 		{name: "the infrastructure key's versions", args: []string{"pin", "github-infrastructure-key", ""}, want: []string{"3\tDISABLED", "2\tENABLED", "1\tENABLED"}},
 		{name: "the deployer key's versions", args: []string{"pin", "github-deployer-key", ""}, want: []string{"2\tENABLED", "1\tENABLED"}},
 		{name: "nothing after the infrastructure key on add", args: []string{"add", "github-infrastructure-key", ""}},

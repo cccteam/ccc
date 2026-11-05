@@ -225,8 +225,8 @@ const SecretPolicyAdminRole = "secretPolicyAdmin"
 // resource name: the three GitHub Apps' keys, and the Cloud Build token once the
 // authorization is recorded.
 func (p *Placement) SharedSecrets() []string {
-	secrets := make([]string, 0, len(Secrets)+1)
-	for _, name := range Secrets {
+	secrets := make([]string, 0, len(Keys)+1)
+	for _, name := range Keys {
 		secrets = append(secrets, "projects/"+p.Projects[RootProjectKey]+"/secrets/"+p.SecretContainer(name))
 	}
 	if token := p.TokenSecretName(); token != "" {

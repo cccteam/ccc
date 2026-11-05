@@ -207,12 +207,13 @@ func (d *Desired) SecretPolicyAdminID() string {
 	return "projects/" + d.Project() + "/roles/" + org.SecretPolicyAdminRole
 }
 
-// SecretSpec is one secret of the root project: its id, the aliases it carries (the keys:
-// current to the pinned version, none while unpinned) and its policy, by role.
+// SecretSpec is one secret of the root project: its id, whether its alias current is kept
+// at the version the placement pins (the keys and the token; none while unpinned), the
+// aliases it carries, and its policy, by role.
 type SecretSpec struct {
 	ID      string
 	Name    string
-	Key     bool
+	Aliased bool
 	Aliases map[string]string
 	Policy  []org.Binding
 }
@@ -227,8 +228,8 @@ func (d *Desired) Secrets() []SecretSpec {
 	policyAdmins = append(policyAdmins, member(d.Creator()))
 	runners := []string{member(d.Applier()), member(d.Planner())}
 	var specs []SecretSpec
-	for _, key := range org.Secrets {
-		spec := SecretSpec{ID: d.p.SecretContainer(key), Key: true, Aliases: map[string]string{}}
+	for _, key := range org.Keys {
+		spec := SecretSpec{ID: d.p.SecretContainer(key), Aliased: true, Aliases: map[string]string{}}
 		spec.Name = "projects/" + d.Project() + "/secrets/" + spec.ID
 		if version := d.p.KeyVersion(key); version != "" {
 			spec.Aliases[org.KeyAlias] = version
@@ -240,8 +241,11 @@ func (d *Desired) Secrets() []SecretSpec {
 		})
 		specs = append(specs, spec)
 	}
-	token := SecretSpec{ID: d.p.TokenSecretID(), Aliases: map[string]string{}}
+	token := SecretSpec{ID: d.p.TokenSecretID(), Aliased: true, Aliases: map[string]string{}}
 	token.Name = "projects/" + d.Project() + "/secrets/" + token.ID
+	if version := d.p.KeyVersion(org.Token); version != "" {
+		token.Aliases[org.KeyAlias] = version
+	}
 	token.Policy = bindings(map[string][]string{
 		d.SecretPolicyAdminID(): policyAdmins,
 		roleSecretAccessor:      {d.ServiceAgent()},

@@ -214,7 +214,7 @@ func TestPlacementValidate(t *testing.T) {
 		{name: "an installation id that is not one", mutate: func(p *Placement) { p.CloudBuildInstallationID = "imp" }, wantErr: `cloudBuildInstallationId "imp" is not an installation id (digits, from the installation's settings page)`},
 		{name: "a token secret version named by latest", mutate: func(p *Placement) {
 			p.CloudBuildTokenSecretVersion = "projects/imp-boot-gbl-core-a1b2/locations/us-central1/secrets/github-token/versions/latest"
-		}, wantErr: `is not a secret version's resource name (projects/<project>[/locations/<region>]/secrets/<secret>/versions/<number>, a number and never latest)`},
+		}, wantErr: `is not a secret version's resource name (projects/<project>[/locations/<region>]/secrets/<secret>/versions/<number or current>, never latest)`},
 		{name: "a token secret version that is a number alone", mutate: func(p *Placement) { p.CloudBuildTokenSecretVersion = "1" }, wantErr: `cloudBuildTokenSecretVersion "1" is not a secret version's resource name`},
 		{name: "a global token secret version", mutate: func(p *Placement) {
 			p.CloudBuildTokenSecretVersion = "projects/imr-root-gbl-core-c3d4/secrets/github-token/versions/3"
@@ -2587,7 +2587,7 @@ func TestTriggers(t *testing.T) {
 			name:   "the connection and the repository link, from the placement's authorization",
 			mutate: func(*Placement) {},
 			want: []string{
-				"  cloud_build_installation_id      = 12345678\n  cloud_build_token_secret_version = \"projects/imr-root-gbl-core-c3d4/secrets/imr-root-gbl-github-token/versions/1\"\n  connected                        = local.cloud_build_installation_id != null && local.cloud_build_token_secret_version != null\n",
+				"  cloud_build_installation_id      = 12345678\n  cloud_build_token_secret_version = \"projects/imr-root-gbl-core-c3d4/secrets/imr-root-gbl-github-token/versions/current\"\n  connected                        = local.cloud_build_installation_id != null && local.cloud_build_token_secret_version != null\n",
 				"resource \"google_cloudbuildv2_connection\" \"github\" {\n  count = local.connected ? 1 : 0\n\n  project  = module.boot_project.project_id\n  location = local.region\n  name     = \"${var.prefix}-boot-${local.region_code}-github\"\n\n  github_config {\n    app_installation_id = local.cloud_build_installation_id\n\n    authorizer_credential {\n      oauth_token_secret_version = local.cloud_build_token_secret_version\n    }\n  }\n",
 				"resource \"google_cloudbuildv2_repository\" \"infrastructure\" {\n  count = local.connected ? 1 : 0\n\n  project           = module.boot_project.project_id\n  location          = local.region\n  name              = \"${var.prefix}-boot-${local.region_code}-infrastructure-repo\"\n  parent_connection = google_cloudbuildv2_connection.github[0].id\n  remote_uri        = \"https://github.com/${var.github_organization}/${var.infrastructure_repository}.git\"\n}\n",
 				"  environment_project_numbers = {\n    tst = \"100000000002\"\n    stg = \"100000000003\"\n    prd = \"100000000004\"\n  }\n  token_readers = local.connected ? merge(\n    { boot = module.boot_project.project_number },\n    local.environment_project_numbers,\n  ) : {}\n",

@@ -529,10 +529,12 @@ access token of the organization's Bot Account `{{.GithubBotAccount}}`
 `{{.RootOrganization}}`'s bootstrap stored once in Secret Manager in its root
 project, for every organization in the Google Cloud organization (the root
 `README.md`, "Bootstrapped by one command"). `placement.json` records the
-Cloud Build GitHub App's installation and the token secret's version
+Cloud Build GitHub App's installation and the token secret's alias `current`
 (`cloudBuildInstallationId`, `cloudBuildTokenSecretVersion`), copied from that
 organization's by the creation, from which this layer's connection is rendered
-in every environment, the same version each time; `0-bootstrap` grants each
+in every environment, the same alias each time, which the root organization's
+apply points at the version it pins (`githubTokenVersion` there), so a rotation
+there switches every connection; `0-bootstrap` grants each
 environment project's Cloud Build service agent the token's read, by the
 number `placement.json` records for the project (`projectNumbers`), with the
 policy administration the root organization gives this organization's boot

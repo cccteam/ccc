@@ -46,9 +46,10 @@ locals {
   region_code = "uc1"
 
   # The Cloud Build GitHub App's installation on the organization and the
-  # token secret's version, from placement.json; null until recorded.
+  # token secret's alias current, from placement.json (a numbered version is
+  # taken too); null until recorded.
   cloud_build_installation_id      = 12345678
-  cloud_build_token_secret_version = "projects/imr-root-gbl-core-c3d4/secrets/imr-root-gbl-github-token/versions/1"
+  cloud_build_token_secret_version = "projects/imr-root-gbl-core-c3d4/secrets/imr-root-gbl-github-token/versions/current"
   connected                        = local.cloud_build_installation_id != null && local.cloud_build_token_secret_version != null
 
   # The token secret's resource name without its version, in either of the

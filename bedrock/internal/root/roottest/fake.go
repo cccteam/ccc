@@ -27,6 +27,9 @@ type Fake struct {
 	Calls []string
 	// Refuse names a call (its method name) to answer with the error.
 	Refuse map[string]error
+	// RefuseOnce refuses the next call of the name with the error, then forgets it: an API
+	// that is not serving yet, a write that fails once.
+	RefuseOnce map[string]error
 
 	// Secrets by resource name (projects/P/secrets/N); Versions by resource name, oldest
 	// first; Payloads by version name; SecretPolicies by resource name.
@@ -73,7 +76,7 @@ type Fake struct {
 // New makes an empty stand-in.
 func New() *Fake {
 	return &Fake{
-		Refuse:  map[string]error{},
+		Refuse: map[string]error{}, RefuseOnce: map[string]error{},
 		Secrets: map[string]*root.Secret{}, Versions: map[string][]root.SecretVersion{}, Payloads: map[string][]byte{}, SecretPolicies: map[string][]org.Binding{},
 		ZoneMap: map[string]map[string]root.Zone{}, Records: map[string][]root.RecordSet{},
 		Folders: map[string]string{}, Projects: map[string]bool{}, Numbers: map[string]string{}, Accounts: map[string]bool{}, Buckets: map[string]bool{},
@@ -96,6 +99,11 @@ func (f *Fake) Clients(c *root.Clients) {
 
 func (f *Fake) call(name string, args ...string) error {
 	f.Calls = append(f.Calls, name+"("+strings.Join(args, ", ")+")")
+	if err, ok := f.RefuseOnce[name]; ok {
+		delete(f.RefuseOnce, name)
+
+		return err
+	}
 	if err, ok := f.Refuse[name]; ok {
 		return err
 	}

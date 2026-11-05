@@ -7,6 +7,7 @@
 package cli
 
 import (
+	"bytes"
 	"context"
 	"os"
 	"path/filepath"
@@ -171,6 +172,11 @@ func (d deps) addOrgSecret(cmd *cobra.Command, args []string, f *addFlags, p *or
 	value, err := d.readValue(cmd, f.fromFile, name)
 	if err != nil {
 		return err
+	}
+	if name == org.Token {
+		// A token pasted at a terminal or piped in ends in a newline more often than
+		// not, and GitHub takes none; a key is stored as given.
+		value = bytes.TrimSpace(value)
 	}
 	r, err := org.AddSecret(cmd.Context(), d.secrets, &org.SecretAddRequest{Secret: name, Project: project, Container: container, Value: value})
 	if err != nil {

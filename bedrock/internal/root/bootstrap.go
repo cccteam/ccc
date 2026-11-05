@@ -11,6 +11,7 @@
 package root
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"io"
@@ -169,6 +170,7 @@ func (b *bootstrap) check() error {
 	if len(b.req.Token) == 0 {
 		return errors.New("no token of the Bot Account: GITHUB_TOKEN, or the prompt")
 	}
+	b.req.Token = bytes.TrimSpace(b.req.Token)
 	if b.clients.GitHub == nil || b.clients.Permissions == nil || b.clients.Google == nil || b.clients.Secrets == nil {
 		return errors.New("the bootstrap's clients are not all wired")
 	}
@@ -191,24 +193,9 @@ func (b *bootstrap) save() error {
 // records the login. A token an app was issued (GitHub's prefixes say so) is refused
 // first: it is not a personal access token, whatever account it names.
 func (b *bootstrap) botAccount(ctx context.Context) (string, error) {
-	if kind := github.IssuedByApp(string(b.req.Token)); kind != "" {
-		return "", errors.Newf("the token passed is %s, not a personal access token: the Bot Account's token is a classic personal access token with the repo, read:user and read:org scopes, made in the Bot Account's settings (Developer settings, Personal access tokens, Tokens (classic))", kind)
-	}
-	gh := b.clients.GitHub(string(b.req.Token))
-	login, err := gh.User(ctx)
+	login, err := github.BotAccount(ctx, b.clients.GitHub, string(b.req.Token), b.p.GithubOrganization)
 	if err != nil {
-		return "", errors.Wrap(err, "GitHub, asked whose the token is")
-	}
-	role, err := gh.OrgMembership(ctx, b.p.GithubOrganization)
-	if err != nil {
-		if github.NotFound(err) {
-			return "", errors.Newf("%s, whose token this is, is not a member of the %s organization: the Bot Account is an owner of it, and its token is the one to pass", login, b.p.GithubOrganization)
-		}
-
-		return "", errors.Wrapf(err, "GitHub, asked about %s's membership of %s", login, b.p.GithubOrganization)
-	}
-	if role != "admin" {
-		return "", errors.Newf("%s, whose token this is, is a %s of the %s organization, not an owner: the Bot Account is an owner, and Cloud Build's connection authorizes as it", login, role, b.p.GithubOrganization)
+		return "", err
 	}
 	b.p.GithubBotAccount = login
 	fmt.Fprintf(b.out, "The token is %s's, an owner of %s: the Bot Account.\n", login, b.p.GithubOrganization)
@@ -319,7 +306,13 @@ func (b *bootstrap) sleep(ctx context.Context, d time.Duration) error {
 // secret makes the secret in the root project unless it is there, and answers its name.
 func (b *bootstrap) secret(ctx context.Context, id string) (string, error) {
 	name := "projects/" + b.p.Projects[org.RootProjectKey] + "/secrets/" + id
-	got, err := b.secrets.Secret(ctx, name)
+	var got *Secret
+	err := b.untilServing(ctx, "Secret Manager", func() error {
+		var err error
+		got, err = b.secrets.Secret(ctx, name)
+
+		return err
+	})
 	if err != nil {
 		return "", err
 	}
@@ -333,15 +326,53 @@ func (b *bootstrap) secret(ctx context.Context, id string) (string, error) {
 	return name, nil
 }
 
-// tokenSecret puts the Bot Account's token into its secret and records the version,
-// unless the placement records one already (a run after a stop).
+// An API enabled moments ago answers its first calls with PermissionDenied and the reason
+// SERVICE_DISABLED for a minute or two while the enable propagates (Secret Manager in the
+// lab, 2026-11-05); the bootstrap tries such a call again, apiWait apart, up to apiTries.
+const (
+	apiWait  = 15 * time.Second
+	apiTries = 12
+)
+
+// untilServing runs call, and again while Google answers that the API is not enabled yet,
+// up to apiTries times apiWait apart; any other error, and the last, is answered as is.
+func (b *bootstrap) untilServing(ctx context.Context, api string, call func() error) error {
+	for try := 1; ; try++ {
+		err := call()
+		if err == nil || !serviceDisabled(err) || try == apiTries {
+			return err
+		}
+		fmt.Fprintf(b.out, "Google answers that the %s API is not enabled yet, moments after the project's APIs were enabled; trying again in %s.\n", api, apiWait)
+		if werr := b.clients.Sleep(ctx, apiWait); werr != nil {
+			return werr
+		}
+	}
+}
+
+// serviceDisabled reports whether the error is Google's answer that the API is disabled or
+// has not been used in the project: PermissionDenied, saying so in its message (the reason
+// is SERVICE_DISABLED).
+func serviceDisabled(err error) bool {
+	st, ok := status.FromError(errors.Cause(err))
+	if !ok || st.Code() != codes.PermissionDenied {
+		return false
+	}
+
+	return strings.Contains(st.Message(), "has not been used in project") || strings.Contains(st.Message(), "it is disabled")
+}
+
+// tokenSecret puts the Bot Account's token into its secret, pins the version
+// (githubTokenVersion) and records the alias every connection names
+// (cloudBuildTokenSecretVersion), unless the placement records them already (a run after a
+// stop). The apply that follows points the alias at the pinned version, before it makes
+// the connection.
 func (b *bootstrap) tokenSecret(ctx context.Context) error {
 	name, err := b.secret(ctx, b.p.TokenSecretID())
 	if err != nil {
 		return err
 	}
 	if b.p.CloudBuildTokenSecretVersion != "" {
-		fmt.Fprintf(b.out, "The Bot Account's token is in %s (recorded).\n", b.p.CloudBuildTokenSecretVersion)
+		fmt.Fprintf(b.out, "The Bot Account's token is in %s, version %s pinned (recorded).\n", b.p.CloudBuildTokenSecretVersion, b.p.GithubTokenVersion)
 
 		return nil
 	}
@@ -349,8 +380,11 @@ func (b *bootstrap) tokenSecret(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	b.p.CloudBuildTokenSecretVersion = name + "/versions/" + version
-	fmt.Fprintf(b.out, "Put the Bot Account's token into %s as version %s, which every Cloud Build connection authorizes with.\n", b.p.TokenSecretID(), version)
+	if err := b.p.PinKeyVersion(org.Token, version); err != nil {
+		return err
+	}
+	b.p.CloudBuildTokenSecretVersion = name + "/versions/" + org.KeyAlias
+	fmt.Fprintf(b.out, "Put the Bot Account's token into %s as version %s, and pinned it: every Cloud Build connection authorizes with the alias %s, which the apply points at the pinned version.\n", b.p.TokenSecretID(), version, org.KeyAlias)
 
 	return nil
 }

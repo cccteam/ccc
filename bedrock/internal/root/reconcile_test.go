@@ -88,6 +88,7 @@ func TestEngineFromNothing(t *testing.T) {
 		"roles: creates the custom role secretPolicyAdmin in imr-root-gbl-core-c3d4",
 		"secrets: moves the alias current of imr-root-gbl-github-infrastructure-key from no version to version 1",
 		"secrets: moves the alias current of imr-root-gbl-github-release-key from no version to version 2",
+		"secrets: moves the alias current of imr-root-gbl-github-token from no version to version 1",
 		"secrets: sets the policy of imr-root-gbl-github-token: secretPolicyAdmin to serviceAccount:imp-boot-gbl-tofu@imp-boot-gbl-core-a1b2.iam.gserviceaccount.com, serviceAccount:imr-create-gbl-tofu@imr-root-gbl-core-c3d4.iam.gserviceaccount.com, secretmanager.secretAccessor to serviceAccount:service-100000000011@gcp-sa-cloudbuild.iam.gserviceaccount.com",
 		"grants: grants serviceAccount:imr-root-gbl-applier@imr-root-gbl-core-c3d4.iam.gserviceaccount.com roles/dns.admin on project imr-root-gbl-core-c3d4",
 		"grants: grants serviceAccount:imr-root-gbl-planner@imr-root-gbl-core-c3d4.iam.gserviceaccount.com roles/browser on folder 100",

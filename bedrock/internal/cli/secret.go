@@ -202,20 +202,21 @@ secret_versions map or that map has no <env> entry, and when the version is disa
 absent. A variable already pinned to the version leaves the file as it is.
 
 In the root organization's infrastructure repository (the one whose placement.json at the
-root names the organization, organizationId, with kind root), pin takes one of the three
-secrets that organization holds for every organization, the GitHub Apps' private keys, and
-a version's number, never latest: github-infrastructure-key, github-deployer-key or
-github-release-key, each a secret in the boot project (projects.boot) named
-<prefix>-boot-gbl-github-<app>-key. pin writes the version the secret's alias current is to
-point at in placement.json (githubInfrastructureKeyVersion, githubDeployerKeyVersion,
-githubReleaseKeyVersion) and runs org render, which writes the alias into 0-bootstrap's
-github.tf; the pull request's apply moves the alias, and every reader in every organization
-names the alias (a run of the triggers minting the second layer's GitHub token, the plan
-trigger's runs posting the plans, the applications' pipelines and release triggers in the
-hosting organizations), so all of them switch at that apply. org secrets check proves a
+root names the organization, organizationId, with kind root), pin takes one of the four
+secrets that organization holds for every organization, the GitHub Apps' private keys and
+the Bot Account's token, and a version's number, never latest: github-infrastructure-key,
+github-deployer-key, github-release-key or github-token, each a secret in the root project
+(projects.root) named <prefix>-root-gbl-github-<app>-key or <prefix>-root-gbl-github-token.
+pin writes the version the secret's alias current is to point at in placement.json
+(githubInfrastructureKeyVersion, githubDeployerKeyVersion, githubReleaseKeyVersion,
+githubTokenVersion) and runs org render; the pull request's apply moves the alias, and
+every reader in every organization names the alias (a run of the triggers minting the
+second layer's GitHub token, the plan trigger's runs posting the plans, the applications'
+pipelines and release triggers in the hosting organizations, and every Cloud Build
+connection for the token), so all of them switch at that apply. org secrets check proves a
 version with GitHub first. --project and --container override; --app and --layer are
 refused, and so is an application's [env] [VARIABLE]. A hosting organization's repository
-refuses pin, naming the root organization its placement records (keys). Secret Manager is
+refuses pin, naming the root organization its placement records (root). Secret Manager is
 asked first, as above, and the pull request carrying the change goes through the Cloud
 Build triggers.`,
 		Args: cobra.MaximumNArgs(3),
@@ -552,19 +553,21 @@ member of the environment's team group asks for the secret operator entitlement 
 team-group.tf) and holds the role for the time asked.
 
 In the root organization's infrastructure repository (the one whose placement.json at the
-root names the organization, organizationId, with kind root), add takes one of the three
+root names the organization, organizationId, with kind root), add takes one of the four
 secrets that organization holds for every organization in place of [env] [VARIABLE]:
 github-infrastructure-key, the infrastructure GitHub App's private key, into
-<prefix>-boot-gbl-github-infrastructure-key, github-deployer-key, the deployer GitHub App's
-private key, into <prefix>-boot-gbl-github-deployer-key, or github-release-key, the release
-GitHub App's private key, into <prefix>-boot-gbl-github-release-key, all in the boot project
-(projects.boot). --project and --container override; --app and --layer are refused, and so
+<prefix>-root-gbl-github-infrastructure-key, github-deployer-key, the deployer GitHub App's
+private key, into <prefix>-root-gbl-github-deployer-key, github-release-key, the release
+GitHub App's private key, into <prefix>-root-gbl-github-release-key, or github-token, the
+GitHub Bot Account's token, into <prefix>-root-gbl-github-token, all in the root project
+(projects.root). --project and --container override; --app and --layer are refused, and so
 is an application's [env] [VARIABLE]. The value is read as above; a .pem file is stored as
-given. The secrets are 0-bootstrap's own resources, so a project without them is refused:
-apply the layer first. Adding is a key operator's (keyOperators in placement.json). Nothing
-reads the new version until org secrets check has proven it and pin has moved the alias.
-A hosting organization's repository refuses add, naming the root organization its
-placement records (keys). The command prints the check and the pin to make.`,
+given, and a token without the newline a paste ends in. The secrets are the bootstrap's,
+kept by the apply, so a project without them is refused. Adding is a key operator's
+(keyOperators in placement.json). Nothing reads the new version until org secrets check has
+proven it and pin has moved the alias. A hosting organization's repository refuses add,
+naming the root organization its placement records (root). The command prints the check and
+the pin to make.`,
 		Args: cobra.MaximumNArgs(2),
 		ValidArgsFunction: func(cmd *cobra.Command, args []string, _ string) ([]string, cobra.ShellCompDirective) {
 			if _, p, err := d.orgRepository(f.dir); err == nil && p != nil {

@@ -57,7 +57,7 @@ var (
 	appSlugRE = regexp.MustCompile(`^[a-z0-9]+(-[a-z0-9]+)*$`)
 	// secretVersionNameRE is a Secret Manager version by its resource name, regional or
 	// global, numbered and never latest.
-	secretVersionNameRE = regexp.MustCompile(`^projects/[^/]+(/locations/[^/]+)?/secrets/[^/]+/versions/[1-9][0-9]*$`)
+	secretVersionNameRE = regexp.MustCompile(`^projects/[^/]+(/locations/[^/]+)?/secrets/[^/]+/versions/([1-9][0-9]*|` + KeyAlias + `)$`)
 	// sha256RE is a SHA-256 checksum as sha256sum prints it.
 	sha256RE = regexp.MustCompile(`^[0-9a-f]{64}$`)
 )
@@ -211,6 +211,14 @@ type Placement struct {
 	// organizations mints the token release-please cuts the releases with. A root
 	// organization's; empty until a version was pinned.
 	GithubReleaseKeyVersion string `json:"githubReleaseKeyVersion,omitempty"`
+	// GithubTokenVersion is the number of the Secret Manager version holding the GitHub
+	// Bot Account's token, in the secret a root organization holds in its root project
+	// (<prefix>-root-gbl-github-token): the version its alias current points at, which
+	// the root organization's apply moves and every Cloud Build connection in every
+	// organization names (cloudBuildTokenSecretVersion). A root organization's; the
+	// bootstrap pins the first, bedrock secret pin github-token the next; empty until a
+	// version was pinned.
+	GithubTokenVersion string `json:"githubTokenVersion,omitempty"`
 	// Root is the root organization a hosting organization stands under: the one that
 	// holds, for every organization in the Google Cloud organization, the GitHub Apps'
 	// private keys and the Cloud Build GitHub authorization's token, by its prefix
@@ -245,12 +253,14 @@ type Placement struct {
 	// organization's record fills it in.
 	CloudBuildInstallationID string `json:"cloudBuildInstallationId,omitempty"`
 	// CloudBuildTokenSecretVersion is the resource name of the Secret Manager version
-	// holding the Bot Account's token the connections authorize with, which the
-	// bootstrap writes into the root project (projects/<root project>/secrets/<prefix>-
-	// root-gbl-github-token/versions/<n>, a global secret; a regional one reads
-	// projects/<project>/locations/<region>/secrets/<name>/versions/<n>). A numbered
-	// version, never latest. The same value in every organization's placement, filled in
-	// from the root organization's.
+	// holding the Bot Account's token the connections authorize with: the alias current
+	// of the secret the bootstrap writes into the root project (projects/<root
+	// project>/secrets/<prefix>-root-gbl-github-token/versions/current), which the root
+	// organization's apply points at the version githubTokenVersion pins, so a rotation
+	// there switches every connection at once; a numbered version is taken too (a
+	// regional one reads projects/<project>/locations/<region>/secrets/<name>/versions/<n>),
+	// never latest. The same value in every organization's placement, filled in from the
+	// root organization's.
 	CloudBuildTokenSecretVersion string `json:"cloudBuildTokenSecretVersion,omitempty"`
 	// BedrockVersion is the bedrock the triggers' runs fetch at their first step and run
 	// (bedrock upgrade moves it): a release (v0.5.0), whose linux/amd64 binary
@@ -665,6 +675,9 @@ func (p *Placement) validateGithubApps() error {
 	if p.GithubReleaseKeyVersion != "" && !projectNumberRE.MatchString(p.GithubReleaseKeyVersion) {
 		return errors.Newf("githubReleaseKeyVersion %q is not a secret version's number (digits, never latest)", p.GithubReleaseKeyVersion)
 	}
+	if p.GithubTokenVersion != "" && !projectNumberRE.MatchString(p.GithubTokenVersion) {
+		return errors.Newf("githubTokenVersion %q is not a secret version's number (digits, never latest)", p.GithubTokenVersion)
+	}
 
 	return nil
 }
@@ -692,17 +705,21 @@ func (p *Placement) ApprovingReviewCount() int {
 }
 
 // validateCloudBuild refuses an installation id that is not one, a token secret version
-// that is not a version's resource name or is latest, and one of the two recorded without
-// the other: the browser authorization produces both at once.
+// that is not a version's resource name (a number or the alias current; never latest),
+// one of the two recorded without the other (the bootstrap records both at once), and, in
+// a root organization, the alias named with no version pinned for it.
 func (p *Placement) validateCloudBuild() error {
 	if p.CloudBuildInstallationID != "" && !projectNumberRE.MatchString(p.CloudBuildInstallationID) {
 		return errors.Newf("cloudBuildInstallationId %q is not an installation id (digits, from the installation's settings page)", p.CloudBuildInstallationID)
 	}
 	if p.CloudBuildTokenSecretVersion != "" && !secretVersionNameRE.MatchString(p.CloudBuildTokenSecretVersion) {
-		return errors.Newf("cloudBuildTokenSecretVersion %q is not a secret version's resource name (projects/<project>[/locations/<region>]/secrets/<secret>/versions/<number>, a number and never latest)", p.CloudBuildTokenSecretVersion)
+		return errors.Newf("cloudBuildTokenSecretVersion %q is not a secret version's resource name (projects/<project>[/locations/<region>]/secrets/<secret>/versions/<number or %s>, never latest)", p.CloudBuildTokenSecretVersion, KeyAlias)
 	}
 	if (p.CloudBuildInstallationID == "") != (p.CloudBuildTokenSecretVersion == "") {
 		return errors.New("cloudBuildInstallationId and cloudBuildTokenSecretVersion are recorded together: the root organization's bootstrap records both, the Cloud Build GitHub App's installation it finds and the Bot Account's token secret it makes (README.md, \"Bootstrapped by one command\"), and the creation copies them into a hosting organization's placement")
+	}
+	if p.IsRoot() && strings.HasSuffix(p.CloudBuildTokenSecretVersion, "/versions/"+KeyAlias) && p.GithubTokenVersion == "" {
+		return errors.Newf("cloudBuildTokenSecretVersion names the alias %s of the token secret, and githubTokenVersion pins no version for it: the bootstrap records both; pin one (bedrock secret pin %s <version>)", KeyAlias, Token)
 	}
 
 	return nil

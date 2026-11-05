@@ -283,7 +283,7 @@ func (e *engine) secretsSection(ctx context.Context) error {
 			}
 			got = &Secret{Aliases: map[string]string{}}
 		}
-		if spec.Key {
+		if spec.Aliased {
 			if err := e.aliases(ctx, spec, got); err != nil {
 				return err
 			}
@@ -296,7 +296,7 @@ func (e *engine) secretsSection(ctx context.Context) error {
 	return nil
 }
 
-// aliases moves the key's alias to the pinned version, when one is pinned and enabled.
+// aliases moves the secret's alias to the pinned version, when one is pinned and enabled.
 func (e *engine) aliases(ctx context.Context, spec SecretSpec, got *Secret) error {
 	want := spec.Aliases[org.KeyAlias]
 	if want == "" {
