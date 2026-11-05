@@ -40,6 +40,8 @@ func (f *creation) repository(ctx context.Context, h *org.Placement) (string, er
 		fmt.Fprintf(f.out, "Repository %s exists.\n", full)
 
 		return full, nil
+	} else if github.Moved(err) {
+		fmt.Fprintf(f.out, "The name %s forwards to a repository renamed away from it; a new repository takes the name.\n", full)
 	} else if !github.NotFound(err) {
 		return "", errors.Wrapf(err, "reading repository %s", full)
 	}

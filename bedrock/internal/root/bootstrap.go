@@ -531,7 +531,9 @@ func (b *bootstrap) repository(ctx context.Context, token string) (string, error
 	fmt.Fprintf(b.out, "=== the repository %s/%s ===\n", p.GithubOrganization, p.SourceRepo)
 	gh := b.clients.GitHub(token)
 	if _, err := gh.Repository(ctx, p.GithubOrganization, p.SourceRepo); err != nil {
-		if !github.NotFound(err) {
+		if github.Moved(err) {
+			fmt.Fprintf(b.out, "The name %s/%s forwards to a repository renamed away from it; a new repository takes the name.\n", p.GithubOrganization, p.SourceRepo)
+		} else if !github.NotFound(err) {
 			return "", errors.Wrapf(err, "reading %s/%s", p.GithubOrganization, p.SourceRepo)
 		}
 		if _, err := gh.CreateRepository(ctx, p.GithubOrganization, github.RepositoryRequest{

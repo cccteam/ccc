@@ -72,7 +72,7 @@ func New(base, token string) *Client {
 		own = transport.Clone()
 	}
 
-	return &Client{base: strings.TrimRight(base, "/"), token: token, http: &http.Client{Timeout: requestTimeout, Transport: own}, wait: waitFor}
+	return &Client{base: strings.TrimRight(base, "/"), token: token, http: &http.Client{Timeout: requestTimeout, Transport: own, CheckRedirect: noRedirect}, wait: waitFor}
 }
 
 // waitFor waits for d.
@@ -138,6 +138,25 @@ func NotFound(err error) bool {
 	return false
 }
 
+// Moved reports whether the error is the API's redirect (301 for a repository renamed
+// away from the name asked for, whose old name GitHub forwards until a new repository
+// takes it). The client follows no redirect, so a renamed repository is never mistaken for
+// the one named (the lab, 2026-11-05: the bootstrap read the renamed hand-built root's
+// repository under the new root's name).
+func Moved(err error) bool {
+	var apiErr *Error
+	if errors.As(err, &apiErr) {
+		return apiErr.Status >= http.StatusMultipleChoices && apiErr.Status <= 399
+	}
+
+	return false
+}
+
+// noRedirect makes the client answer a redirect as it came, for Moved.
+func noRedirect(*http.Request, []*http.Request) error {
+	return http.ErrUseLastResponse
+}
+
 // do sends the request with the JSON body in (nil for none) and decodes the answer into
 // out (nil to discard it). A status outside 2xx is an *Error. A read (GET) that fails
 // before an answer (a timeout, a reset connection) or that GitHub answers 502, 503 or 504
@@ -194,6 +213,9 @@ func (c *Client) send(ctx context.Context, method, path string, data []byte, has
 	answer, err := io.ReadAll(io.LimitReader(resp.Body, maxBody))
 	if err != nil {
 		return errors.Wrap(err, "io.ReadAll()")
+	}
+	if resp.StatusCode >= http.StatusMultipleChoices && resp.StatusCode <= 399 {
+		return errors.Wrap(&Error{Status: resp.StatusCode, Message: "moved to " + resp.Header.Get("Location"), Method: method, Path: path}, "github")
 	}
 	if resp.StatusCode < http.StatusOK || resp.StatusCode > 299 {
 		return errors.Wrap(&Error{Status: resp.StatusCode, Message: message(answer), Method: method, Path: path}, "github")

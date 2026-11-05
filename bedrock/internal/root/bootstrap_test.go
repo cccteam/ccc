@@ -341,6 +341,28 @@ func TestBootstrapTakesUpTheProject(t *testing.T) {
 	}
 }
 
+// TestBootstrapIdentityNotSeenYet: the secret's policy names an identity made moments
+// before, and Secret Manager answers InvalidArgument, does not exist; the engine tries
+// again and goes on.
+func TestBootstrapIdentityNotSeenYet(t *testing.T) {
+	t.Parallel()
+
+	fake, srv, clients := bootstrapWorld(t)
+	p := draft()
+	brought := map[org.AppRole]root.BroughtApp{}
+	for i, m := range p.AppManifests() {
+		brought[m.Role] = root.BroughtApp{ID: fmt.Sprint(5000 + i), Key: registerApp(t, srv, m, int64(5000+i), true)}
+	}
+	fake.RefuseOnce["SetSecretPolicy"] = status.Error(codes.InvalidArgument, "Service account imr-root-gbl-planner@imr-root-gbl-core-0000.iam.gserviceaccount.com does not exist.")
+	var out bytes.Buffer
+	if _, err := root.Bootstrap(context.Background(), clients, &root.BootstrapRequest{Placement: p, Dir: t.TempDir(), Token: []byte("test-token"), Brought: brought}, &out); err != nil {
+		t.Fatalf("Bootstrap() error = %v\n%s", err, out.String())
+	}
+	if want := "(what this names was made moments ago and is not seen yet; trying again in 10s)"; !strings.Contains(out.String(), want) {
+		t.Errorf("output lacks %q:\n%s", want, out.String())
+	}
+}
+
 // TestBootstrapRefusals: a token an app was issued, a token of a member who is not an
 // owner, an app brought that is not as declared, and the Cloud Build app not installed
 // are each refused with what to do, before or after what was made (which a run again

@@ -17,6 +17,8 @@ import (
 
 	"github.com/go-playground/errors/v5"
 	"github.com/google/go-cmp/cmp"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 
 	"github.com/cccteam/ccc/bedrock/internal/create"
 	"github.com/cccteam/ccc/bedrock/internal/github"
@@ -175,12 +177,50 @@ func (e *engine) change(ctx context.Context, section, what string, apply func(ct
 		return nil
 	}
 	fmt.Fprintf(e.out, "%s: %s\n", section, what)
-	if err := apply(ctx); err != nil {
+	if err := e.settled(ctx, func() error { return apply(ctx) }); err != nil {
 		return errors.Wrapf(err, "%s: %s", section, what)
 	}
 	e.report.Applied++
 
 	return nil
+}
+
+// A resource made moments ago, an identity above all, is not seen by every API at once:
+// a policy that names it is refused as InvalidArgument, "does not exist" (Secret Manager
+// in the lab, 2026-11-05, seconds after the identity was created). settled runs the call
+// again while that is the answer, settleWait apart, up to settleTries.
+const (
+	settleWait  = 10 * time.Second
+	settleTries = 12
+)
+
+func (e *engine) settled(ctx context.Context, call func() error) error {
+	for try := 1; ; try++ {
+		err := call()
+		if err == nil || !notSeenYet(err) || try == settleTries {
+			return err
+		}
+		fmt.Fprintf(e.out, "  (what this names was made moments ago and is not seen yet; trying again in %s)\n", settleWait)
+		if werr := e.sleep(ctx, settleWait); werr != nil {
+			return werr
+		}
+	}
+}
+
+func (e *engine) sleep(ctx context.Context, d time.Duration) error {
+	if e.clients.Sleep != nil {
+		return e.clients.Sleep(ctx, d)
+	}
+
+	return sleep(ctx, d)
+}
+
+// notSeenYet reports whether the error is an API's answer that a resource named in the
+// request does not exist, though it was just made.
+func notSeenYet(err error) bool {
+	st, ok := status.FromError(errors.Cause(err))
+
+	return ok && st.Code() == codes.InvalidArgument && strings.Contains(st.Message(), "does not exist")
 }
 
 func (e *engine) finding(f string) {
