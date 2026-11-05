@@ -54,16 +54,22 @@ func Apply(ctx context.Context, clients *Clients, req *Request, out io.Writer) e
 	if err := r.recorded(runs); err != nil {
 		return err
 	}
-	githubToken, err := r.tokenFor(ctx, runs)
-	if err != nil {
-		return err
-	}
-	tofus, err := r.initialized(ctx, runs, githubToken)
+	tofus, err := r.initialized(ctx, runs)
 	if err != nil {
 		return err
 	}
 	defer closeAll(tofus)
 	for i, lr := range runs {
+		if lr.Layer == r.p.SecondLayer() {
+			// Minted here, once the layers before it have applied: the first apply of
+			// 0-bootstrap sets the key's alias the token is minted from, so a token
+			// minted before the applies would refuse an organization's first run.
+			token, err := r.infrastructureToken(ctx)
+			if err != nil {
+				return err
+			}
+			tofus[i].withGitHub(token)
+		}
 		if err := r.applyOne(ctx, store, lr, tofus[i]); err != nil {
 			return err
 		}
@@ -79,10 +85,10 @@ func Apply(ctx context.Context, clients *Clients, req *Request, out io.Writer) e
 // would be the write, at the other layer's prefix, which the reading layer's identity
 // may not do (2-env tst reads 2-net and stg before either applies in a new
 // organization). The runs are closed by the caller.
-func (r *run) initialized(ctx context.Context, runs []org.LayerRun, githubToken string) ([]*tofu, error) {
+func (r *run) initialized(ctx context.Context, runs []org.LayerRun) ([]*tofu, error) {
 	tofus := make([]*tofu, 0, len(runs))
 	for _, lr := range runs {
-		t, err := newTofu(r.clients.Exec, r.req.Dir, lr, lr.Apply, r.p.SecondLayer(), githubToken, r.out)
+		t, err := newTofu(r.clients.Exec, r.req.Dir, lr, lr.Apply, r.out)
 		if err != nil {
 			closeAll(tofus)
 

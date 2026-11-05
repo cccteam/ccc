@@ -158,7 +158,9 @@ resource "google_cloudbuildv2_repository" "infrastructure" {
 # account writes to), the connection's read token (bedrock org plan and apply
 # read the pull request's and the pushes' changed files through it), the two
 # apps' keys, and, for the applier, the markers under applied/ in the state
-# bucket that record each layer's last successful apply.
+# bucket that record each layer's last successful apply and the read of the
+# organization's folder's and its projects' IAM policies for bedrock org
+# check's leftover report.
 # ---------------------------------------------------------------------------
 
 resource "google_service_account" "planner" {
@@ -191,6 +193,15 @@ resource "google_project_iam_member" "runner_builds" {
   project = module.boot_project.project_id
   role    = "roles/cloudbuild.builds.viewer"
   member  = each.value.member
+}
+
+# bedrock org check, the apply trigger's step before the apply, lists the grants
+# the first-time setup left (the leftover report) from the IAM policies of the
+# organization's folder and its projects: a read on the folder, for the applier.
+resource "google_folder_iam_member" "applier_policy_reader" {
+  folder = google_folder.organization.name
+  role   = "roles/iam.securityReviewer"
+  member = google_service_account.applier.member
 }
 
 # Cloud Build runs a build as the trigger's service account on the service

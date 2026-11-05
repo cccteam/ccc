@@ -131,12 +131,23 @@ func (r *run) namedRuns() (runs []org.LayerRun, named bool, err error) {
 }
 
 // tokenFor mints the GitHub token of the layer with the GitHub provider (1-org, or 1-dns
-// in a root organization) when that layer is among the runs.
+// in a root organization) when that layer is among the runs and has a state: a run that
+// has never applied is not planned (planOne), and before an organization's first apply
+// the key's alias the token is minted from is not set yet.
 func (r *run) tokenFor(ctx context.Context, runs []org.LayerRun) (string, error) {
 	for _, lr := range runs {
-		if lr.Layer == r.p.SecondLayer() {
-			return r.infrastructureToken(ctx)
+		if lr.Layer != r.p.SecondLayer() {
+			continue
 		}
+		absent, err := r.stateAbsent(ctx, lr)
+		if err != nil {
+			return "", err
+		}
+		if absent {
+			return "", nil
+		}
+
+		return r.infrastructureToken(ctx)
 	}
 
 	return "", nil
@@ -187,13 +198,16 @@ func (r *run) planOne(ctx context.Context, lr org.LayerRun, githubToken string) 
 
 		return res
 	}
-	t, err := newTofu(r.clients.Exec, r.req.Dir, lr, lr.Plan, r.p.SecondLayer(), githubToken, &log)
+	t, err := newTofu(r.clients.Exec, r.req.Dir, lr, lr.Plan, &log)
 	if err != nil {
 		res.err = err
 
 		return res
 	}
 	defer t.close()
+	if lr.Layer == r.p.SecondLayer() {
+		t.withGitHub(githubToken)
+	}
 	if err := t.init(ctx); err != nil {
 		fmt.Fprintf(&log, "%v\n", err)
 

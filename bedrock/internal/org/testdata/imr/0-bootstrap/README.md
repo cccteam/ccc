@@ -67,8 +67,9 @@ Build triggers" below).
   role `stateBucketPolicyAdmin` in the boot project (reads and sets a
   bucket's IAM policy, nothing else) on the bucket for the boot identity,
   which applies this layer through the triggers; and for the applier, the
-  markers under `applied/` that record each layer's last successful apply
-  (`cloud-build.tf`).
+  markers under `applied/` that record each layer's last successful apply and
+  the read of the organization's folder's and its projects' IAM policies for
+  the check's leftover report (`cloud-build.tf`).
 
 Not created here, on purpose: the state bucket. It is seeded and left outside
 OpenTofu because this layer's own state lives in it.
@@ -586,7 +587,8 @@ Who runs what, and why the first time works in order:
   the read of its own build (its substitutions, the pull request, the
   commit), the connection's read token (the changed files are read through
   it), the two apps' keys, and, for the applier, the markers under `applied/`
-  in the state bucket.
+  in the state bucket and the read of the folder's and the projects' IAM
+  policies for the check's leftover report.
 - IAM refuses a binding for a service account that does not exist, so each
   layer grants for the identities it creates. This layer grants for the boot
   identity, the dns identity and the two boot layers' plan identities

@@ -30,7 +30,7 @@ foundation under it (the terraform folder, the boot project, the boot identity w
 on the folder, the state bucket), the first applies of its 0-bootstrap and 1-org with the
 projects recorded in its placement, its infrastructure repository with the rendered
 foundation as its first push, which its own apply trigger runs on, and the hand-off, a pull
-request here that records the folder. Nobody applies by hand (README.md, "Creation a hosting
+request here that records the folder. Nobody applies by hand (README.md, "Creating a hosting
 organization").
 
 The record is the organization's own placement, at organizations/<prefix>/placement.json:
@@ -40,8 +40,8 @@ vanityDomains) and what the root organization supplies filled in by this command
 Google Cloud organization and the billing account, the GitHub organization, its machine
 account, default branch and apps, the Cloud Build authorization, the break-glass account, the
 bedrock pin, and root, which names this organization). The boot project's suffix is chosen
-here too, so its id is known before anything is made. Without the file, found writes one
-to fill in and stops. With it, found fills it, lists the organization in placement.json
+here too, so its id is known before anything is made. Without the file, create writes one
+to fill in and stops. With it, create fills it, lists the organization in placement.json
 (hostingOrganizations: its prefix and its boot project; the folder is recorded by the
 hand-off), renders, and says what the merge creates and what the administrators grant
 before it: the creating identity's Folder Creator at the organization node and Billing
