@@ -110,18 +110,26 @@ func (f *creation) outputs(ctx context.Context, layerDir string, h *org.Placemen
 	if err != nil {
 		return nil, errors.Wrapf(err, "reading the outputs of %s's %s", h.Prefix, orgLayer)
 	}
+	// Every output comes back, strings and maps alike; the recorded ones are maps by key,
+	// and the rest are left as they are.
 	var raw map[string]struct {
-		Value map[string]string `json:"value"`
+		Value json.RawMessage `json:"value"`
 	}
 	if err := json.Unmarshal(data, &raw); err != nil {
 		return nil, errors.Wrapf(err, "json.Unmarshal(): the outputs of %s's %s", h.Prefix, orgLayer)
 	}
 	outputs := map[string]map[string]string{}
 	for _, name := range recordedOutputs {
-		if len(raw[name].Value) == 0 {
+		var value map[string]string
+		if len(raw[name].Value) > 0 {
+			if err := json.Unmarshal(raw[name].Value, &value); err != nil {
+				return nil, errors.Wrapf(err, "json.Unmarshal(): the output %s of %s's %s, a map by key", name, h.Prefix, orgLayer)
+			}
+		}
+		if len(value) == 0 {
 			return nil, errors.Newf("the outputs of %s's %s lack %s, which the creation records", h.Prefix, orgLayer, name)
 		}
-		outputs[name] = raw[name].Value
+		outputs[name] = value
 	}
 
 	return outputs, nil

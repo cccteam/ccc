@@ -124,7 +124,8 @@ func orgOutputs() map[string]any {
 		values[env] = "tagValues/28200000000" + strconv.Itoa(i+1)
 	}
 
-	return map[string]any{"project_ids": value(ids), "project_numbers": value(numbers), "folder_ids": value(folders), "public_invoker_tag_key": value(keys), "public_invoker_tag_value": value(values)}
+	// The layer's other outputs come along too: strings, which the creation leaves alone.
+	return map[string]any{"project_ids": value(ids), "project_numbers": value(numbers), "folder_ids": value(folders), "public_invoker_tag_key": value(keys), "public_invoker_tag_value": value(values), "billing_account_id": value("012345-6789AB-CDEF01"), "prefix": value("rgb")}
 }
 
 // fakeStore is the root organization's state bucket.
