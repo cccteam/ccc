@@ -389,6 +389,12 @@ func TestRun(t *testing.T) {
 	if !strings.Contains(created, `"boot": "100000000001"`) || !strings.Contains(created, `"spn": "rgb-spn-gbl-core-e5f6"`) {
 		t.Errorf("the hand-off's record lacks the projects:\n%s", created)
 	}
+	if readme := f.repo.Files[handOffTree+":README.md"]; !strings.Contains(readme, "4 name(s) are handed") {
+		t.Errorf("the hand-off's README.md, rendered from the placement with the label handed onward, says:\n%s", readme)
+	}
+	if _, journal := f.repo.Files[handOffTree+":JOURNAL.md"]; journal {
+		t.Errorf("the hand-off writes JOURNAL.md, a seeded file")
+	}
 	if body := f.srv.Bodies[0]; !strings.Contains(body, "folder `"+orgFolder+"`") || !strings.Contains(body, "the creating identity's own grants taken off") || !strings.Contains(body, "of its `1-org`") {
 		t.Errorf("the hand-off's body:\n%s", body)
 	}
@@ -425,8 +431,48 @@ func TestRun(t *testing.T) {
 	if !again.Already || again.PullRequest != result.PullRequest || len(f.google.Calls) != calls || len(f.google.Grants) != grants || len(f.repo.PullRequests) != 1 || len(f.runner.ran) != 4 {
 		t.Errorf("the second run made something: result %+v, %d calls (was %d), %d pull requests, %d programs", again, len(f.google.Calls), calls, len(f.repo.PullRequests), len(f.runner.ran))
 	}
-	if !strings.Contains(out.String(), "rgb was created on "+marker.CreatedAt+" (folder "+orgFolder+", boot project rgb-boot-gbl-core-e5f6): nothing to make.\n") {
-		t.Errorf("output:\n%s", out.String())
+	for _, want := range []string{
+		"rgb was created on " + marker.CreatedAt + " (folder " + orgFolder + ", boot project rgb-boot-gbl-core-e5f6): nothing to make.\n",
+		"The hand-off pull request of rgb is open and up to date: " + result.PullRequest + ".\n",
+	} {
+		if !strings.Contains(out.String(), want) {
+			t.Errorf("output lacks %q:\n%s", want, out.String())
+		}
+	}
+	if f.repo.Refs["refs/heads/create/rgb"].SHA != f.repo.PullRequests[0].Head.SHA {
+		t.Errorf("the branch moved to %s though the hand-off is up to date", f.repo.Refs["refs/heads/create/rgb"].SHA)
+	}
+}
+
+// TestRunHandOffMoves: the hand-off pull request is open and what it records changed
+// since (the root placement moved on); the run moves its branch to a commit with the
+// hand-off as it is now, and the pull request stays open.
+func TestRunHandOffMoves(t *testing.T) {
+	t.Parallel()
+
+	f := newFlow(t)
+	dir, root := checkout(t)
+	var out bytes.Buffer
+	first, err := create.Run(t.Context(), f.clients(), request(root, dir), &out)
+	if err != nil {
+		t.Fatalf("Run() error = %v; output:\n%s", err, out.String())
+	}
+	was := f.repo.Refs["refs/heads/create/rgb"].SHA
+	f.repo.Files[f.repo.Trees[was]+":placement.json"] = "{}"
+	out.Reset()
+	again, err := create.Run(t.Context(), f.clients(), request(root, dir), &out)
+	if err != nil {
+		t.Fatalf("Run() again error = %v; output:\n%s", err, out.String())
+	}
+	moved := f.repo.Refs["refs/heads/create/rgb"].SHA
+	if !again.Already || again.PullRequest != first.PullRequest || len(f.repo.PullRequests) != 1 || moved == was || moved == "" {
+		t.Errorf("result %+v, pull requests %v, branch %s (was %s)", again, f.repo.PullRequests, moved, was)
+	}
+	if want := "The hand-off pull request of rgb is open: " + first.PullRequest + "; its branch create/rgb moves to this run's commit " + moved[:7] + ", as what it records changed.\n"; !strings.Contains(out.String(), want) {
+		t.Errorf("output lacks %q:\n%s", want, out.String())
+	}
+	if !strings.Contains(f.repo.Files[f.repo.Trees[moved]+":placement.json"], `"folder": "`+first.Marker.OrganizationFolder+`"`) {
+		t.Errorf("the moved hand-off's placement.json:\n%s", f.repo.Files[f.repo.Trees[moved]+":placement.json"])
 	}
 }
 

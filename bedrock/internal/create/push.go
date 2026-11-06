@@ -8,6 +8,7 @@
 package create
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -24,6 +25,7 @@ import (
 	"github.com/cccteam/ccc/bedrock/internal/deploy"
 	"github.com/cccteam/ccc/bedrock/internal/github"
 	"github.com/cccteam/ccc/bedrock/internal/org"
+	"github.com/cccteam/ccc/bedrock/internal/render"
 )
 
 const (
@@ -234,20 +236,24 @@ func blobs(ctx context.Context, gh *github.Client, dir, owner, repo string) ([]g
 }
 
 // handOff opens, in the root organization's repository, the pull request that records
-// the created organization's folder (placement.json, hostingOrganizations) and the
-// placement as created (organizations/<prefix>/placement.json), from a branch of its
-// own; this creation's pull request from that branch (its title names the boot project)
-// open or merged is left as it is, one closed unmerged is history and another is opened
-// (a person who closes the hand-off takes the record out of placement.json to end it),
-// as is one of an earlier organization by the same prefix, destroyed and started over,
-// and a branch left by a run that stopped before its pull request is moved to this run's
-// commit. It answers the pull request's URL. The branch and the pull request are the
-// infrastructure app's, whose declaration carries the pull-request permission for it.
+// the created organization's folder (placement.json, hostingOrganizations), the placement
+// as created (organizations/<prefix>/placement.json) and the root organization's owned
+// files rendered from the placement (its README.md, which bedrock org check compares),
+// from a branch of its own. This creation's pull request from that branch (its title
+// names the boot project) open is kept: its branch moves to this run's commit when what
+// it records changed; one merged is left as it is; one closed unmerged is history and
+// another is opened (a person who closes the hand-off takes the record out of
+// placement.json to end it), as is one of an earlier organization by the same prefix,
+// destroyed and started over; and a branch left by a run that stopped before its pull
+// request is moved to this run's commit. It answers the pull request's URL. The branch
+// and the pull request are the infrastructure app's, whose declaration carries the
+// pull-request permission for it.
 func (f *creation) handOff(ctx context.Context, h *org.Placement, marker *Marker) (string, error) {
 	owner, repo := f.req.Root.GithubOrganization, f.req.Root.SourceRepo
 	branch := handOffBranch + h.Prefix
-	if url, err := f.handOffPullRequest(ctx, owner, repo, branch, h, marker); err != nil || url != "" {
-		return url, err
+	merged, open, err := f.handOffPullRequest(ctx, owner, repo, branch, h, marker)
+	if err != nil || merged != "" {
+		return merged, err
 	}
 	root, err := org.ReadPlacement(filepath.Join(f.req.RootDir, org.PlacementFile))
 	if err != nil {
@@ -259,51 +265,33 @@ func (f *creation) handOff(ctx context.Context, h *org.Placement, marker *Marker
 	}
 	record.Folder = marker.OrganizationFolder
 	handed := handOnward(root, h)
-	placement, err := root.JSON()
+	files, err := handOffFiles(root, h)
 	if err != nil {
 		return "", err
 	}
-	created, err := h.JSON()
-	if err != nil {
-		return "", err
-	}
-	base, err := f.gh.Ref(ctx, owner, repo, "heads/"+root.GithubDefaultBranch)
-	if err != nil {
-		return "", errors.Wrapf(err, "reading %s of %s/%s", root.GithubDefaultBranch, owner, repo)
-	}
-	baseCommit, err := f.gh.GetCommit(ctx, owner, repo, base.Object.SHA)
-	if err != nil {
-		return "", errors.Wrapf(err, "reading commit %s", short(base.Object.SHA))
-	}
-	var entries []github.TreeEntry
-	for path, content := range map[string][]byte{org.PlacementFile: placement, org.RecordsDir + "/" + h.Prefix + "/" + org.PlacementFile: created} {
-		sha, err := f.gh.CreateBlob(ctx, owner, repo, content)
+	if open != nil {
+		same, err := f.sameAt(ctx, owner, repo, open.Head.SHA, files)
 		if err != nil {
-			return "", errors.Wrapf(err, "storing %s", path)
+			return "", err
 		}
-		entries = append(entries, github.TreeEntry{Path: path, Mode: fileMode, Type: blobType, SHA: sha})
+		if same {
+			fmt.Fprintf(f.out, "The hand-off pull request of %s is open and up to date: %s.\n", h.Prefix, open.HTMLURL)
+
+			return open.HTMLURL, nil
+		}
 	}
-	sort.Slice(entries, func(i, j int) bool { return entries[i].Path < entries[j].Path })
-	tree, err := f.gh.CreateTree(ctx, owner, repo, baseCommit.Tree.SHA, entries)
+	title, body := handOffTitle(h, marker), handOffBody(h, marker, handed, f.req.Commit)
+	commit, err := f.handOffCommit(ctx, owner, repo, root.GithubDefaultBranch, files, title, body)
 	if err != nil {
-		return "", errors.Wrap(err, "creating the hand-off tree")
+		return "", err
 	}
-	title := "chore: " + h.Prefix + " is created (folder " + marker.OrganizationFolder + ", boot project " + marker.BootProject + ")"
-	body := strings.Join([]string{
-		"The creation of `" + h.Prefix + "` ran on " + marker.CreatedAt + " from " + short(f.req.Commit) + ", as the creating identity, and handed the organization off:",
-		"",
-		"- folder `" + marker.OrganizationFolder + "` at the organization node (named `" + h.Prefix + "`), with the `terraform` folder `" + marker.TerraformFolder + "` under it",
-		"- boot project `" + marker.BootProject + "` (" + marker.BootProjectNumber + "), its APIs, its billing link, the boot identity with its roles on the folder, and the state bucket `" + marker.StateBucket + "`",
-		"- the first apply of its `0-bootstrap` (the connection from the recorded authorization, the repository link, the two triggers) and of its `1-org` (the folders, the projects with their identities and roles, the public-invoker tags), with the projects, the folders and the tags recorded in its placement (`projects`, `projectNumbers`, `folders`, `publicInvokerTags`); the organization-policy baseline on its folders is this organization's, set by this apply",
-		"- the public zone of its apps domain `" + h.AppsDomain + "` in its net project (`" + zoneName(h) + "`, recorded in its placement as `appsZone`), made as the creating identity, which the root organization's apply verified as an owner of the domain in Google's webmaster verification, and adopted by its `2-net`; " + handed,
-		"- repository `" + marker.Repository + "`, with the rendered foundation as its first push, which its apply trigger runs on: every layer, as its own identity, with nothing left to apply by hand",
-		"- the creating identity's own grants taken off everything it made; the break-glass account holds Folder Admin on the folder",
-		"",
-		"This pull request records the folder in `placement.json` (`hostingOrganizations`), from which 0-bootstrap grants the new boot identity the shared secrets' policy administration, and the placement as created under `" + org.RecordsDir + "/" + h.Prefix + "/`. Nothing under the folder is the root organization's to refresh. Left to a billing administrator: the new organization's spend budget (its `0-bootstrap/README.md`, \"Created by the root organization\"); its boot and org identities hold Billing Account User already, granted by the creation.",
-	}, "\n")
-	commit, err := f.gh.CreateCommit(ctx, owner, repo, title+"\n\n"+body, tree, []string{base.Object.SHA})
-	if err != nil {
-		return "", errors.Wrap(err, "creating the hand-off commit")
+	if open != nil {
+		if err := f.gh.UpdateRef(ctx, owner, repo, "heads/"+branch, commit, true); err != nil {
+			return "", errors.Wrapf(err, "moving branch %s to the hand-off commit", branch)
+		}
+		fmt.Fprintf(f.out, "The hand-off pull request of %s is open: %s; its branch %s moves to this run's commit %s, as what it records changed.\n", h.Prefix, open.HTMLURL, branch, short(commit))
+
+		return open.HTMLURL, nil
 	}
 	if err := f.handOffBranch(ctx, owner, repo, branch, commit); err != nil {
 		return "", err
@@ -317,44 +305,141 @@ func (f *creation) handOff(ctx context.Context, h *org.Placement, marker *Marker
 	return pr.HTMLURL, nil
 }
 
+// handOffFiles is what the hand-off writes, by path: the root placement with the folder
+// recorded and the label handed onward, the placement as created, and the root
+// organization's owned files rendered from the placement (bedrock org check compares
+// them with it on the pull request); a seeded file (the journal) is a person's, left
+// as it is.
+func handOffFiles(root, h *org.Placement) (map[string][]byte, error) {
+	placement, err := root.JSON()
+	if err != nil {
+		return nil, err
+	}
+	created, err := h.JSON()
+	if err != nil {
+		return nil, err
+	}
+	files := map[string][]byte{org.PlacementFile: placement, org.RecordsDir + "/" + h.Prefix + "/" + org.PlacementFile: created}
+	rendered, err := org.Render(root)
+	if err != nil {
+		return nil, errors.Wrap(err, "rendering the root organization for the hand-off")
+	}
+	for i := range rendered {
+		if rendered[i].Tier != render.Owned {
+			continue
+		}
+		files[rendered[i].Path] = rendered[i].Content
+	}
+
+	return files, nil
+}
+
+// sameAt says whether the files are, at ref, what the hand-off would write.
+func (f *creation) sameAt(ctx context.Context, owner, repo, ref string, files map[string][]byte) (bool, error) {
+	for path, content := range files {
+		have, err := f.gh.Contents(ctx, owner, repo, path, ref)
+		switch {
+		case github.NotFound(err):
+			return false, nil
+		case err != nil:
+			return false, errors.Wrapf(err, "reading %s at %s", path, short(ref))
+		case !bytes.Equal(have, content):
+			return false, nil
+		}
+	}
+
+	return true, nil
+}
+
+// handOffCommit stores the files as a commit on the default branch's head and answers
+// the commit's SHA.
+func (f *creation) handOffCommit(ctx context.Context, owner, repo, defaultBranch string, files map[string][]byte, title, body string) (string, error) {
+	base, err := f.gh.Ref(ctx, owner, repo, "heads/"+defaultBranch)
+	if err != nil {
+		return "", errors.Wrapf(err, "reading %s of %s/%s", defaultBranch, owner, repo)
+	}
+	baseCommit, err := f.gh.GetCommit(ctx, owner, repo, base.Object.SHA)
+	if err != nil {
+		return "", errors.Wrapf(err, "reading commit %s", short(base.Object.SHA))
+	}
+	entries := make([]github.TreeEntry, 0, len(files))
+	for path, content := range files {
+		sha, err := f.gh.CreateBlob(ctx, owner, repo, content)
+		if err != nil {
+			return "", errors.Wrapf(err, "storing %s", path)
+		}
+		entries = append(entries, github.TreeEntry{Path: path, Mode: fileMode, Type: blobType, SHA: sha})
+	}
+	sort.Slice(entries, func(i, j int) bool { return entries[i].Path < entries[j].Path })
+	tree, err := f.gh.CreateTree(ctx, owner, repo, baseCommit.Tree.SHA, entries)
+	if err != nil {
+		return "", errors.Wrap(err, "creating the hand-off tree")
+	}
+	commit, err := f.gh.CreateCommit(ctx, owner, repo, title+"\n\n"+body, tree, []string{base.Object.SHA})
+	if err != nil {
+		return "", errors.Wrap(err, "creating the hand-off commit")
+	}
+
+	return commit, nil
+}
+
+// handOffTitle is the hand-off pull request's title, which names the boot project: how
+// a later run tells this creation's pull request from an earlier organization's.
+func handOffTitle(h *org.Placement, marker *Marker) string {
+	return "chore: " + h.Prefix + " is created (folder " + marker.OrganizationFolder + ", boot project " + marker.BootProject + ")"
+}
+
+// handOffBody is the hand-off pull request's body: what the creation made and handed off.
+func handOffBody(h *org.Placement, marker *Marker, handed, commit string) string {
+	return strings.Join([]string{
+		"The creation of `" + h.Prefix + "` ran on " + marker.CreatedAt + " from " + short(commit) + ", as the creating identity, and handed the organization off:",
+		"",
+		"- folder `" + marker.OrganizationFolder + "` at the organization node (named `" + h.Prefix + "`), with the `terraform` folder `" + marker.TerraformFolder + "` under it",
+		"- boot project `" + marker.BootProject + "` (" + marker.BootProjectNumber + "), its APIs, its billing link, the boot identity with its roles on the folder, and the state bucket `" + marker.StateBucket + "`",
+		"- the first apply of its `0-bootstrap` (the connection from the recorded authorization, the repository link, the two triggers) and of its `1-org` (the folders, the projects with their identities and roles, the public-invoker tags), with the projects, the folders and the tags recorded in its placement (`projects`, `projectNumbers`, `folders`, `publicInvokerTags`); the organization-policy baseline on its folders is this organization's, set by this apply",
+		"- the public zone of its apps domain `" + h.AppsDomain + "` in its net project (`" + zoneName(h) + "`, recorded in its placement as `appsZone`), made as the creating identity, which the root organization's apply verified as an owner of the domain in Google's webmaster verification, and adopted by its `2-net`; " + handed,
+		"- repository `" + marker.Repository + "`, with the rendered foundation as its first push, which its apply trigger runs on: every layer, as its own identity, with nothing left to apply by hand",
+		"- the creating identity's own grants taken off everything it made; the break-glass account holds Folder Admin on the folder",
+		"",
+		"This pull request records the folder in `placement.json` (`hostingOrganizations`), from which 0-bootstrap grants the new boot identity the shared secrets' policy administration, the placement as created under `" + org.RecordsDir + "/" + h.Prefix + "/`, and this organization's README.md rendered from the placement. Nothing under the folder is the root organization's to refresh. Left to a billing administrator: the new organization's spend budget (its `0-bootstrap/README.md`, \"Created by the root organization\"); its boot and org identities hold Billing Account User already, granted by the creation.",
+	}, "\n")
+}
+
 // pullRequestOpen is the API's state of a pull request that is open.
 const pullRequestOpen = "open"
 
-// handOffPullRequest answers the URL of this creation's hand-off pull request from the
-// branch when one stands (open or merged; its title names the boot project), and "" when
-// this creation opens one: a closed unmerged one of this creation is history, as is any
-// pull request from the branch of an earlier organization by the same prefix, destroyed
-// and started over, which the branch's move would take over were it open, so an open one
-// is refused.
-func (f *creation) handOffPullRequest(ctx context.Context, owner, repo, branch string, h *org.Placement, marker *Marker) (string, error) {
+// handOffPullRequest looks at the pull requests from the branch and answers this
+// creation's (its title names the boot project): the URL of one merged, which stands,
+// or one open, which the hand-off keeps up to date; neither when this creation opens
+// one. One of this creation closed unmerged is history, as is any pull request of an
+// earlier organization by the same prefix, destroyed and started over, which the
+// branch's move would take over were it open, so an open one is refused.
+func (f *creation) handOffPullRequest(ctx context.Context, owner, repo, branch string, h *org.Placement, marker *Marker) (string, *github.PullRequest, error) {
 	prs, err := f.gh.PullRequestsFrom(ctx, owner, repo, branch)
 	if err != nil {
-		return "", errors.Wrapf(err, "listing pull requests from %s", branch)
+		return "", nil, errors.Wrapf(err, "listing pull requests from %s", branch)
 	}
+	var open *github.PullRequest
 	for i := range prs {
 		pr := &prs[i]
 		mine := strings.Contains(pr.Title, "boot project "+marker.BootProject)
 		switch {
 		case !mine && pr.State == pullRequestOpen:
-			return "", errors.Newf("the pull request %s from %s is an earlier %s organization's hand-off (its folder is gone), open: close it, and the next apply opens this creation's", pr.HTMLURL, branch, h.Prefix)
+			return "", nil, errors.Newf("the pull request %s from %s is an earlier %s organization's hand-off (its folder is gone), open: close it, and the next apply opens this creation's", pr.HTMLURL, branch, h.Prefix)
 		case !mine:
 			fmt.Fprintf(f.out, "The pull request %s from %s is an earlier %s organization's hand-off, %s, destroyed since; it stays as history, and this creation opens its own.\n", pr.HTMLURL, branch, h.Prefix, pullRequestState(pr))
-
-			continue
 		case pr.State == pullRequestOpen:
-			fmt.Fprintf(f.out, "The hand-off pull request of %s is open: %s.\n", h.Prefix, pr.HTMLURL)
-
-			return pr.HTMLURL, nil
+			open = pr
 		case pr.MergedAt != "":
 			fmt.Fprintf(f.out, "The hand-off pull request of %s was merged: %s.\n", h.Prefix, pr.HTMLURL)
 
-			return pr.HTMLURL, nil
+			return pr.HTMLURL, nil, nil
 		default:
 			fmt.Fprintf(f.out, "The hand-off pull request of %s was closed unmerged: %s; it stays as history, and this creation opens another (to end the hand-off, take %s's record out of %s).\n", h.Prefix, pr.HTMLURL, h.Prefix, org.PlacementFile)
 		}
 	}
 
-	return "", nil
+	return "", open, nil
 }
 
 // pullRequestState words a pull request's state: open, closed or merged.

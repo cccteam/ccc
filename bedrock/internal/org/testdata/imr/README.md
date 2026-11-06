@@ -585,13 +585,15 @@ grants the new organization's identities their use of the billing account.
    organization's state bucket (`applied/created/<prefix>`), and the hand-off:
    a pull request here, from the branch `create/<prefix>`, recording the folder
    in `placement.json`, the placement as created under
-   `organizations/<prefix>/`, and the label of its apps domain handed onward
-   to its zone (`domains`), branch and pull request as the infrastructure
+   `organizations/<prefix>/`, the label of its apps domain handed onward
+   to its zone (`domains`), and this README rendered from the placement,
+   branch and pull request as the infrastructure
    app. A creation that stops finishes on the next push,
    since every step looks before it makes; a created organization is left
-   alone, and its hand-off is opened again by the next apply when the pull
-   request was closed unmerged (the closed one stays as history), until its
-   merge records the folder or the record is taken out of `placement.json`.
+   alone, and its hand-off is kept by every apply until its merge records the
+   folder or the record is taken out of `placement.json`: an open pull request
+   moves to a fresh commit when what it records changed, and one closed
+   unmerged stays as history while another is opened.
 3. **The hand-off.** Its merge records the folder, from which the apply keeps
    the new boot identity's grants on the shared secrets, and that is the last
    reach into the new organization: nothing under its folder is this
