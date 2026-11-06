@@ -246,8 +246,13 @@ func TestSharedSecretsAndIdentity(t *testing.T) {
 			t.Errorf("0-bootstrap/variables.tf lacks %s in boot_project_roles, which BootProjectRoles names", role)
 		}
 	}
-	if got := strings.Count(variables[strings.Index(variables, `variable "boot_project_roles"`):strings.Index(variables, `variable "github_default_branch"`)], "roles/"); got != len(BootProjectRoles) {
+	if got := strings.Count(variables[strings.Index(variables, `variable "boot_project_roles"`):strings.Index(variables, `variable "org_project_roles"`)], "roles/"); got != len(BootProjectRoles) {
 		t.Errorf("boot_project_roles lists %d roles, BootProjectRoles %d", got, len(BootProjectRoles))
+	}
+	// The org layer identity's Custom Roles Administrator on the boot project is
+	// 0-bootstrap's own grant, which the seed never makes.
+	if got := strings.Count(variables[strings.Index(variables, `variable "org_project_roles"`):strings.Index(variables, `variable "github_default_branch"`)], "roles/"); got != 1 {
+		t.Errorf("org_project_roles lists %d roles, want 1 (roles/iam.roleAdmin)", got)
 	}
 	p := testPlacement(t)
 	if got := p.TokenSecretProject(); got != "imr-root-gbl-core-c3d4" {

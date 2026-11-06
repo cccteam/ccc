@@ -181,6 +181,18 @@ resource "google_project_iam_member" "boot_tofu_project" {
   member  = google_service_account.boot_tofu.member
 }
 
+# The org layer identity holds Custom Roles Administrator on the boot project
+# too: 1-org creates the custom role bucketPolicyReader there, for the grants
+# on the state bucket, and grants itself the same on each project it makes;
+# the boot project is this layer's to grant on.
+resource "google_project_iam_member" "org_tofu_project" {
+  for_each = toset(var.org_project_roles)
+
+  project = module.boot_project.project_id
+  role    = each.value
+  member  = google_service_account.org_tofu.member
+}
+
 # roles/billing.user rather than the roles/billing.admin tf-gcp-setup grants:
 # linking a project to the account is all a layer ever does with billing, and
 # the account belongs to CCC rather than to this organization. Gated because

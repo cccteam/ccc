@@ -46,6 +46,14 @@ variable "boot_project_roles" {
   ]
 }
 
+variable "org_project_roles" {
+  description = "Roles granted to the org layer identity on the boot project alone: the roles Google binds on a project and never on a folder, for what 1-org makes in the boot project (the custom role bucketPolicyReader, for the grants on the state bucket). 1-org grants itself the same on each project it makes."
+  type        = list(string)
+  default = [
+    "roles/iam.roleAdmin", # the custom role 1-org creates in the boot project (bucketPolicyReader)
+  ]
+}
+
 variable "github_default_branch" {
   description = "The default branch of the infrastructure repository: the plan trigger runs on a pull request into it, the apply trigger on a push to it (cloud-build.tf)."
   type        = string

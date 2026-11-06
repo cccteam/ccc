@@ -12,8 +12,10 @@
 #
 # Custom Roles Administrator (roles/iam.roleAdmin) binds on a project or at the
 # organization node, never on a folder, so this layer grants it to its own
-# identity on each project it makes, before the roles; the creating identity's
-# Owner covered the first apply, which made the projects and the roles.
+# identity on each project it makes, before the roles, and 0-bootstrap grants
+# it on the boot project (var.org_project_roles), where this layer makes
+# bucketPolicyReader; the creating identity's Owner covered the first apply,
+# which made the projects and the roles.
 # ---------------------------------------------------------------------------
 
 resource "google_project_iam_member" "org_tofu_role_admin" {
