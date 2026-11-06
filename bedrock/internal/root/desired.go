@@ -32,6 +32,10 @@ const (
 	roleLogWriter            = "roles/logging.logWriter"
 	roleRoleAdmin            = "roles/iam.roleAdmin"
 	roleServiceUsageConsumer = "roles/serviceusage.serviceUsageConsumer"
+	roleServiceUsageAdmin    = "roles/serviceusage.serviceUsageAdmin"
+	roleServiceAccountAdmin  = "roles/iam.serviceAccountAdmin"
+	roleProjectIAMAdmin      = "roles/resourcemanager.projectIamAdmin"
+	roleFolderIAMAdmin       = "roles/resourcemanager.folderIamAdmin"
 	roleBrowser              = "roles/browser"
 	roleSecurityReviewer     = "roles/iam.securityReviewer"
 	roleImpersonator         = "roles/iam.serviceAccountTokenCreator"
@@ -133,21 +137,26 @@ func (d *Desired) Identities() []Identity {
 	}
 }
 
-// ProjectRoles are the roles each identity holds on the root project.
+// ProjectRoles are the roles each identity holds on the root project. The applier keeps
+// the project as placement.json says, so it holds what that writes within the project:
+// its APIs (Service Usage Admin), its identities and their bindings (Service Account
+// Admin), its bindings (Project IAM Admin), its custom roles, secrets, zones, connection
+// and triggers; the planner and the creating identity read and use.
 func (d *Desired) ProjectRoles() map[string][]string {
 	return map[string][]string{
 		member(d.Planner()): {roleBuildsViewer, roleConnectionViewer, roleDNSReader, roleLogWriter, roleSecretViewer, roleServiceUsageConsumer},
-		member(d.Applier()): {roleBuildsEditor, roleBuildsViewer, roleConnectionAdmin, roleDNSAdmin, roleLogWriter, roleRoleAdmin, roleSecretAdmin, roleServiceUsageConsumer},
+		member(d.Applier()): {roleBuildsEditor, roleBuildsViewer, roleConnectionAdmin, roleDNSAdmin, roleLogWriter, roleProjectIAMAdmin, roleRoleAdmin, roleSecretAdmin, roleServiceAccountAdmin, roleServiceUsageAdmin},
 		member(d.Creator()): {roleServiceUsageConsumer},
 	}
 }
 
 // FolderRoles are the roles the two runners hold on the organization's folder: the reads
-// bedrock org check's leftover report takes.
+// bedrock org check's leftover report takes, and for the applier the folder's bindings,
+// which it keeps (Folder IAM Admin); nothing above the folder is either's.
 func (d *Desired) FolderRoles() map[string][]string {
 	return map[string][]string{
 		member(d.Planner()): {roleBrowser, roleSecurityReviewer},
-		member(d.Applier()): {roleBrowser, roleSecurityReviewer},
+		member(d.Applier()): {roleBrowser, roleFolderIAMAdmin, roleSecurityReviewer},
 	}
 }
 
