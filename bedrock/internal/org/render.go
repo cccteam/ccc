@@ -609,6 +609,10 @@ var numberWords = map[int]string{2: "two", 3: "three", 4: "four", 5: "five", 6: 
 
 // hclList is the items as an HCL list of strings.
 func hclList(items []string) string {
+	if len(items) == 0 {
+		return emptyHCLList
+	}
+
 	return `["` + strings.Join(items, `", "`) + `"]`
 }
 

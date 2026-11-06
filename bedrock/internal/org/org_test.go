@@ -3845,3 +3845,32 @@ func TestHostRowsVanity(t *testing.T) {
 		t.Error("a refused record replaced the one before it")
 	}
 }
+
+// TestRenderNoApplications: an organization with no application renders 1-org's lists
+// empty, adopted_applications among them, which the layer's validation then accepts (a
+// list of one empty string is refused there).
+func TestRenderNoApplications(t *testing.T) {
+	t.Parallel()
+
+	p, err := ReadPlacement("testdata/imp/placement.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	p.Applications = nil
+	p.Registration = nil
+	files, err := Render(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var tfvars string
+	for _, f := range files {
+		if f.Path == "1-org/applications.auto.tfvars" {
+			tfvars = string(f.Content)
+		}
+	}
+	for _, want := range []string{"applications = []\n", "adopted_applications = []\n", "applied_applications = []\n", "application_repositories = {}\n", "application_environments = {}\n"} {
+		if !strings.Contains(tfvars, want) {
+			t.Errorf("1-org/applications.auto.tfvars lacks %q:\n%s", want, tfvars)
+		}
+	}
+}
