@@ -63,4 +63,19 @@ func TestGitClone(t *testing.T) {
 	if got := git(dir, "status", "--porcelain"); got != "" {
 		t.Errorf("the working tree is not clean:\n%s", got)
 	}
+	// A run again, on the clone, changes nothing and fails nothing.
+	if err := root.GitClone(ctx, dir, bare, "master", commit, "test-token"); err != nil {
+		t.Fatalf("GitClone() again: error = %v", err)
+	}
+	// A directory a stopped run left partway (a repository with origin and no commit) is
+	// finished.
+	half := t.TempDir()
+	git(half, "init", "--quiet", "--initial-branch=master")
+	git(half, "remote", "add", "origin", "https://example.invalid/old.git")
+	if err := root.GitClone(ctx, half, bare, "master", commit, "test-token"); err != nil {
+		t.Fatalf("GitClone() on a half-made clone: error = %v", err)
+	}
+	if got := git(half, "rev-parse", "HEAD"); got != commit {
+		t.Errorf("half-made clone's HEAD = %s, want %s", got, commit)
+	}
 }

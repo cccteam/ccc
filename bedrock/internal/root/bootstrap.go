@@ -485,8 +485,8 @@ func (b *bootstrap) apps(ctx context.Context) error {
 func (b *bootstrap) clone(ctx context.Context, commit, token string) bool {
 	p := b.p
 	url := "https://github.com/" + p.GithubOrganization + "/" + p.SourceRepo + ".git"
-	if gitcmd.InWorkTree(ctx, b.req.Dir) {
-		fmt.Fprintf(b.out, "%s is a clone of %s/%s already.\n", b.req.Dir, p.GithubOrganization, p.SourceRepo)
+	if head, err := gitcmd.Output(ctx, b.req.Dir, "rev-parse", "HEAD"); err == nil && strings.TrimSpace(head) == commit {
+		fmt.Fprintf(b.out, "%s is a clone of %s/%s at %s already.\n", b.req.Dir, p.GithubOrganization, p.SourceRepo, short(commit))
 
 		return true
 	}
