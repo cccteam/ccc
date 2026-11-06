@@ -398,6 +398,10 @@ func (e *engine) secretPolicy(ctx context.Context, spec SecretSpec, exists bool)
 			want = append(want, b)
 		}
 	}
+	// A creation under way grants the new organization's boot identity the policy
+	// administration before the hand-off records the organization as created: what the
+	// creation granted stays, and the hand-off's merge names it in the placement.
+	want = keepPending(want, current, e.d.SecretPolicyAdminID(), e.pendingBootIdentities())
 	sort.Slice(want, func(i, j int) bool { return want[i].Role < want[j].Role })
 	if diff := cmp.Diff(current, want, cmp.Transformer("sorted", sortedBindings)); diff == "" {
 		return nil
@@ -406,6 +410,41 @@ func (e *engine) secretPolicy(ctx context.Context, spec SecretSpec, exists bool)
 	return e.change(ctx, sectionSecrets, "sets the policy of "+spec.ID+": "+describeBindings(want, managed), func(ctx context.Context) error {
 		return e.secrets.SetSecretPolicy(ctx, spec.Name, want)
 	})
+}
+
+// pendingBootIdentities are the boot identities of the hosting organizations recorded to
+// create and not created yet, as members.
+func (e *engine) pendingBootIdentities() []string {
+	var members []string
+	for _, h := range e.p.Pending() {
+		members = append(members, h.BootIdentityMember())
+	}
+
+	return members
+}
+
+// keepPending adds to the role's binding in want each of the members the role's binding
+// in current holds already: a grant a creation under way made, which the hand-off's
+// merge names in the placement.
+func keepPending(want, current []org.Binding, role string, members []string) []org.Binding {
+	held := slices.IndexFunc(current, func(b org.Binding) bool { return b.Role == role })
+	if held < 0 {
+		return want
+	}
+	i := slices.IndexFunc(want, func(b org.Binding) bool { return b.Role == role })
+	if i < 0 {
+		want = append(want, org.Binding{Role: role})
+		i = len(want) - 1
+	}
+	kept := slices.Clone(want[i].Members)
+	for _, m := range members {
+		if slices.Contains(current[held].Members, m) && !slices.Contains(kept, m) {
+			kept = append(kept, m)
+		}
+	}
+	want[i].Members = kept
+
+	return want
 }
 
 // sortedBindings orders bindings and their members, for a comparison.

@@ -437,3 +437,48 @@ func TestEnginePolicies(t *testing.T) {
 		t.Errorf("partial record: changes %v, findings %q", whats(partial), partial.Findings)
 	}
 }
+
+// TestEnginePendingBootIdentityKeepsItsGrant: a creation under way grants the new
+// organization's boot identity the policy administration of the shared secrets before the
+// hand-off records the organization as created; the engine keeps that grant rather than
+// taking it off and letting the creation make it again, while any other stranger's grant
+// on the role still goes.
+func TestEnginePendingBootIdentityKeepsItsGrant(t *testing.T) {
+	t.Parallel()
+
+	w := newWorld(t)
+	p, err := org.ReadPlacement("../org/testdata/imr/placement.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	w.p.HostingOrganizations = p.HostingOrganizations // imp created, rgb pending
+	if _, out := w.run(t, root.Apply, true); strings.Contains(out, "finding") {
+		t.Fatalf("the first apply:\n%s", out)
+	}
+	rgb := p.HostingOrganization("rgb")
+	if rgb == nil || rgb.Created() {
+		t.Fatalf("the fixture's rgb: %+v", rgb)
+	}
+	secret := "projects/" + w.p.Projects[org.RootProjectKey] + "/secrets/imr-root-gbl-github-token"
+	role := "projects/" + w.p.Projects[org.RootProjectKey] + "/roles/" + org.SecretPolicyAdminRole
+	grant := func(member string) {
+		for i, b := range w.fake.SecretPolicies[secret] {
+			if b.Role == role {
+				w.fake.SecretPolicies[secret][i].Members = append(b.Members, member)
+
+				return
+			}
+		}
+		t.Fatalf("no %s binding on %s", role, secret)
+	}
+	grant(rgb.BootIdentityMember())
+	report, out := w.run(t, root.Check, false)
+	if !report.Clean() {
+		t.Errorf("the pending boot identity's grant is a change:\n%s\n%v", out, whats(report))
+	}
+	grant("serviceAccount:stranger@elsewhere.iam.gserviceaccount.com")
+	report, _ = w.run(t, root.Check, false)
+	if got := whats(report); len(got) != 1 || !strings.HasPrefix(got[0], "secrets: sets the policy of imr-root-gbl-github-token: ") || !strings.Contains(got[0], rgb.BootIdentityMember()) || strings.Contains(got[0], "stranger") {
+		t.Errorf("with a stranger's grant: %v", got)
+	}
+}
