@@ -16,9 +16,11 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/go-playground/errors/v5"
 
+	"github.com/cccteam/ccc/bedrock/internal/deploy"
 	"github.com/cccteam/ccc/bedrock/internal/github"
 	"github.com/cccteam/ccc/bedrock/internal/org"
 )
@@ -52,8 +54,39 @@ func (f *creation) repository(ctx context.Context, h *org.Placement) (string, er
 		return "", errors.Wrapf(err, "creating repository %s", full)
 	}
 	fmt.Fprintf(f.out, "Created repository %s, private, default branch %s.\n", full, h.GithubDefaultBranch)
+	if err := AwaitBranch(ctx, f.gh, h.GithubOrganization, h.SourceRepo, h.GithubDefaultBranch, f.clients.Sleep, f.out); err != nil {
+		return "", err
+	}
 
 	return full, nil
+}
+
+// GitHub writes a new repository's initial commit a moment after it answers the creation,
+// and the default branch's ref answers 404 until then (the lab, 2026-11-05): AwaitBranch
+// reads the ref again, branchWait apart, up to branchTries.
+const (
+	branchWait  = 3 * time.Second
+	branchTries = 20
+)
+
+// AwaitBranch waits for the branch of a repository made moments ago to exist, and answers
+// the last refusal when it does not come.
+func AwaitBranch(ctx context.Context, gh *github.Client, owner, repo, branch string, sleep deploy.SleepFunc, out io.Writer) error {
+	for try := 1; ; try++ {
+		_, err := gh.Ref(ctx, owner, repo, "heads/"+branch)
+		if err == nil {
+			return nil
+		}
+		if !github.NotFound(err) || try == branchTries {
+			return errors.Wrapf(err, "waiting for %s of the new repository %s/%s", branch, owner, repo)
+		}
+		if try == 1 {
+			fmt.Fprintf(out, "Waiting for GitHub to write the initial commit of %s/%s.\n", owner, repo)
+		}
+		if err := sleep(ctx, branchWait); err != nil {
+			return err
+		}
+	}
 }
 
 // push puts the rendered files on the repository's default branch as one commit on its

@@ -542,6 +542,9 @@ func (b *bootstrap) repository(ctx context.Context, token string) (string, error
 			return "", errors.Wrapf(err, "creating %s/%s", p.GithubOrganization, p.SourceRepo)
 		}
 		fmt.Fprintf(b.out, "Created the repository %s/%s, private, default branch %s.\n", p.GithubOrganization, p.SourceRepo, p.GithubDefaultBranch)
+		if err := create.AwaitBranch(ctx, gh, p.GithubOrganization, p.SourceRepo, p.GithubDefaultBranch, b.sleep, b.out); err != nil {
+			return "", err
+		}
 	}
 	files, err := org.Render(p)
 	if err != nil {
