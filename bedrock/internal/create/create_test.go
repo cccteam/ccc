@@ -497,6 +497,36 @@ func TestRunStartsOver(t *testing.T) {
 	}
 }
 
+// TestRunStartsOverMarker: the root's state bucket holds the marker of an earlier rgb,
+// destroyed and started over, which names another boot project; the creation goes on
+// and leaves its own marker, instead of taking the organization as created.
+func TestRunStartsOverMarker(t *testing.T) {
+	t.Parallel()
+
+	f := newFlow(t)
+	dir, root := checkout(t)
+	f.store.objects["applied/created/rgb"] = `{"prefix": "rgb", "organizationFolder": "900000000001", "bootProject": "rgb-boot-gbl-core-0ld1", "stateBucket": "rgb-boot-gbl-state-0ld1", "createdAt": "2026-11-01T00:00:00Z"}`
+	var out bytes.Buffer
+	result, err := create.Run(t.Context(), f.clients(), request(root, dir), &out)
+	if err != nil {
+		t.Fatalf("Run() error = %v; output:\n%s", err, out.String())
+	}
+	if result.Already || result.Marker.BootProject != "rgb-boot-gbl-core-e5f6" {
+		t.Errorf("result = %+v", result)
+	}
+	for _, want := range []string{
+		"The marker of rgb in gs://imr-root-gbl-state-c3d4 is an earlier organization's (boot project rgb-boot-gbl-core-0ld1, created on 2026-11-01T00:00:00Z), destroyed since; this creation, with the boot project rgb-boot-gbl-core-e5f6, goes on and replaces it.\n",
+		"Recorded the creation of rgb in gs://imr-root-gbl-state-c3d4/applied/created/rgb.\n",
+	} {
+		if !strings.Contains(out.String(), want) {
+			t.Errorf("output lacks %q:\n%s", want, out.String())
+		}
+	}
+	if !strings.Contains(f.store.objects["applied/created/rgb"], `"bootProject": "rgb-boot-gbl-core-e5f6"`) {
+		t.Errorf("the marker after: %s", f.store.objects["applied/created/rgb"])
+	}
+}
+
 // TestRunHandOffBranchLeft: a run that stopped between the hand-off branch and its pull
 // request left the branch; the next run moves the branch to its own commit and opens the
 // pull request from it, instead of refusing on the branch that exists.

@@ -169,6 +169,13 @@ func Run(ctx context.Context, clients *Clients, req *Request, out io.Writer) (*R
 	if err != nil {
 		return nil, err
 	}
+	if marker != nil && marker.BootProject != req.Record.BootProject {
+		// The marker is an earlier organization's by this prefix, destroyed and started
+		// over (0-bootstrap/README.md, "Destroying the organization"): the record names
+		// another boot project. This creation goes on and leaves its own marker.
+		fmt.Fprintf(out, "The marker of %s in gs://%s is an earlier organization's (boot project %s, created on %s), destroyed since; this creation, with the boot project %s, goes on and replaces it.\n", req.Record.Prefix, req.Root.StateBucket, marker.BootProject, marker.CreatedAt, req.Record.BootProject)
+		marker = nil
+	}
 	if marker != nil {
 		fmt.Fprintf(out, "%s was created on %s (folder %s, boot project %s): nothing to make.\n", req.Record.Prefix, marker.CreatedAt, marker.OrganizationFolder, marker.BootProject)
 		h, err := f.record()
