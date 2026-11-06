@@ -236,21 +236,17 @@ func blobs(ctx context.Context, gh *github.Client, dir, owner, repo string) ([]g
 // handOff opens, in the root organization's repository, the pull request that records
 // the created organization's folder (placement.json, hostingOrganizations) and the
 // placement as created (organizations/<prefix>/placement.json), from a branch of its
-// own; a pull request from that branch already open is left as it is, and a branch left
-// by a run that stopped before its pull request is moved to this run's commit. It answers
-// the pull request's URL. The branch and the pull request are the infrastructure app's,
+// own; this creation's pull request from that branch (its title names the boot project)
+// already open or merged is left as it is, one of an earlier organization by the same
+// prefix, destroyed and started over, is history passed by, and a branch left by a run
+// that stopped before its pull request is moved to this run's commit. It answers the
+// pull request's URL. The branch and the pull request are the infrastructure app's,
 // whose declaration carries the pull-request permission for it.
 func (f *creation) handOff(ctx context.Context, h *org.Placement, marker *Marker) (string, error) {
 	owner, repo := f.req.Root.GithubOrganization, f.req.Root.SourceRepo
 	branch := handOffBranch + h.Prefix
-	open, err := f.gh.PullRequestsFrom(ctx, owner, repo, branch)
-	if err != nil {
-		return "", errors.Wrapf(err, "listing pull requests from %s", branch)
-	}
-	if len(open) > 0 {
-		fmt.Fprintf(f.out, "The hand-off pull request of %s exists, %s: %s. One closed unmerged is reopened by hand.\n", h.Prefix, open[0].State, open[0].HTMLURL)
-
-		return open[0].HTMLURL, nil
+	if url, err := f.handOffPullRequest(ctx, owner, repo, branch, h, marker); err != nil || url != "" {
+		return url, err
 	}
 	root, err := org.ReadPlacement(filepath.Join(f.req.RootDir, org.PlacementFile))
 	if err != nil {
@@ -318,6 +314,34 @@ func (f *creation) handOff(ctx context.Context, h *org.Placement, marker *Marker
 	fmt.Fprintf(f.out, "Opened the hand-off pull request of %s: %s.\n", h.Prefix, pr.HTMLURL)
 
 	return pr.HTMLURL, nil
+}
+
+// handOffPullRequest answers the URL of this creation's hand-off pull request from the
+// branch when one exists (open, closed or merged; its title names the boot project), and
+// "" when none does. A pull request from the branch of an earlier organization by the
+// same prefix, destroyed and started over, is history: said and passed by.
+func (f *creation) handOffPullRequest(ctx context.Context, owner, repo, branch string, h *org.Placement, marker *Marker) (string, error) {
+	prs, err := f.gh.PullRequestsFrom(ctx, owner, repo, branch)
+	if err != nil {
+		return "", errors.Wrapf(err, "listing pull requests from %s", branch)
+	}
+	for i := range prs {
+		pr := &prs[i]
+		state := pr.State
+		if pr.MergedAt != "" {
+			state = "merged"
+		}
+		if !strings.Contains(pr.Title, "boot project "+marker.BootProject) {
+			fmt.Fprintf(f.out, "The pull request %s from %s is an earlier %s organization's hand-off, %s, destroyed since; it stays as history, and this creation opens its own.\n", pr.HTMLURL, branch, h.Prefix, state)
+
+			continue
+		}
+		fmt.Fprintf(f.out, "The hand-off pull request of %s exists, %s: %s. One closed unmerged is reopened by hand.\n", h.Prefix, state, pr.HTMLURL)
+
+		return pr.HTMLURL, nil
+	}
+
+	return "", nil
 }
 
 // handOffBranch puts the hand-off branch at the commit: a branch a run that stopped

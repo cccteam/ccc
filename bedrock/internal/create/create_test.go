@@ -548,6 +548,41 @@ func TestRunStartsOverMarker(t *testing.T) {
 	}
 }
 
+// TestRunStartsOverHandOff: the root repository holds the merged hand-off pull request of
+// an earlier rgb, destroyed and started over, from the same branch (its title names the
+// earlier boot project); the creation passes it as history and opens its own, instead of
+// taking the earlier one as this organization's hand-off and recording nothing.
+func TestRunStartsOverHandOff(t *testing.T) {
+	t.Parallel()
+
+	f := newFlow(t)
+	dir, root := checkout(t)
+	earlier := "https://github.com/" + owner + "/" + rootRepo + "/pull/1"
+	f.repo.PullRequests = append(f.repo.PullRequests, github.PullRequest{
+		Number: 1, State: "closed", MergedAt: "2026-11-01T01:00:00Z", HTMLURL: earlier,
+		Title: "chore: rgb is created (folder 900000000001, boot project rgb-boot-gbl-core-0ld1)",
+		Head:  github.PullRequestRef{Ref: "create/rgb", SHA: "gone1"},
+		Base:  github.PullRequestRef{Ref: "master", SHA: baseSHA},
+	})
+	var out bytes.Buffer
+	result, err := create.Run(t.Context(), f.clients(), request(root, dir), &out)
+	if err != nil {
+		t.Fatalf("Run() error = %v; output:\n%s", err, out.String())
+	}
+	opened := "https://github.com/" + owner + "/" + rootRepo + "/pull/2"
+	if result.PullRequest != opened || len(f.repo.PullRequests) != 2 || f.repo.PullRequests[1].State != "open" || f.repo.PullRequests[1].Head.Ref != "create/rgb" {
+		t.Errorf("result %+v, pull requests %v", result, f.repo.PullRequests)
+	}
+	for _, want := range []string{
+		"The pull request " + earlier + " from create/rgb is an earlier rgb organization's hand-off, merged, destroyed since; it stays as history, and this creation opens its own.\n",
+		"Opened the hand-off pull request of rgb: " + opened + ".\n",
+	} {
+		if !strings.Contains(out.String(), want) {
+			t.Errorf("output lacks %q:\n%s", want, out.String())
+		}
+	}
+}
+
 // TestRunFirstApplyAgainAfterRace: 1-org's first apply is refused once by Google's race
 // (an API enabled moments ago not seen by every service yet); the creation waits and
 // runs the apply once more, and goes on.
