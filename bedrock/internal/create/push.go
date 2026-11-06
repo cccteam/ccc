@@ -126,16 +126,14 @@ func (f *creation) push(ctx context.Context, dir string, h *org.Placement) (stri
 // as a person commits the one their first init writes, the providers never are; a local
 // state is never pushed either.
 func Push(ctx context.Context, gh *github.Client, dir, owner, repo, branch, message string, out io.Writer) (string, error) {
-	ref, err := gh.Ref(ctx, owner, repo, "heads/"+branch)
+	head, carries, err := Foundation(ctx, gh, owner, repo, branch)
 	if err != nil {
-		return "", errors.Wrapf(err, "reading %s of %s/%s", branch, owner, repo)
+		return "", err
 	}
-	if _, err := gh.Contents(ctx, owner, repo, org.PlacementFile, branch); err == nil {
-		fmt.Fprintf(out, "%s of %s/%s carries the foundation already (%s).\n", branch, owner, repo, short(ref.Object.SHA))
+	if carries {
+		fmt.Fprintf(out, "%s of %s/%s carries the foundation already (%s).\n", branch, owner, repo, short(head))
 
-		return ref.Object.SHA, nil
-	} else if !github.NotFound(err) {
-		return "", errors.Wrapf(err, "reading %s on %s", org.PlacementFile, branch)
+		return head, nil
 	}
 	entries, err := blobs(ctx, gh, dir, owner, repo)
 	if err != nil {
@@ -145,7 +143,7 @@ func Push(ctx context.Context, gh *github.Client, dir, owner, repo, branch, mess
 	if err != nil {
 		return "", errors.Wrapf(err, "creating the tree of %d file(s) in %s/%s", len(entries), owner, repo)
 	}
-	commit, err := gh.CreateCommit(ctx, owner, repo, message, tree, []string{ref.Object.SHA})
+	commit, err := gh.CreateCommit(ctx, owner, repo, message, tree, []string{head})
 	if err != nil {
 		return "", errors.Wrapf(err, "creating the foundation commit in %s/%s", owner, repo)
 	}
@@ -155,6 +153,23 @@ func Push(ctx context.Context, gh *github.Client, dir, owner, repo, branch, mess
 	fmt.Fprintf(out, "Pushed the foundation to %s/%s at %s (%d files): its apply trigger runs on it.\n", owner, repo, short(commit), len(entries))
 
 	return commit, nil
+}
+
+// Foundation reads whether the branch of the repository carries a placement, the mark of
+// the foundation commit, and answers the branch's head either way: a run again pushes
+// nothing then, and renders nothing into a clone of what it pushed.
+func Foundation(ctx context.Context, gh *github.Client, owner, repo, branch string) (head string, carries bool, err error) {
+	ref, err := gh.Ref(ctx, owner, repo, "heads/"+branch)
+	if err != nil {
+		return "", false, errors.Wrapf(err, "reading %s of %s/%s", branch, owner, repo)
+	}
+	if _, err := gh.Contents(ctx, owner, repo, org.PlacementFile, branch); err == nil {
+		return ref.Object.SHA, true, nil
+	} else if !github.NotFound(err) {
+		return "", false, errors.Wrapf(err, "reading %s on %s", org.PlacementFile, branch)
+	}
+
+	return ref.Object.SHA, false, nil
 }
 
 // blobs stores every file of the rendered directory as a blob and answers the tree

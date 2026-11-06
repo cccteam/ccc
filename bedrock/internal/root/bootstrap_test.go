@@ -10,6 +10,8 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
+	"os/exec"
 	"regexp"
 	"slices"
 	"strings"
@@ -196,6 +198,69 @@ func TestBootstrapBroughtApps(t *testing.T) {
 	}
 	if !again.Report.Clean() || strings.Contains(out.String(), "Created the") || !strings.Contains(out.String(), "The project "+project+" exists.") {
 		t.Errorf("the second run:\n%s", out.String())
+	}
+	if strings.Contains(out.String(), "Rendered the imr root organization") || !strings.Contains(out.String(), "master of imp-example/imr-root-infrastructure carries the foundation already (") {
+		t.Errorf("the second run rendered or pushed:\n%s", out.String())
+	}
+}
+
+// TestBootstrapInAClone: a run again in a clone of the repository, on a branch a pull
+// request is being made from, leaves the clone as the person has it: nothing rendered, the
+// branch and the commit kept, the working tree clean, and no clone made over it.
+func TestBootstrapInAClone(t *testing.T) {
+	t.Parallel()
+
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git is not on this computer")
+	}
+	fake, srv, clients := bootstrapWorld(t)
+	_ = fake
+	p := draft()
+	brought := map[org.AppRole]root.BroughtApp{}
+	for i, m := range p.AppManifests() {
+		brought[m.Role] = root.BroughtApp{ID: fmt.Sprint(5000 + i), Key: registerApp(t, srv, m, int64(5000+i), true)}
+	}
+	dir := t.TempDir()
+	var out bytes.Buffer
+	res, err := root.Bootstrap(context.Background(), clients, &root.BootstrapRequest{Placement: p, Dir: dir, Token: []byte("test-token"), Brought: brought}, &out)
+	if err != nil {
+		t.Fatalf("Bootstrap() error = %v\n%s", err, out.String())
+	}
+	git := func(args ...string) string {
+		t.Helper()
+		cmd := exec.CommandContext(context.Background(), "git", append([]string{"-C", dir}, args...)...)
+		cmd.Env = append(os.Environ(), "GIT_AUTHOR_NAME=t", "GIT_AUTHOR_EMAIL=t@example", "GIT_COMMITTER_NAME=t", "GIT_COMMITTER_EMAIL=t@example")
+		got, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Fatalf("git %s: %v\n%s", strings.Join(args, " "), err, got)
+		}
+
+		return strings.TrimSpace(string(got))
+	}
+	git("init", "--quiet", "--initial-branch=master")
+	git("remote", "add", "origin", "https://github.com/imp-example/imr-root-infrastructure.git")
+	git("add", "--all")
+	git("commit", "--quiet", "-m", "the foundation")
+	git("checkout", "--quiet", "-b", "bedrock/pin-abc1234")
+	head := git("rev-parse", "HEAD")
+	clients.Clone = func(context.Context, string, string, string, string, string) error {
+		t.Error("the run cloned over the clone")
+
+		return nil
+	}
+
+	out.Reset()
+	if _, err := root.Bootstrap(context.Background(), clients, &root.BootstrapRequest{Placement: res.Placement, Dir: dir, Token: []byte("test-token"), Brought: brought}, &out); err != nil {
+		t.Fatalf("Bootstrap() again error = %v\n%s", err, out.String())
+	}
+	if want := dir + " is a clone of imp-example/imr-root-infrastructure already, on bedrock/pin-abc1234 at " + head[:7] + "."; !strings.Contains(out.String(), want) {
+		t.Errorf("output lacks %q:\n%s", want, out.String())
+	}
+	if got := git("rev-parse", "HEAD"); got != head {
+		t.Errorf("HEAD moved from %s to %s", head, got)
+	}
+	if got := git("status", "--porcelain"); got != "" {
+		t.Errorf("the run again left the working tree changed:\n%s", got)
 	}
 }
 

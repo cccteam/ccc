@@ -479,14 +479,17 @@ func (b *bootstrap) apps(ctx context.Context) error {
 	return nil
 }
 
-// clone makes the directory a clone of the repository at the pushed commit, when the
-// clients know how and it is not one already, and reports whether it is one; a clone that
-// fails is said, with the clone to make by hand, and stops nothing.
+// clone makes the directory a clone of the repository at the pushed commit, so the person
+// goes on from it by pull request, unless it is a clone already: a repository whose origin
+// is the repository, with a commit checked out, is left as it stands, on whatever branch
+// and at whatever commit the person has it (a run again in a clone a pull request is
+// being made from). Without git, or when git fails, the directory holds the files pushed
+// and the clone to make by hand is printed. The answer says whether it is a clone.
 func (b *bootstrap) clone(ctx context.Context, commit, token string) bool {
 	p := b.p
 	url := "https://github.com/" + p.GithubOrganization + "/" + p.SourceRepo + ".git"
-	if head, err := gitcmd.Output(ctx, b.req.Dir, "rev-parse", "HEAD"); err == nil && strings.TrimSpace(head) == commit {
-		fmt.Fprintf(b.out, "%s is a clone of %s/%s at %s already.\n", b.req.Dir, p.GithubOrganization, p.SourceRepo, short(commit))
+	if branch, head, ok := cloneOf(ctx, b.req.Dir, url); ok {
+		fmt.Fprintf(b.out, "%s is a clone of %s/%s already, on %s at %s.\n", b.req.Dir, p.GithubOrganization, p.SourceRepo, branch, short(head))
 
 		return true
 	}
@@ -503,6 +506,27 @@ func (b *bootstrap) clone(ctx context.Context, commit, token string) bool {
 	fmt.Fprintf(b.out, "%s is a clone of %s/%s at %s, on %s.\n", b.req.Dir, p.GithubOrganization, p.SourceRepo, short(commit), p.GithubDefaultBranch)
 
 	return true
+}
+
+// cloneOf reports whether dir is a clone of the repository at url with a commit checked
+// out, and which branch and commit: origin's URL is the repository's, with or without
+// .git, and HEAD resolves. A directory a stopped run left partway, a repository with
+// origin and no commit, is not one yet, and the clone finishes it.
+func cloneOf(ctx context.Context, dir, url string) (branch, head string, ok bool) {
+	origin, err := gitcmd.Output(ctx, dir, "remote", "get-url", "origin")
+	if err != nil || strings.TrimSuffix(strings.TrimSpace(origin), ".git") != strings.TrimSuffix(url, ".git") {
+		return "", "", false
+	}
+	head, err = gitcmd.Output(ctx, dir, "rev-parse", "--verify", "--quiet", "HEAD")
+	if err != nil {
+		return "", "", false
+	}
+	branch, err = gitcmd.Output(ctx, dir, "rev-parse", "--abbrev-ref", "HEAD")
+	if err != nil {
+		return "", "", false
+	}
+
+	return strings.TrimSpace(branch), strings.TrimSpace(head), true
 }
 
 // recordApp puts the key into its secret, pins the version and records the App ID (and
@@ -552,7 +576,10 @@ func (b *bootstrap) installation(ctx context.Context) (string, error) {
 }
 
 // repository makes the repository unless it is there, renders the organization into the
-// directory with its placement, and pushes the render as the first commit.
+// directory with its placement, and pushes the render as the first commit. Once the
+// default branch carries the foundation, nothing is rendered or pushed: the repository is
+// the organization's record from then on, and every change to it goes by pull request,
+// so a run again in a clone of it leaves the working tree as the person left it.
 func (b *bootstrap) repository(ctx context.Context, token string) (string, error) {
 	p := b.p
 	if err := p.Validate(); err != nil {
@@ -575,6 +602,15 @@ func (b *bootstrap) repository(ctx context.Context, token string) (string, error
 	}
 	if err := create.DefaultBranch(ctx, gh, p.GithubOrganization, p.SourceRepo, p.GithubDefaultBranch, b.sleep, b.out); err != nil {
 		return "", err
+	}
+	head, carries, err := create.Foundation(ctx, gh, p.GithubOrganization, p.SourceRepo, p.GithubDefaultBranch)
+	if err != nil {
+		return "", err
+	}
+	if carries {
+		fmt.Fprintf(b.out, "%s of %s/%s carries the foundation already (%s): every change to it goes by pull request, and nothing is rendered here.\n", p.GithubDefaultBranch, p.GithubOrganization, p.SourceRepo, short(head))
+
+		return head, nil
 	}
 	files, err := org.Render(p)
 	if err != nil {
