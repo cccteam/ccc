@@ -181,18 +181,23 @@ The merge of this pull request creates %s, as the creating identity (%s):
     the Cloud Build authorization this organization recorded, its repository link and its
     two triggers; its folders, its six projects with their identities, recorded in its
     placement (projects, projectNumbers);
+  - the public zone of its apps domain %s in its net project, made as the creating
+    identity, which this organization's apply verified as an owner of the domain, and
+    recorded in its placement (appsZone), which its 2-net adopts;
   - the repository %s/%s, private, with the rendered foundation as its first push, which
     its apply trigger runs on, every layer as its own identity;
   - the creating identity's own grants off everything it made, a marker in this
     organization's state bucket, and the hand-off pull request here, which records the
-    folder (placement.json, hostingOrganizations) and the placement as created.
+    folder (placement.json, hostingOrganizations) and the placement as created, and hands
+    the apps domain's label onward to its zone (domains), from which the apply writes the
+    NS record set.
 Nothing is granted by hand before the merge: the creating identity holds Folder Creator at the
 organization node and Billing Account Administrator on %s since the bootstrap, and it grants
 the new organization's boot and org identities Billing Account User itself. After the merge,
 for the new organization: a billing administrator sets its spend budget (that repository's
 0-bootstrap/README.md, "The spend budget"); its consent screen and role groups follow as its
 README says.
-`, h.Prefix, root.CreatingIdentity(), h.Prefix, h.Projects["boot"], h.BillingAccount, h.Prefix, h.StateBucket, h.GithubOrganization, h.SourceRepo, h.BillingAccount)
+`, h.Prefix, root.CreatingIdentity(), h.Prefix, h.Projects["boot"], h.BillingAccount, h.Prefix, h.StateBucket, h.AppsDomain, h.GithubOrganization, h.SourceRepo, h.BillingAccount)
 
 	return b.String()
 }
