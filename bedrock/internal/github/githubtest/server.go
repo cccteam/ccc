@@ -116,6 +116,9 @@ type Server struct {
 	// for an owner, member); an organization not listed answers not found.
 	Login       string
 	Memberships map[string]string
+	// DefaultBranch is the organization's setting for a new repository's initial branch
+	// (main by default), which GitHub uses whatever the creation asks.
+	DefaultBranch string
 	// The organizations' Actions settings, by organization: Variables by name, the
 	// runner groups and the hosted runners made through the API. PublicApps are the apps
 	// read by slug (/apps/<slug>); OrgInstallations the apps installed on an
@@ -136,6 +139,7 @@ const (
 
 var (
 	refRE        = regexp.MustCompile(`^/repos/([^/]+)/([^/]+)/git/ref/(.+)$`)
+	renameRE     = regexp.MustCompile(`^/repos/([^/]+)/([^/]+)/branches/([^/]+)/rename$`)
 	refsRE       = regexp.MustCompile(`^/repos/([^/]+)/([^/]+)/git/refs$`)
 	refUpdRE     = regexp.MustCompile(`^/repos/([^/]+)/([^/]+)/git/refs/(.+)$`)
 	orgReposRE   = regexp.MustCompile(`^/orgs/([^/]+)/repos$`)
@@ -193,6 +197,7 @@ func New(t *testing.T) *Server {
 		Repos: map[string]*Repo{}, Apps: map[string]*App{}, Conversions: map[string]*github.App{}, nextID: idMin,
 		Variables: map[string]map[string]github.Variable{}, RunnerGroups: map[string][]*github.RunnerGroup{}, HostedRunners: map[string][]*github.HostedRunner{},
 		PublicApps: map[string]github.App{}, OrgInstallations: map[string][]github.OrgInstallation{}, Memberships: map[string]string{},
+		DefaultBranch: "main",
 	}
 	s.Server = httptest.NewServer(http.HandlerFunc(s.serve))
 	t.Cleanup(s.Close)
@@ -301,6 +306,9 @@ var routes = []route{
 	}},
 	{branchesRE, func(s *Server, w http.ResponseWriter, _ *http.Request, m []string) {
 		s.branches(w, m[1]+"/"+m[2])
+	}},
+	{renameRE, func(s *Server, w http.ResponseWriter, r *http.Request, m []string) {
+		s.renameBranch(w, r, m[1]+"/"+m[2], m[3])
 	}},
 	{commitRE, func(s *Server, w http.ResponseWriter, _ *http.Request, m []string) {
 		s.commit(w, m[1]+"/"+m[2], m[3])
@@ -609,7 +617,7 @@ func (s *Server) createRepo(w http.ResponseWriter, r *http.Request, owner string
 
 		return
 	}
-	branch := in.DefaultBranch
+	branch := s.DefaultBranch
 	if branch == "" {
 		branch = "main"
 	}
@@ -742,6 +750,37 @@ func (s *Server) tags(w http.ResponseWriter, key string) {
 		return tags[i].Name < tags[j].Name
 	})
 	reply(w, http.StatusOK, tags)
+}
+
+// renameBranch moves the branch's ref to the new name (POST), or answers 404 for a branch
+// the repository has not.
+func (s *Server) renameBranch(w http.ResponseWriter, r *http.Request, key, branch string) {
+	repo, ok := s.repo(w, key)
+	if !ok {
+		return
+	}
+	if r.Method != http.MethodPost {
+		reply(w, http.StatusMethodNotAllowed, map[string]string{messageKey: r.Method})
+
+		return
+	}
+	var in struct {
+		NewName string `json:"new_name"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&in); err != nil || in.NewName == "" {
+		reply(w, http.StatusUnprocessableEntity, map[string]string{messageKey: jsonBodyRequired})
+
+		return
+	}
+	object, ok := repo.Refs["refs/heads/"+branch]
+	if !ok {
+		reply(w, http.StatusNotFound, map[string]string{messageKey: "Branch not found"})
+
+		return
+	}
+	delete(repo.Refs, "refs/heads/"+branch)
+	repo.Refs["refs/heads/"+in.NewName] = object
+	reply(w, http.StatusCreated, map[string]string{"name": in.NewName})
 }
 
 // branches lists the branches with their commits, by name, as the API does: an empty list

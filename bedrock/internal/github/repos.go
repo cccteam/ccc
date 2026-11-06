@@ -6,6 +6,7 @@ package github
 import (
 	"context"
 	"net/http"
+	"net/url"
 )
 
 // Archive marks the repository archived: read-only on GitHub, with its code, pull
@@ -39,15 +40,23 @@ func (c *Client) Repository(ctx context.Context, owner, repo string) (*Repositor
 	return r, nil
 }
 
-// RepositoryRequest is a repository to create in an organization: private, with the
-// default branch named, and with an initial commit (a README) when AutoInit is set, so
-// that the git data API has a commit to build on (an empty repository answers it 409).
+// RepositoryRequest is a repository to create in an organization: private, and with an
+// initial commit (a README) when AutoInit is set, so that the git data API has a commit to
+// build on (an empty repository answers it 409). Its branch is named after the
+// organization's setting; RenameBranch gives it the name wanted.
 type RepositoryRequest struct {
-	Name          string `json:"name"`
-	Description   string `json:"description,omitempty"`
-	Private       bool   `json:"private"`
-	DefaultBranch string `json:"default_branch,omitempty"`
-	AutoInit      bool   `json:"auto_init"`
+	Name        string `json:"name"`
+	Description string `json:"description,omitempty"`
+	Private     bool   `json:"private"`
+	AutoInit    bool   `json:"auto_init"`
+}
+
+// RenameBranch renames the branch (POST /repos/{owner}/{repo}/branches/{branch}/rename),
+// which makes the new name the default when the branch was. A new repository's initial
+// branch is named after the organization's setting whatever the creation asks (the lab,
+// 2026-11-06), so a creator renames it to the branch it wants.
+func (c *Client) RenameBranch(ctx context.Context, owner, repo, branch, newName string) error {
+	return c.do(ctx, http.MethodPost, "/repos/"+owner+"/"+repo+"/branches/"+url.PathEscape(branch)+"/rename", map[string]string{"new_name": newName}, nil)
 }
 
 // CreateRepository creates the repository in the organization (POST /orgs/{org}/repos;

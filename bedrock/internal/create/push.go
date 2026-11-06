@@ -41,24 +41,45 @@ func (f *creation) repository(ctx context.Context, h *org.Placement) (string, er
 	if _, err := f.gh.Repository(ctx, h.GithubOrganization, h.SourceRepo); err == nil {
 		fmt.Fprintf(f.out, "Repository %s exists.\n", full)
 
-		return full, nil
+		return full, DefaultBranch(ctx, f.gh, h.GithubOrganization, h.SourceRepo, h.GithubDefaultBranch, f.clients.Sleep, f.out)
 	} else if github.Moved(err) {
 		fmt.Fprintf(f.out, "The name %s forwards to a repository renamed away from it; a new repository takes the name.\n", full)
 	} else if !github.NotFound(err) {
 		return "", errors.Wrapf(err, "reading repository %s", full)
 	}
 	_, err := f.gh.CreateRepository(ctx, h.GithubOrganization, github.RepositoryRequest{
-		Name: h.SourceRepo, Description: "The infrastructure of the " + h.Prefix + " organization (bedrock)", Private: true, DefaultBranch: h.GithubDefaultBranch, AutoInit: true,
+		Name: h.SourceRepo, Description: "The infrastructure of the " + h.Prefix + " organization (bedrock)", Private: true, AutoInit: true,
 	})
 	if err != nil {
 		return "", errors.Wrapf(err, "creating repository %s", full)
 	}
-	fmt.Fprintf(f.out, "Created repository %s, private, default branch %s.\n", full, h.GithubDefaultBranch)
-	if err := AwaitBranch(ctx, f.gh, h.GithubOrganization, h.SourceRepo, h.GithubDefaultBranch, f.clients.Sleep, f.out); err != nil {
-		return "", err
-	}
+	fmt.Fprintf(f.out, "Created repository %s, private.\n", full)
 
-	return full, nil
+	return full, DefaultBranch(ctx, f.gh, h.GithubOrganization, h.SourceRepo, h.GithubDefaultBranch, f.clients.Sleep, f.out)
+}
+
+// DefaultBranch brings the repository's default branch to the name the placement gives
+// it: GitHub names a new repository's initial branch after the organization's setting,
+// whatever the creation asks (main, in the lab, 2026-11-06), so the branch is renamed once
+// its initial commit is there, which makes the new name the default. A repository whose
+// default branch is the one named is left as it is.
+func DefaultBranch(ctx context.Context, gh *github.Client, owner, repo, wanted string, sleep deploy.SleepFunc, out io.Writer) error {
+	r, err := gh.Repository(ctx, owner, repo)
+	if err != nil {
+		return errors.Wrapf(err, "reading repository %s/%s", owner, repo)
+	}
+	if err := AwaitBranch(ctx, gh, owner, repo, r.DefaultBranch, sleep, out); err != nil {
+		return err
+	}
+	if r.DefaultBranch == wanted {
+		return nil
+	}
+	if err := gh.RenameBranch(ctx, owner, repo, r.DefaultBranch, wanted); err != nil {
+		return errors.Wrapf(err, "renaming the branch %s of %s/%s to %s", r.DefaultBranch, owner, repo, wanted)
+	}
+	fmt.Fprintf(out, "Renamed the branch %s of %s/%s to %s, the default branch placement.json names.\n", r.DefaultBranch, owner, repo, wanted)
+
+	return nil
 }
 
 // GitHub writes a new repository's initial commit a moment after it answers the creation,

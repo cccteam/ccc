@@ -537,14 +537,14 @@ func (b *bootstrap) repository(ctx context.Context, token string) (string, error
 			return "", errors.Wrapf(err, "reading %s/%s", p.GithubOrganization, p.SourceRepo)
 		}
 		if _, err := gh.CreateRepository(ctx, p.GithubOrganization, github.RepositoryRequest{
-			Name: p.SourceRepo, Description: "The infrastructure of the " + p.Prefix + " root organization (bedrock)", Private: true, DefaultBranch: p.GithubDefaultBranch, AutoInit: true,
+			Name: p.SourceRepo, Description: "The infrastructure of the " + p.Prefix + " root organization (bedrock)", Private: true, AutoInit: true,
 		}); err != nil {
 			return "", errors.Wrapf(err, "creating %s/%s", p.GithubOrganization, p.SourceRepo)
 		}
-		fmt.Fprintf(b.out, "Created the repository %s/%s, private, default branch %s.\n", p.GithubOrganization, p.SourceRepo, p.GithubDefaultBranch)
-		if err := create.AwaitBranch(ctx, gh, p.GithubOrganization, p.SourceRepo, p.GithubDefaultBranch, b.sleep, b.out); err != nil {
-			return "", err
-		}
+		fmt.Fprintf(b.out, "Created the repository %s/%s, private.\n", p.GithubOrganization, p.SourceRepo)
+	}
+	if err := create.DefaultBranch(ctx, gh, p.GithubOrganization, p.SourceRepo, p.GithubDefaultBranch, b.sleep, b.out); err != nil {
+		return "", err
 	}
 	files, err := org.Render(p)
 	if err != nil {
