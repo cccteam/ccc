@@ -69,6 +69,11 @@ linters:
             - cloud.google.com/go/domains
             # deploy record writes the deployment record to the records bucket.
             - cloud.google.com/go/storage
+            # The root organization sets the organization-policy baseline on each hosting
+            # organization's folders through the Org Policy client; a managed constraint's
+            # parameters are a protobuf Struct.
+            - cloud.google.com/go/orgpolicy
+            - google.golang.org/protobuf/types/known/structpb
             # deploy resolve reads the build and mints its GitHub token through the Cloud
             # Build REST API with the process's default credentials.
             - golang.org/x/oauth2/google

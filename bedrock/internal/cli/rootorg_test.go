@@ -37,7 +37,21 @@ var (
 func rootRepo(t *testing.T) string {
 	t.Helper()
 
-	return fixtureRepo(t, rootFixture)
+	dir := fixtureRepo(t, rootFixture)
+	// The record of the hosting organization imp, which the fixture lists as created: the
+	// hosting fixture's placement, from which the root's policies section reads.
+	record, err := os.ReadFile(filepath.Join("..", "org", "testdata", "imp", "placement.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Dir(org.RecordPath(dir, "imp")), 0o750); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(org.RecordPath(dir, "imp"), record, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	return dir
 }
 
 // TestRootOrgCommands: org new refuses a root organization's placement and names the
@@ -359,7 +373,7 @@ func TestRootOrgDestroy(t *testing.T) {
 			in:          "imr\n",
 			wantOut: []string{
 				warning,
-				"Took the creating identity's grants off the organization node and billing account 012345-6789AB-CDEF01.",
+				"Took the creating identity's and the runners' grants off the organization node, and the creating identity's off billing account 012345-6789AB-CDEF01.",
 				"Deleted the project imr-root-gbl-core-c3d4, with the secrets, the zones, the connection, the triggers, the identities and the state bucket: Google holds it for 30 days, and its id never returns.",
 				"Deleted the folder imr (100).",
 				"Deleted the imr root organization's root project and folder; a line went into JOURNAL.md. Google holds the project for 30 days (its id never returns); the GitHub repository is as it was, with its settings and ruleset, and the three GitHub Apps stay installed, their keys in nobody's hands until a bootstrap stores them again.",

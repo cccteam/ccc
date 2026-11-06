@@ -2448,11 +2448,15 @@ its version pinned; the Cloud Build installation found through the infrastructur
 the repository `<prefix>-root-infrastructure`, private in the GitHub organization, with
 the placement and the rendered README as its first commit; then everything the apply keeps
 true, through the same engine the apply trigger runs; last what Google gave it as the
-creator, Owner on the root project and Folder Editor on the folder, off; and the check. No key and no token touches the computer's disk. The three IAM
-grants above the folder are the bootstrap's own, never a hand step: Folder Creator at
-the organization node and Billing Account Administrator on the billing account for the
-creating identity `<prefix>-create-gbl-tofu`, and its own working grants, which it takes
-off at the end. What it leaves by hand is the break-glass account's Folder Admin on the
+creator, Owner on the root project and Folder Editor on the folder, off; and the check. No key and no token touches the computer's disk. The IAM grants
+above the folder are the bootstrap's own, never a hand step: Folder Creator at the
+organization node and Billing Account Administrator on the billing account for the
+creating identity `<prefix>-create-gbl-tofu`, Organization Policy Administrator at the node
+for the applier and Organization Policy Viewer for the planner (Google grants those two
+there and nowhere lower; with them the root organization sets the organization-policy
+baseline on each hosting organization's folders, the rendered README's "The
+organization-policy baseline"), and its own working grants, which it takes off at the end.
+What it leaves by hand is the break-glass account's Folder Admin on the
 folder, which Google gives a creator, and the repository at its first commit, from which
 every change goes by pull request.
 

@@ -38,6 +38,8 @@ const (
 	roleObjectUser           = "roles/storage.objectUser"
 	roleFolderCreator        = "roles/resourcemanager.folderCreator"
 	roleBillingAdmin         = "roles/billing.admin"
+	rolePolicyAdmin          = "roles/orgpolicy.policyAdmin"
+	rolePolicyViewer         = "roles/orgpolicy.policyViewer"
 )
 
 // Services are the APIs the root project needs: Cloud Build for the triggers, Cloud DNS
@@ -48,7 +50,7 @@ const (
 // for the triggers' logs.
 var Services = []string{
 	"billingbudgets.googleapis.com", "cloudbilling.googleapis.com", "cloudbuild.googleapis.com", "cloudresourcemanager.googleapis.com",
-	"dns.googleapis.com", "iam.googleapis.com", "iamcredentials.googleapis.com", "logging.googleapis.com",
+	"dns.googleapis.com", "iam.googleapis.com", "iamcredentials.googleapis.com", "logging.googleapis.com", "orgpolicy.googleapis.com",
 	"secretmanager.googleapis.com", "serviceusage.googleapis.com", "storage.googleapis.com",
 }
 
@@ -166,10 +168,19 @@ func (d *Desired) ServiceAccountGrants() []Grant {
 	}
 }
 
-// OrganizationGrants are the creating identity's roles at the organization node, which
-// the bootstrap grants once: Folder Creator, for each hosting organization's folder.
+// OrganizationGrants are the roles at the organization node, which the bootstrap grants
+// once and nothing of a hosting organization holds: the creating identity's Folder
+// Creator, for each hosting organization's folder; the applier's Organization Policy
+// Administrator and the planner's Organization Policy Viewer, for the baseline of
+// organization policies the root organization sets on each hosting organization's
+// folders, since Google grants those two roles at the organization node and nowhere
+// lower.
 func (d *Desired) OrganizationGrants() []Grant {
-	return []Grant{{Resource: d.p.OrganizationID, Role: roleFolderCreator, Member: member(d.Creator())}}
+	return []Grant{
+		{Resource: d.p.OrganizationID, Role: roleFolderCreator, Member: member(d.Creator())},
+		{Resource: d.p.OrganizationID, Role: rolePolicyAdmin, Member: member(d.Applier())},
+		{Resource: d.p.OrganizationID, Role: rolePolicyViewer, Member: member(d.Planner())},
+	}
 }
 
 // BillingGrants are the creating identity's roles on the billing account: Billing

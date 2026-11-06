@@ -1,12 +1,9 @@
 locals {
   # The organization, from placement.json rather than looked up: an identity of
   # this organization holds nothing at the organization node, not even the read
-  # that resolves the domain. Its Cloud Identity customer, for the
-  # domain-restricted sharing policy (org-policies.tf), is recorded in the root
-  # organization's placement and copied here by bedrock org create.
-  org_id                = "{{.OrganizationID}}"
-  org_name              = "organizations/{{.OrganizationID}}"
-  directory_customer_id = "{{.DirectoryCustomerID}}"
+  # that resolves the domain.
+  org_id   = "{{.OrganizationID}}"
+  org_name = "organizations/{{.OrganizationID}}"
 
   # Naming convention: {prefix}-{environment}-{region}-{purpose}
   # Use "gbl" only for truly global resources: projects, folders, service

@@ -271,7 +271,7 @@ func (f *creation) handOff(ctx context.Context, h *org.Placement, marker *Marker
 		"",
 		"- folder `" + marker.OrganizationFolder + "` at the organization node (named `" + h.Prefix + "`), with the `terraform` folder `" + marker.TerraformFolder + "` under it",
 		"- boot project `" + marker.BootProject + "` (" + marker.BootProjectNumber + "), its APIs, its billing link, the boot identity with its roles on the folder, and the state bucket `" + marker.StateBucket + "`",
-		"- the first apply of its `0-bootstrap` (the connection from the recorded authorization, the repository link, the two triggers) and of its `1-org` (the folders, the projects with their identities, roles and policies), with the projects recorded in its placement (`projects`, `projectNumbers`)",
+		"- the first apply of its `0-bootstrap` (the connection from the recorded authorization, the repository link, the two triggers) and of its `1-org` (the folders, the projects with their identities and roles, the public-invoker tags), with the projects, the folders and the tags recorded in its placement (`projects`, `projectNumbers`, `folders`, `publicInvokerTags`); the organization-policy baseline on its folders is this organization's, set by this apply",
 		"- repository `" + marker.Repository + "`, with the rendered foundation as its first push, which its apply trigger runs on: every layer, as its own identity, with nothing left to apply by hand",
 		"- the creating identity's own grants taken off everything it made; the break-glass account holds Folder Admin on the folder",
 		"",

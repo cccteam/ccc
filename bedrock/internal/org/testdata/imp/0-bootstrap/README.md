@@ -95,9 +95,9 @@ applies would, and left no person with a grant to trim:
 
 1. **The seed, by API.** The organization's folder at the organization root,
    named `imp`, which made the creating identity its administrator, as
-   Google makes a folder's creator, with Project Creator, Organization Policy
-   Administrator and Tag Administrator for the identity itself, for the first
-   applies; the `terraform` folder under it; the boot project
+   Google makes a folder's creator, with Project Creator and Tag Administrator
+   for the identity itself, for the first applies; the `terraform` folder
+   under it; the boot project
    `imp-boot-gbl-core-a1b2` in it, linked to the billing account with its APIs
    enabled; the boot layer identity `imp-boot-gbl-tofu` with the roles
    of `var.boot_layer_roles` on the organization's folder and of

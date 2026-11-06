@@ -3,6 +3,8 @@ package root_test
 import (
 	"bytes"
 	"context"
+	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
@@ -25,6 +27,9 @@ type world struct {
 	fake    *roottest.Fake
 	srv     *githubtest.Server
 	clients *root.Clients
+	// dir is the root repository: the record of the created hosting organization imp
+	// under organizations/, from which the policies section reads.
+	dir string
 }
 
 func newWorld(t *testing.T) *world {
@@ -42,14 +47,34 @@ func newWorld(t *testing.T) *world {
 	// create package's to test, and these runs create none.
 	p.HostingOrganizations = slices.DeleteFunc(p.HostingOrganizations, func(h org.HostingOrganization) bool { return !h.Created() })
 
-	return &world{p: p, fake: fake, srv: srv, clients: clients}
+	return &world{p: p, fake: fake, srv: srv, clients: clients, dir: withRecord(t, t.TempDir())}
+}
+
+// withRecord writes into dir, a root repository, the record of the hosting organization
+// imp the fixture lists as created: the hosting fixture's placement, with the folders and
+// tags the root's policies name.
+func withRecord(t *testing.T, dir string) string {
+	t.Helper()
+
+	record, err := os.ReadFile("../org/testdata/imp/placement.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(dir, org.RecordsDir, "imp"), 0o750); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(org.RecordPath(dir, "imp"), record, 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	return dir
 }
 
 func (w *world) run(t *testing.T, mode root.Mode, bootstrap bool) (report *root.Report, printed string) {
 	t.Helper()
 
 	var out bytes.Buffer
-	report, err := root.Run(context.Background(), w.clients, &root.Request{Placement: w.p, Mode: mode, Commit: "abc1234", GitHubToken: "test-token", Bootstrap: bootstrap}, &out)
+	report, err := root.Run(context.Background(), w.clients, &root.Request{Placement: w.p, Dir: w.dir, Mode: mode, Commit: "abc1234", GitHubToken: "test-token", Bootstrap: bootstrap}, &out)
 	if err != nil {
 		t.Fatalf("Run(%v) error = %v\n%s", mode, err, out.String())
 	}
@@ -77,7 +102,7 @@ func containsAll(t *testing.T, got []string, wants ...string) {
 }
 
 // TestEngineFromNothing: a check before anything is made lists everything the apply
-// makes, with the outer grants as findings; the bootstrap's apply makes all of it; the
+// makes, with the five outer grants as findings; the bootstrap's apply makes all of it; the
 // check after it is clean.
 func TestEngineFromNothing(t *testing.T) {
 	t.Parallel()
@@ -111,11 +136,13 @@ func TestEngineFromNothing(t *testing.T) {
 	)
 	containsAll(t, report.Findings,
 		"the root organization lacks a grant the bootstrap makes: grants serviceAccount:imr-create-gbl-tofu@imr-root-gbl-core-c3d4.iam.gserviceaccount.com roles/resourcemanager.folderCreator at the organization node; an Organization Administrator makes it",
+		"grants serviceAccount:imr-root-gbl-applier@imr-root-gbl-core-c3d4.iam.gserviceaccount.com roles/orgpolicy.policyAdmin at the organization node; an Organization Administrator makes it",
+		"grants serviceAccount:imr-root-gbl-planner@imr-root-gbl-core-c3d4.iam.gserviceaccount.com roles/orgpolicy.policyViewer at the organization node; an Organization Administrator makes it",
 		"grants serviceAccount:imr-create-gbl-tofu@imr-root-gbl-core-c3d4.iam.gserviceaccount.com roles/billing.admin on billing account 012345-6789AB-CDEF01; a Billing Account Administrator of it makes it",
 		"grants serviceAccount:imr-root-gbl-applier@imr-root-gbl-core-c3d4.iam.gserviceaccount.com roles/storage.objectUser on the markers and the lock in gs://imr-root-gbl-state-c3d4",
 	)
-	if len(report.Findings) != 3 {
-		t.Errorf("findings = %q, want the three outer grants alone", report.Findings)
+	if len(report.Findings) != 5 {
+		t.Errorf("findings = %q, want the five outer grants alone", report.Findings)
 	}
 	if len(w.fake.Calls) == 0 || slices.ContainsFunc(w.fake.Calls, func(c string) bool {
 		return strings.HasPrefix(c, "Create") || strings.HasPrefix(c, "Set") || strings.HasPrefix(c, "Grant")
@@ -177,8 +204,8 @@ func TestEngineReadsNothingAboveTheFolder(t *testing.T) {
 		t.Errorf("not clean: changes %v, findings %q", whats(report), report.Findings)
 	}
 	want := []string{
-		"the creating identity's Folder Creator at the organization node was not compared: this run holds no read of the organization node's IAM policy, as the triggers' runners hold their roles under the organization's folder alone; the bootstrap made the grant and compares it, and so does bedrock org check run by an Organization Administrator",
-		"the creating identity's Billing Account Administrator on billing account 012345-6789AB-CDEF01 was not compared: this run holds no read of the billing account's IAM policy, as the triggers' runners hold their roles under the organization's folder alone; the bootstrap made the grant and compares it, and so does bedrock org check run by a Billing Account Administrator of it",
+		"the grants at the organization node (the creating identity's Folder Creator, the applier's Organization Policy Administrator, the planner's Organization Policy Viewer) were not compared: this run holds no read of the organization node's IAM policy, as the triggers' runners hold their roles under the organization's folder alone; the bootstrap made the grants and compares them, and so does bedrock org check run by an Organization Administrator",
+		"the creating identity's Billing Account Administrator on billing account 012345-6789AB-CDEF01 was not compared: this run holds no read of the billing account's IAM policy, as the triggers' runners hold their roles under the organization's folder alone; the bootstrap made the grants and compares them, and so does bedrock org check run by a Billing Account Administrator of it",
 	}
 	if !slices.Equal(report.Notes, want) {
 		t.Errorf("notes = %q, want %q", report.Notes, want)
@@ -189,11 +216,11 @@ func TestEngineReadsNothingAboveTheFolder(t *testing.T) {
 		t.Errorf("Write() = %q", buf.String())
 	}
 	var out bytes.Buffer
-	if _, err := root.Run(context.Background(), w.clients, &root.Request{Placement: w.p, Mode: root.Check, Commit: "abc1234", GitHubToken: "test-token", Bootstrap: true}, &out); err == nil || !strings.Contains(err.Error(), "resourcemanager.organizations.getIamPolicy") {
+	if _, err := root.Run(context.Background(), w.clients, &root.Request{Placement: w.p, Dir: w.dir, Mode: root.Check, Commit: "abc1234", GitHubToken: "test-token", Bootstrap: true}, &out); err == nil || !strings.Contains(err.Error(), "resourcemanager.organizations.getIamPolicy") {
 		t.Errorf("the bootstrap refused the read: err = %v", err)
 	}
 	w.fake.Refuse["OrganizationPolicy"] = status.Error(codes.Unavailable, "try again")
-	if _, err := root.Run(context.Background(), w.clients, &root.Request{Placement: w.p, Mode: root.Check, Commit: "abc1234", GitHubToken: "test-token"}, &out); err == nil || !strings.Contains(err.Error(), "try again") {
+	if _, err := root.Run(context.Background(), w.clients, &root.Request{Placement: w.p, Dir: w.dir, Mode: root.Check, Commit: "abc1234", GitHubToken: "test-token"}, &out); err == nil || !strings.Contains(err.Error(), "try again") {
 		t.Errorf("a refusal for another reason: err = %v", err)
 	}
 }
@@ -327,5 +354,86 @@ func TestReportComment(t *testing.T) {
 	comment = report.Comment("0123456789abcdef", p)
 	if !strings.Contains(comment, "Nothing: the root organization stands as placement.json says.") || strings.Contains(comment, "creations:") {
 		t.Errorf("with nothing pending:\n%s", comment)
+	}
+}
+
+// TestEnginePolicies: the root organization sets the organization-policy baseline on the
+// created hosting organization's four folders from its record (the baseline on each,
+// domain-restricted sharing with the public-invoker exception on the environment folders,
+// the allowed contact domains on each); a check lists each policy to set, the apply makes
+// them, the check after is clean, a policy moved by hand is brought back, and a record
+// without a folder or a tag is a finding.
+func TestEnginePolicies(t *testing.T) {
+	t.Parallel()
+
+	w := newWorld(t)
+	report, _ := w.run(t, root.Check, false)
+	got := whats(report)
+	containsAll(t, got,
+		"organization policies: sets iam.managed.disableServiceAccountKeyCreation on folder shared (900000000011) of imp",
+		"organization policies: sets cloudbuild.allowedIntegrations on folder prd (900000000014) of imp",
+		"organization policies: sets iam.allowedPolicyMemberDomains on folder tst (900000000012) of imp",
+		"organization policies: sets essentialcontacts.managed.allowedContactDomains on folder stg (900000000013) of imp",
+	)
+	policies := 0
+	for _, what := range got {
+		if strings.HasPrefix(what, "organization policies: ") {
+			policies++
+		}
+	}
+	if want := 4*len(root.Baseline) + 3 + 4; policies != want {
+		t.Errorf("%d policies to set, want %d (the baseline on four folders, member domains on three, contact domains on four)", policies, want)
+	}
+	if slices.ContainsFunc(got, func(s string) bool { return strings.Contains(s, "iam.allowedPolicyMemberDomains on folder shared") }) {
+		t.Errorf("domain-restricted sharing on the shared folder: %v", got)
+	}
+
+	if _, out := w.run(t, root.Apply, true); strings.Contains(out, "finding") {
+		t.Fatalf("the apply:\n%s", out)
+	}
+	member := w.fake.OrgPolicies["folders/900000000012/policies/iam.allowedPolicyMemberDomains"]
+	if member == nil || len(member.Rules) != 2 || !member.Rules[0].AllowAll || member.Rules[0].Condition == nil || member.Rules[0].Condition.Expression != "resource.matchTagId('tagKeys/281000000001', 'tagValues/282000000001')" || !slices.Equal(member.Rules[1].AllowedValues, []string{"C0a1b2c3d"}) {
+		t.Errorf("domain-restricted sharing on tst = %+v", member)
+	}
+	contacts := w.fake.OrgPolicies["folders/900000000011/policies/essentialcontacts.managed.allowedContactDomains"]
+	if contacts == nil || len(contacts.Rules) != 1 || contacts.Rules[0].Enforce == nil || !*contacts.Rules[0].Enforce || contacts.Rules[0].Parameters != `{"allowedDomains":["@imp.example"]}` {
+		t.Errorf("contact domains on shared = %+v", contacts)
+	}
+	clean, out := w.run(t, root.Check, false)
+	if !clean.Clean() {
+		t.Errorf("the check after the apply is not clean:\n%s\nchanges: %v", out, whats(clean))
+	}
+
+	// A hand change: a constraint loosened on one folder.
+	w.fake.OrgPolicies["folders/900000000014/policies/compute.vmExternalIpAccess"].Rules = []root.PolicyRule{{AllowAll: true}}
+	drift, _ := w.run(t, root.Check, false)
+	if want := "organization policies: brings compute.vmExternalIpAccess on folder prd (900000000014) of imp to the baseline"; !slices.Contains(whats(drift), want) || len(drift.Changes) != 1 {
+		t.Errorf("drift changes = %v, want %q alone", whats(drift), want)
+	}
+	if _, err := root.Run(context.Background(), w.clients, &root.Request{Placement: w.p, Dir: w.dir, Mode: root.Apply, Commit: "abc1234", GitHubToken: "test-token"}, &bytes.Buffer{}); err != nil {
+		t.Fatal(err)
+	}
+	if got := w.fake.OrgPolicies["folders/900000000014/policies/compute.vmExternalIpAccess"].Rules; len(got) != 1 || !got[0].DenyAll {
+		t.Errorf("after the apply, compute.vmExternalIpAccess on prd = %+v", got)
+	}
+
+	// A record without the prd folder and without stg's tag: findings, and the other
+	// policies stand.
+	record, err := org.ReadRecord(w.dir, "imp")
+	if err != nil {
+		t.Fatal(err)
+	}
+	delete(record.Folders, "prd")
+	delete(record.PublicInvokerTags, "stg")
+	if err := record.Write(org.RecordPath(w.dir, "imp")); err != nil {
+		t.Fatal(err)
+	}
+	partial, _ := w.run(t, root.Check, false)
+	containsAll(t, partial.Findings,
+		"the record of imp names no folder prd (folders), so no policy is set on it",
+		"the record of imp names no public-invoker tag for stg (publicInvokerTags), so domain-restricted sharing is not set on folder stg",
+	)
+	if len(partial.Changes) != 0 || len(partial.Findings) != 2 {
+		t.Errorf("partial record: changes %v, findings %q", whats(partial), partial.Findings)
 	}
 }

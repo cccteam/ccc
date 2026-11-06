@@ -77,6 +77,11 @@ output "project_numbers" {
   value       = { for k, p in module.project : k => p.project_number }
 }
 
+output "public_invoker_tag_key" {
+  description = "By environment code, the resource name (tagKeys/<id>) of that environment project's public-invoker tag key; with public_invoker_tag_value, what the root organization names in the exception of the environment folder's domain-restricted sharing policy, recorded in placement.json by the creation (publicInvokerTags)."
+  value       = { for k, v in google_tags_tag_key.public_invoker : k => v.id }
+}
+
 output "public_invoker_tag_value" {
   description = "By environment code, the resource name (tagValues/<id>) of that environment project's public-invoker=true tag; an application stack binds its environment's to a Cloud Run service before granting allUsers roles/run.invoker (tags.tf)."
   value       = { for k, v in google_tags_tag_value.public_invoker : k => v.id }

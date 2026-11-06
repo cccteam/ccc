@@ -40,7 +40,7 @@ func applied(t *testing.T) (*world, *root.RunClients, string) {
 
 	w := newWorld(t)
 	w.run(t, root.Apply, true)
-	dir := t.TempDir()
+	dir := withRecord(t, t.TempDir())
 	if err := w.p.Write(filepath.Join(dir, org.PlacementFile)); err != nil {
 		t.Fatal(err)
 	}

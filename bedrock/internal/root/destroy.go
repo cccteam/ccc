@@ -69,7 +69,7 @@ func Destroy(ctx context.Context, clients *Clients, req *DestroyRequest, out io.
 			return err
 		}
 	}
-	fmt.Fprintf(out, "Took the creating identity's grants off the organization node and billing account %s.\n", p.BillingAccount)
+	fmt.Fprintf(out, "Took the creating identity's and the runners' grants off the organization node, and the creating identity's off billing account %s.\n", p.BillingAccount)
 	project := p.Projects[org.RootProjectKey]
 	if project != "" {
 		exists, err := google.ProjectExists(ctx, project)

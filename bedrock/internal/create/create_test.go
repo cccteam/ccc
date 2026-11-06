@@ -118,7 +118,13 @@ func orgOutputs() map[string]any {
 	folders := map[string]string{"shared": "900000000011", "tst": "900000000012", "stg": "900000000013", "prd": "900000000014"}
 	value := func(v any) map[string]any { return map[string]any{"value": v} }
 
-	return map[string]any{"project_ids": value(ids), "project_numbers": value(numbers), "folder_ids": value(folders)}
+	keys, values := map[string]string{}, map[string]string{}
+	for i, env := range []string{"tst", "stg", "prd"} {
+		keys[env] = "tagKeys/28100000000" + strconv.Itoa(i+1)
+		values[env] = "tagValues/28200000000" + strconv.Itoa(i+1)
+	}
+
+	return map[string]any{"project_ids": value(ids), "project_numbers": value(numbers), "folder_ids": value(folders), "public_invoker_tag_key": value(keys), "public_invoker_tag_value": value(values)}
 }
 
 // fakeStore is the root organization's state bucket.
@@ -230,7 +236,6 @@ func TestRun(t *testing.T) {
 	}
 	wantGrants := []string{
 		"folders/" + orgFolder + " roles/resourcemanager.projectCreator serviceAccount:" + creatingEmail,
-		"folders/" + orgFolder + " roles/orgpolicy.policyAdmin serviceAccount:" + creatingEmail,
 		"folders/" + orgFolder + " roles/resourcemanager.tagAdmin serviceAccount:" + creatingEmail,
 		"folders/" + orgFolder + " roles/cloudbuild.builds.editor " + bootIdentity,
 		"folders/" + orgFolder + " roles/serviceusage.serviceUsageAdmin " + bootIdentity,
@@ -245,8 +250,8 @@ func TestRun(t *testing.T) {
 			t.Errorf("grants lack %q:\n%s", want, strings.Join(f.google.Grants, "\n"))
 		}
 	}
-	if n := len(f.google.Grants); n != 3+len(org.BootLayerRoles)+len(org.BootProjectRoles)+1+4+2 {
-		t.Errorf("%d grants, want %d (the three roles for the first applies, the boot roles on the folder and the project, Folder Admin, four secrets)", n, 3+len(org.BootLayerRoles)+len(org.BootProjectRoles)+1+4)
+	if n := len(f.google.Grants); n != 2+len(org.BootLayerRoles)+len(org.BootProjectRoles)+1+4+2 {
+		t.Errorf("%d grants, want %d (the two roles for the first applies, the boot roles on the folder and the project, Folder Admin, four secrets, two billing)", n, 2+len(org.BootLayerRoles)+len(org.BootProjectRoles)+1+4+2)
 	}
 	creator := " serviceAccount:" + creatingEmail + " roles/resourcemanager.folderAdmin+roles/resourcemanager.folderEditor"
 	wantRevoked := []string{
@@ -259,7 +264,7 @@ func TestRun(t *testing.T) {
 		"projects/rgb-prd-gbl-core-e5f6 serviceAccount:" + creatingEmail + " roles/owner",
 		"folders/" + tfFolder + creator,
 		"projects/rgb-boot-gbl-core-e5f6 serviceAccount:" + creatingEmail + " roles/owner",
-		"folders/" + orgFolder + creator + "+roles/resourcemanager.projectCreator+roles/orgpolicy.policyAdmin+roles/resourcemanager.tagAdmin",
+		"folders/" + orgFolder + creator + "+roles/resourcemanager.projectCreator+roles/resourcemanager.tagAdmin",
 	}
 	if !slices.Equal(f.google.Revoked, wantRevoked) {
 		t.Errorf("revoked:\n%s\nwant:\n%s", strings.Join(f.google.Revoked, "\n"), strings.Join(wantRevoked, "\n"))
@@ -354,7 +359,7 @@ func TestRun(t *testing.T) {
 		"Renamed the branch main of " + owner + "/rgb-infrastructure to master, the default branch placement.json names.\n",
 		"=== first apply of rgb's 0-bootstrap as " + creatingEmail + ", state in gs://rgb-boot-gbl-state-e5f6/0-bootstrap ===\n",
 		"=== first apply of rgb's 1-org as " + creatingEmail + ", state in gs://rgb-boot-gbl-state-e5f6/1-org ===\n",
-		"Applied rgb's 1-org and recorded its 6 projects in the placement (projects, projectNumbers); it made 4 folders.\n",
+		"Applied rgb's 1-org and recorded its 6 projects, 4 folders and 3 public-invoker tags in the placement (projects, projectNumbers, folders, publicInvokerTags).\n",
 		"Pushed the foundation to " + owner + "/rgb-infrastructure at ",
 		"Took the creating identity's grants off the 4 folders and 6 projects 1-org made, folder " + tfFolder + ", project rgb-boot-gbl-core-e5f6 and folder " + orgFolder + ".\n",
 		"Recorded the creation of rgb in gs://imr-root-gbl-state-c3d4/applied/created/rgb.\n",

@@ -738,7 +738,7 @@ func TestOrgCommands(t *testing.T) {
 				return runOrg(t, "org", "new", dir)
 			},
 			wantOut: []string{
-				"Rendered the imp foundation", "69 owned file(s)", "seeded .gitignore, 0-bootstrap/terraform.tfvars",
+				"Rendered the imp foundation", "68 owned file(s)", "seeded .gitignore, 0-bootstrap/terraform.tfvars",
 				"A hosting organization is created by its root organization (imr, root.organization in\nplacement.json), from that organization's repository, by pull request; nothing here is seeded\nor applied by hand",
 				"0. In the Workspace Admin console, before the record: one team group per environment, named\n     in placement.json (teamGroups",
 				"its role groups (<group prefix><role>@imp.example), each created with \"Who can view\n     members\" set so that its members can",
@@ -771,7 +771,7 @@ func TestOrgCommands(t *testing.T) {
 
 				return runOrg(t, "org", "check", "--dir", dir)
 			},
-			wantOut: []string{"69 owned file(s) match the placement"},
+			wantOut: []string{"68 owned file(s) match the placement"},
 		},
 		{
 			name: "register adds an application, renders the values and prints the sequence",
@@ -840,7 +840,7 @@ func TestOrgCommands(t *testing.T) {
 
 				return runOrg(t, "org", "render", "--dir", dir)
 			},
-			wantOut: []string{"69 owned file(s) written", "The triggers cannot run every layer yet: record projects.boot in placement.json and run bedrock org render."},
+			wantOut: []string{"68 owned file(s) written", "The triggers cannot run every layer yet: record projects.boot in placement.json and run bedrock org render."},
 		},
 		{
 			name: "render says what the triggers' runs still lack: the pin and the authorization",
@@ -916,7 +916,7 @@ func TestOrgCommands(t *testing.T) {
 				return runOrg(t, "org", "check", "--dir", dir)
 			},
 			wantCode: 1,
-			wantOut:  []string{"2-shr/registry.tf: line 1 differs", "1 finding(s) against the 69 owned file(s) the placement renders"},
+			wantOut:  []string{"2-shr/registry.tf: line 1 differs", "1 finding(s) against the 68 owned file(s) the placement renders"},
 		},
 		{
 			name: "check reports a .tf file added by hand",
@@ -934,7 +934,7 @@ func TestOrgCommands(t *testing.T) {
 			wantCode: 1,
 			wantOut: []string{
 				"2-env/extra.tf: not rendered by bedrock: every .tf file of a layer comes from the placement, and a file added by hand would run as the layer's identity; move what it declares into the placement, or remove it\n",
-				"1 finding(s) against the 69 owned file(s) the placement renders\n",
+				"1 finding(s) against the 68 owned file(s) the placement renders\n",
 			},
 		},
 		{
@@ -959,7 +959,7 @@ func TestOrgCommands(t *testing.T) {
 
 				return code, out
 			},
-			wantOut: []string{"69 owned file(s) written"},
+			wantOut: []string{"68 owned file(s) written"},
 		},
 	}
 	for _, tt := range tests {

@@ -14,6 +14,10 @@ import (
 	"strings"
 	"time"
 
+	orgpolicy "cloud.google.com/go/orgpolicy/apiv2"
+	"cloud.google.com/go/orgpolicy/apiv2/orgpolicypb"
+	"google.golang.org/protobuf/types/known/structpb"
+
 	"cloud.google.com/go/iam"
 	admin "cloud.google.com/go/iam/admin/apiv1"
 	"cloud.google.com/go/iam/admin/apiv1/adminpb"
@@ -1078,4 +1082,108 @@ func wrapf(err error, format string, args ...any) error {
 	}
 
 	return errors.Wrapf(err, format, args...)
+}
+
+// NewOrgPolicies opens the Org Policy client with the application default credentials.
+func NewOrgPolicies(ctx context.Context) (OrgPolicies, error) {
+	c, err := orgpolicy.NewClient(ctx)
+	if err != nil {
+		return nil, errors.Wrap(err, "orgpolicy.NewClient()")
+	}
+
+	return &orgPolicies{c: c}, nil
+}
+
+type orgPolicies struct {
+	c *orgpolicy.Client
+}
+
+func (o *orgPolicies) Policy(ctx context.Context, name string) (*Policy, bool, error) {
+	got, err := o.c.GetPolicy(ctx, &orgpolicypb.GetPolicyRequest{Name: name})
+	if err != nil {
+		if status.Code(err) == codes.NotFound {
+			return nil, false, nil
+		}
+
+		return nil, false, errors.Wrapf(err, "orgpolicy.Client.GetPolicy(): %s", name)
+	}
+
+	return policyFromProto(got), true, nil
+}
+
+func (o *orgPolicies) CreatePolicy(ctx context.Context, parent string, policy *Policy) error {
+	_, err := o.c.CreatePolicy(ctx, &orgpolicypb.CreatePolicyRequest{Parent: parent, Policy: policyToProto(policy)})
+
+	return wrapf(err, "orgpolicy.Client.CreatePolicy(): %s", policy.Name)
+}
+
+func (o *orgPolicies) UpdatePolicy(ctx context.Context, policy *Policy) error {
+	_, err := o.c.UpdatePolicy(ctx, &orgpolicypb.UpdatePolicyRequest{Policy: policyToProto(policy)})
+
+	return wrapf(err, "orgpolicy.Client.UpdatePolicy(): %s", policy.Name)
+}
+
+func (o *orgPolicies) Close() error {
+	return wrapf(o.c.Close(), "orgpolicy.Client.Close()")
+}
+
+// policyToProto is the policy as the API takes it: its rules, replacing the parent's.
+func policyToProto(p *Policy) *orgpolicypb.Policy {
+	spec := &orgpolicypb.PolicySpec{InheritFromParent: false, Reset_: false}
+	for _, r := range p.Rules {
+		rule := &orgpolicypb.PolicySpec_PolicyRule{}
+		switch {
+		case r.Enforce != nil:
+			rule.Kind = &orgpolicypb.PolicySpec_PolicyRule_Enforce{Enforce: *r.Enforce}
+		case r.DenyAll:
+			rule.Kind = &orgpolicypb.PolicySpec_PolicyRule_DenyAll{DenyAll: true}
+		case r.AllowAll:
+			rule.Kind = &orgpolicypb.PolicySpec_PolicyRule_AllowAll{AllowAll: true}
+		default:
+			rule.Kind = &orgpolicypb.PolicySpec_PolicyRule_Values{Values: &orgpolicypb.PolicySpec_PolicyRule_StringValues{AllowedValues: r.AllowedValues, DeniedValues: r.DeniedValues}}
+		}
+		if r.Condition != nil {
+			rule.Condition = &expr.Expr{Title: r.Condition.Title, Description: r.Condition.Description, Expression: r.Condition.Expression}
+		}
+		if r.Parameters != "" {
+			params := &structpb.Struct{}
+			// The parameters are JSON the engine composed; a failure here would be
+			// bedrock's own, and the API refuses the policy then.
+			_ = params.UnmarshalJSON([]byte(r.Parameters))
+			rule.Parameters = params
+		}
+		spec.Rules = append(spec.Rules, rule)
+	}
+
+	return &orgpolicypb.Policy{Name: p.Name, Spec: spec}
+}
+
+// policyFromProto is the policy as read, in the engine's shape, for the comparison.
+func policyFromProto(p *orgpolicypb.Policy) *Policy {
+	out := &Policy{Name: p.GetName()}
+	for _, r := range p.GetSpec().GetRules() {
+		rule := PolicyRule{}
+		switch k := r.GetKind().(type) {
+		case *orgpolicypb.PolicySpec_PolicyRule_Enforce:
+			enforce := k.Enforce
+			rule.Enforce = &enforce
+		case *orgpolicypb.PolicySpec_PolicyRule_DenyAll:
+			rule.DenyAll = k.DenyAll
+		case *orgpolicypb.PolicySpec_PolicyRule_AllowAll:
+			rule.AllowAll = k.AllowAll
+		case *orgpolicypb.PolicySpec_PolicyRule_Values:
+			rule.AllowedValues, rule.DeniedValues = k.Values.GetAllowedValues(), k.Values.GetDeniedValues()
+		}
+		if c := r.GetCondition(); c != nil {
+			rule.Condition = &Condition{Title: c.GetTitle(), Description: c.GetDescription(), Expression: c.GetExpression()}
+		}
+		if params := r.GetParameters(); params != nil {
+			if data, err := params.MarshalJSON(); err == nil {
+				rule.Parameters = string(data)
+			}
+		}
+		out.Rules = append(out.Rules, rule)
+	}
+
+	return out
 }

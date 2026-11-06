@@ -13,10 +13,15 @@ trigger plans it on a pull request as `imp-org-gbl-plan`.
   `imp` from `0-bootstrap` (its output `organization_folder_id`),
   beside the `terraform` folder. They exist ahead of the projects because
   they are where org policy and Essential Contacts attach.
-- The org policy baseline on each folder, from `var.org_policies`, plus
-  `essentialcontacts.managed.allowedContactDomains` from
-  `var.allowed_contact_domains`. Folder-scoped, so the `terraform` folder and
-  the identities in it are never locked out by a constraint they manage.
+- Not the organization-policy baseline on those folders: Google grants
+  Organization Policy Administrator at the organization node and nowhere
+  lower, and no identity of this organization holds a role there, so the root
+  organization `imr` sets the baseline on the four folders
+  from this organization's record and keeps it true on every apply of its own
+  (its `README.md`, "The organization-policy baseline"). This layer records
+  what those policies name: the folders' ids and each environment project's
+  public-invoker tag (`folder_ids`, `public_invoker_tag_key`,
+  `public_invoker_tag_value`), which the creation writes into `placement.json`.
 - Essential Contacts on each folder, from `var.essential_contact_emails`
   (empty for now).
 - Six projects from `var.projects`, `imp-<key>-gbl-core-<suffix>`, each with
@@ -501,7 +506,6 @@ required checks, the rulesets' names.
 | `gcp_region` | Primary region. | `string` | `"us-central1"` | no |
 | `gcp_secondary_region` | Secondary region, published as an output. | `string` | `"us-west3"` | no |
 | `layer_roles` | Project roles per role set; a bare ID names a custom role from `custom-roles.tf`. | `map(list(string))` | `app`, `net`, `shr`, `spn`; see below | no |
-| `org_policies` | Constraints applied to every folder. | `list(object)` | see below | no |
 | `plan_roles` | Project roles per role set for the plan identities; a bare ID names a custom role from `custom-roles.tf`. | `map(list(string))` | `app`, `net`, `shr`, `spn`; see below | no |
 | `prefix` | Short org-wide prefix used in resource names. | `string` | `"imp"` | no |
 | `projects` | Every project, keyed by environment code. | `map(object)` | the six above | no |
@@ -545,65 +549,17 @@ kind beside `roles/iam.securityReviewer`:
 | `spn` | iam, logging, monitoring, privilegedaccessmanager, spanner |
 | `log` | iam, logging, monitoring, storage (only with `central_logging`) |
 
-### Org policies
+### Organization policies
 
-The default `var.org_policies` keeps these from the tf-gcp-setup baseline.
-Each one either closes a door nothing here uses (service account keys,
-VM serial consoles, external IPs, HMAC keys) or pins a decision already made
-(one load balancer type, Cloud Run behind it, GitHub as the only Cloud Build
-source):
-
-| Constraint | Shape |
-|---|---|
-| `iam.managed.disableServiceAccountKeyCreation` | enforce |
-| `iam.managed.disableServiceAccountKeyUpload` | enforce |
-| `iam.serviceAccountKeyExpiryHours` | allow `2160h` |
-| `iam.allowServiceAccountCredentialLifetimeExtension` | deny all |
-| `iam.automaticIamGrantsForDefaultServiceAccounts` | enforce |
-| `iam.disableAuditLoggingExemption` | enforce |
-| `storage.publicAccessPrevention` | enforce |
-| `storage.secureHttpTransport` | enforce |
-| `storage.uniformBucketLevelAccess` | enforce |
-| `storage.restrictAuthTypes` | deny `in:ALL_HMAC_SIGNED_REQUESTS` |
-| `compute.disableGlobalSerialPortAccess` | enforce |
-| `compute.disableSerialPortAccess` | enforce |
-| `compute.requireOsLogin` | enforce |
-| `compute.requireShieldedVm` | enforce |
-| `compute.skipDefaultNetworkCreation` | enforce |
-| `compute.vmCanIpForward` | deny all |
-| `compute.vmExternalIpAccess` | deny all |
-| `compute.restrictLoadBalancerCreationForTypes` | allow `GLOBAL_EXTERNAL_MANAGED_HTTP_HTTPS` |
-| `run.allowedIngress` | allow `internal-and-cloud-load-balancing` |
-| `gcp.restrictTLSVersion` | deny `TLS_VERSION_1`, `TLS_VERSION_1_1` |
-| `cloudbuild.disableCreateDefaultServiceAccount` | enforce |
-| `cloudbuild.allowedIntegrations` | allow `github.com` |
-| `essentialcontacts.managed.allowedContactDomains` | parameters from `var.allowed_contact_domains`, set separately |
-
-Dropped from the model, and why. Add any of them back as an entry in
-`var.org_policies`:
-
-- `ainotebooks.disableFileDownloads`, `ainotebooks.disableRootAccess`,
-  `ainotebooks.restrictPublicIp`, `appengine.disableCodeDownload`,
-  `datastream.disablePublicConnectivity`,
-  `firestore.requireP4SAforImportExport`, `sql.restrictAuthorizedNetworks`,
-  `sql.restrictPublicIp`, `cloudfunctions.allowedIngressSettings`,
-  `cloudfunctions.allowedVpcConnectorEgressSettings`,
-  `cloudfunctions.restrictAllowedGenerations`, `dataform.restrictGitRemotes`,
-  `compute.restrictDedicatedInterconnectUsage`,
-  `compute.restrictNonConfidentialComputing`,
-  `iam.workloadIdentityPoolAwsAccounts`: services not used here. An
-  organization that adopts one of those services adds the constraint with it.
-- `cloudkms.disableBeforeDestroy`: no customer-managed keys here.
-- `compute.restrictVpcPeering`: interacts with Private Service Access, which
-  a later layer may need; a decision for then.
-- `compute.restrictPrivateServiceConnectConsumer`: same reason.
-- `iam.managed.preventPrivilegedBasicRolesForDefaultServiceAccounts`: the
-  default service accounts are deleted at project creation, and
-  `iam.automaticIamGrantsForDefaultServiceAccounts` already covers the window
-  before that.
-- `iam.managed.allowedPolicyMembers` (domain restricted sharing, in dry run
-  in the model): needs a violation-log review loop before it can be enforced;
-  not started.
+The baseline of constraints on the four folders (service account keys, VM
+serial consoles and external IPs, HMAC keys, one load balancer type, Cloud
+Run behind it, GitHub as the only Cloud Build source, domain-restricted
+sharing with the public-invoker exception, the allowed contact domains) is
+the root organization `imr`'s to set and to keep, since the
+role that sets an organization policy exists at the organization node alone;
+its `README.md` ("The organization-policy baseline") lists every constraint
+and its shape. Nothing of it is in this layer, and `tofu plan` here never
+shows a policy.
 
 ## Central logging
 

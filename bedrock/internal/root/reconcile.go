@@ -95,11 +95,15 @@ type engine struct {
 	out     io.Writer
 	report  *Report
 	google  create.Google
-	secrets Secrets
-	dns     DNS
-	builds  Builds
-	iam     IAM
-	gh      *github.Client
+	// policies is the Org Policy client; created are the hosting organizations this run
+	// created, by prefix, with their placements as recorded, for the policies section.
+	policies OrgPolicies
+	created  map[string]*org.Placement
+	secrets  Secrets
+	dns      DNS
+	builds   Builds
+	iam      IAM
+	gh       *github.Client
 }
 
 // Run runs the engine in the request's mode and answers the report. In Apply mode a
@@ -129,6 +133,7 @@ func Run(ctx context.Context, clients *Clients, req *Request, out io.Writer) (*R
 	if req.Mode == Apply && !req.Bootstrap {
 		sections = append(sections, e.creations)
 	}
+	sections = append(sections, e.orgPolicies)
 	for _, section := range sections {
 		if err := section(ctx); err != nil {
 			return e.report, err
@@ -141,6 +146,12 @@ func Run(ctx context.Context, clients *Clients, req *Request, out io.Writer) (*R
 func (e *engine) open(ctx context.Context) error {
 	var err error
 	if e.google, err = e.clients.Google(ctx); err != nil {
+		return err
+	}
+	if e.clients.OrgPolicies == nil {
+		return errors.New("no Org Policy client is wired: the root organization sets the organization policies of its hosting organizations")
+	}
+	if e.policies, err = e.clients.OrgPolicies(ctx); err != nil {
 		return err
 	}
 	if e.secrets, err = e.clients.Secrets(ctx); err != nil {
@@ -163,7 +174,7 @@ func (e *engine) open(ctx context.Context) error {
 }
 
 func (e *engine) close() {
-	for _, c := range []io.Closer{e.iam, e.builds, e.dns, e.secrets, e.google} {
+	for _, c := range []io.Closer{e.iam, e.builds, e.dns, e.secrets, e.policies, e.google} {
 		if c != nil {
 			_ = c.Close()
 		}
@@ -243,6 +254,7 @@ const (
 	sectionGitHub     = "GitHub"
 	sectionApps       = "GitHub Apps"
 	sectionCreations  = "creations"
+	sectionPolicies   = "organization policies"
 )
 
 // services enables the APIs the root project lacks.
@@ -465,7 +477,7 @@ func (e *engine) grants(ctx context.Context) error {
 // organizations"), so the run notes what it did not compare and goes on. The bucket is
 // the root project's, which both runners read.
 func (e *engine) outerGrants(ctx context.Context) error {
-	organization, read, err := e.outerPolicy(ctx, "the creating identity's Folder Creator at the organization node", "the organization node's", "an Organization Administrator", func(ctx context.Context) ([]org.Binding, error) {
+	organization, read, err := e.outerPolicy(ctx, "the grants at the organization node (the creating identity's Folder Creator, the applier's Organization Policy Administrator, the planner's Organization Policy Viewer) were", "the organization node's", "an Organization Administrator", func(ctx context.Context) ([]org.Binding, error) {
 		return e.iam.OrganizationPolicy(ctx, e.p.OrganizationID)
 	})
 	if err != nil {
@@ -482,7 +494,7 @@ func (e *engine) outerGrants(ctx context.Context) error {
 			}
 		}
 	}
-	billing, read, err := e.outerPolicy(ctx, "the creating identity's Billing Account Administrator on billing account "+e.p.BillingAccount, "the billing account's", "a Billing Account Administrator of it", func(ctx context.Context) ([]org.Binding, error) {
+	billing, read, err := e.outerPolicy(ctx, "the creating identity's Billing Account Administrator on billing account "+e.p.BillingAccount+" was", "the billing account's", "a Billing Account Administrator of it", func(ctx context.Context) ([]org.Binding, error) {
 		return e.iam.BillingPolicy(ctx, e.p.BillingAccount)
 	})
 	if err != nil {
@@ -528,7 +540,7 @@ func (e *engine) outerPolicy(ctx context.Context, what, whose, who string, read 
 	if e.req.Bootstrap || status.Code(errors.Cause(err)) != codes.PermissionDenied {
 		return nil, false, err
 	}
-	e.note(what + " was not compared: this run holds no read of " + whose + " IAM policy, as the triggers' runners hold their roles under the organization's folder alone; the bootstrap made the grant and compares it, and so does bedrock org check run by " + who)
+	e.note(what + " not compared: this run holds no read of " + whose + " IAM policy, as the triggers' runners hold their roles under the organization's folder alone; the bootstrap made the grants and compares them, and so does bedrock org check run by " + who)
 
 	return nil, false, nil
 }
@@ -894,6 +906,10 @@ func (e *engine) creations(ctx context.Context) error {
 		e.report.Changes = append(e.report.Changes, Change{Section: sectionCreations, What: "creates the hosting organization " + record.Prefix})
 		e.report.Applied++
 		e.report.Created = append(e.report.Created, Creation{Prefix: record.Prefix, PullRequest: res.PullRequest, Already: res.Already})
+		if e.created == nil {
+			e.created = map[string]*org.Placement{}
+		}
+		e.created[record.Prefix] = res.Placement
 	}
 
 	return nil

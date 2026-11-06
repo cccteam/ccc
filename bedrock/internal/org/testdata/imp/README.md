@@ -27,7 +27,7 @@ gets a line there first.
 | Layer | Directory | Applied as | Creates |
 |---|---|---|---|
 | 0 | [`0-bootstrap/`](0-bootstrap/) | the root organization's creating identity the first time, in the creation; then the apply trigger as `imp-boot-gbl-tofu` | adopts the seeded `terraform` folder, boot project, and boot identity; the org layer identity and its grants on the organization's folder; the project-updater and state-bucket-policy custom roles; the Cloud Build connection, the two runner identities and the two triggers that plan and apply the layers; the grants on the root organization's three key secrets; the state bucket's grants for its two identities |
-| 1 | [`1-org/`](1-org/) | the root organization's creating identity the first time, in the creation; then the apply trigger as `imp-org-gbl-tofu` | folders `shared`, `tst`, `stg`, `prd`; the org policy baseline; Essential Contacts; the six projects; a layer identity and a plan identity per project and the two boot layers' plan identities, each impersonated by the trigger runner of its kind, with its state bucket grants; the `secretContainerAdmin` custom role; the applications' repositories |
+| 1 | [`1-org/`](1-org/) | the root organization's creating identity the first time, in the creation; then the apply trigger as `imp-org-gbl-tofu` | folders `shared`, `tst`, `stg`, `prd` (the organization-policy baseline on them is the root organization's); Essential Contacts; the six projects; a layer identity and a plan identity per project and the two boot layers' plan identities, each impersonated by the trigger runner of its kind, with its state bucket grants; the `secretContainerAdmin` custom role; the applications' repositories |
 | 2 | [`2-shr/`](2-shr/) | the apply trigger as `imp-shr-gbl-tofu` | one Artifact Registry Docker repository per application, immutable tags, cleanup policies; reader for each environment's Cloud Run, writer for each application's deploy identities |
 | 2 | [`2-spn/`](2-spn/) | the apply trigger as `imp-spn-gbl-tofu` | the shared Spanner instance `imp-spn-gbl-spanner` (nam10, 100 processing units to start, raised for databases or load); instance-level database admin grants; the Spanner entitlements of the environments on it |
 | 2 | [`2-net/`](2-net/) | the apply trigger as `imp-net-gbl-tofu` | the global external Application Load Balancer, its address, SSL policy, managed certificates and map, the apps domain's zone and each vanity domain's, and a URL map routed from `hosts`; no VPC |
@@ -373,9 +373,11 @@ Decided before writing:
    new `net` and `spn` sets. Each project also gets a read-only plan identity.
 8. **API sets.** The `app` set adds Spanner, Cloud Scheduler, Cloud Tasks,
    Cloud Build, and Artifact Registry; new `net` and `spn` sets.
-9. **Org policies as a variable.** The baseline is `var.org_policies`, a list
-   of constraint definitions, trimmed to constraints that cost nothing
-   operationally here. The `1-org` README lists what was dropped.
+9. **Org policies from the root organization.** The baseline of constraints
+   on the four folders is set by the root organization `imr`
+   from this organization's record, since Organization Policy Administrator
+   is granted at the organization node alone and no identity here holds a role
+   there; its README lists the constraints and what was dropped.
 10. **Label.** `bedrock-lab = "true"` on every project and bucket.
 
 Consequences of the above, not separately decided:

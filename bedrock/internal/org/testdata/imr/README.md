@@ -69,9 +69,14 @@ folders, each named after its prefix, and the folder is the whole of an
 organization's reach: every role an identity of this organization holds, the
 two runners' and the creating identity's, is granted on the root project or on
 the organization's folder and nowhere higher, and the one custom role lives in
-the root project. Nothing of the organization's sits at the organization node
-but the creating identity's Folder Creator, by which it makes a hosting
-organization's folder there ("Creating a hosting organization").
+the root project. Nothing of a hosting organization's sits at the organization
+node. Three roles of this organization's do, granted by the bootstrap, since
+Google grants them there and nowhere lower: the creating identity's Folder
+Creator, by which it makes a hosting organization's folder ("Creating a hosting
+organization"), and the applier's Organization Policy Administrator and the
+planner's Organization Policy Viewer, by which this organization sets and
+compares the organization-policy baseline on each hosting organization's
+folders ("The organization-policy baseline", below).
 
 The reason is reach. A role granted at the organization node applies to every
 folder and project below it, so an identity holding project IAM administrator
@@ -97,7 +102,12 @@ and Billing Account Administrator on the billing account, granted by the
 bootstrap: with them it creates each hosting organization under a folder of its
 own, grants itself the rest there for the run, grants the new organization's
 identities their use of the billing account, and holds nothing under that
-folder after.
+folder after. The applier holds Organization Policy Administrator at the node
+and the planner Organization Policy Viewer: the reach of the first is every
+organization policy in the Google Cloud organization, which is why it sits with
+the identity that already holds every organization's keys and the Bot Account's
+token, runs from this repository's default branch alone, and never with a
+hosting organization's.
 
 ## Naming
 
@@ -215,8 +225,8 @@ roles on the root project and read roles on the folder; the apply impersonates
 the creating identity for a creation alone.
 
 Two things the apply reports and never changes, since they lie outside the
-folder or would break a customer: the creating identity's grants at the
-organization node and on the billing account, made by the bootstrap, and a zone
+folder or would break a customer: the grants at the organization node and on
+the billing account, made by the bootstrap, and a zone
 whose domain was taken out of `domains`, which stays standing (a finding) until
 a person deletes it in the root project, because every name under the domain
 still points at its name servers ("Making a zone again"). The grants above the
@@ -308,6 +318,85 @@ mails the account ahead of the date):
 3. The pull request; its apply moves the alias, and every Cloud Build
    connection in every organization reads the new token from then on. Then, on
    GitHub, as the Bot Account, delete the old token.
+
+## The organization-policy baseline
+
+Each hosting organization's `1-org` makes four folders under the
+organization's folder, `shared`, `tst`, `stg` and `prd`, and nothing of that
+organization can set an organization policy on them: Google grants
+Organization Policy Administrator at the organization node and nowhere lower,
+and a hosting organization's identities hold their roles under its folder
+alone. So this organization sets the baseline on those folders, as the
+applier, and compares it, as the planner, from each hosting organization's
+record (`organizations/<prefix>/placement.json`): in the creation, right
+after `1-org`'s first apply, and on every apply after. The record carries what
+the policies name, written by the creation from `1-org`'s outputs: the folders'
+ids (`folders`) and each environment project's public-invoker tag
+(`publicInvokerTags`). The `terraform` folder gets no policy, so the boot
+project and the layer identities in it are never locked out by a constraint
+they depend on.
+
+On every one of the four folders, the tf-gcp-setup baseline trimmed to
+constraints that cost nothing operationally, each closing a door nothing here
+uses or pinning a decision already made:
+
+| Constraint | Shape |
+|---|---|
+| `iam.managed.disableServiceAccountKeyCreation` | enforce |
+| `iam.managed.disableServiceAccountKeyUpload` | enforce |
+| `iam.serviceAccountKeyExpiryHours` | allow `2160h` |
+| `iam.allowServiceAccountCredentialLifetimeExtension` | deny all |
+| `iam.automaticIamGrantsForDefaultServiceAccounts` | enforce |
+| `iam.disableAuditLoggingExemption` | enforce |
+| `storage.publicAccessPrevention` | enforce |
+| `storage.secureHttpTransport` | enforce |
+| `storage.uniformBucketLevelAccess` | enforce |
+| `storage.restrictAuthTypes` | deny `in:ALL_HMAC_SIGNED_REQUESTS` |
+| `compute.disableGlobalSerialPortAccess` | enforce |
+| `compute.disableSerialPortAccess` | enforce |
+| `compute.requireOsLogin` | enforce |
+| `compute.requireShieldedVm` | enforce |
+| `compute.skipDefaultNetworkCreation` | enforce |
+| `compute.vmCanIpForward` | deny all |
+| `compute.vmExternalIpAccess` | deny all |
+| `compute.restrictLoadBalancerCreationForTypes` | allow `GLOBAL_EXTERNAL_MANAGED_HTTP_HTTPS` |
+| `run.allowedIngress` | allow `internal-and-cloud-load-balancing` |
+| `gcp.restrictTLSVersion` | deny `TLS_VERSION_1`, `TLS_VERSION_1_1` |
+| `cloudbuild.disableCreateDefaultServiceAccount` | enforce |
+| `cloudbuild.allowedIntegrations` | allow `github.com` |
+| `essentialcontacts.managed.allowedContactDomains` | parameters: the record's `contactDomains` |
+
+On each environment folder, `iam.allowedPolicyMemberDomains`, domain
+restricted sharing: a first rule allows every member on a resource that
+carries that environment project's public-invoker tag (`resource.matchTagId`
+on the key and the value `true` the record names), which is how an
+application stack opens a Cloud Run service to the load balancer with
+`allUsers`; a second rule allows the Google Cloud organization's own Cloud
+Identity customer (`directoryCustomerId`) and no other domain. The policy
+replaces its parent's (`inheritFromParent` false), so it is the whole of the
+constraint on the folder.
+
+Dropped from the model, and why: constraints for services not used here
+(`ainotebooks.*`, `appengine.disableCodeDownload`,
+`datastream.disablePublicConnectivity`, `firestore.requireP4SAforImportExport`,
+`sql.*`, `cloudfunctions.*`, `dataform.restrictGitRemotes`,
+`compute.restrictDedicatedInterconnectUsage`,
+`compute.restrictNonConfidentialComputing`,
+`iam.workloadIdentityPoolAwsAccounts`); `cloudkms.disableBeforeDestroy`, with
+no customer-managed keys; `compute.restrictVpcPeering` and
+`compute.restrictPrivateServiceConnectConsumer`, which interact with Private
+Service Access, a decision for a later layer;
+`iam.managed.preventPrivilegedBasicRolesForDefaultServiceAccounts`, since the
+default service accounts are deleted at project creation and
+`iam.automaticIamGrantsForDefaultServiceAccounts` covers the window before;
+and `iam.managed.allowedPolicyMembers`, which needs a violation-log review
+loop before it can be enforced. The baseline is bedrock's, the same for every
+hosting organization; a constraint to add or drop is a change to bedrock.
+
+`bedrock org plan` lists each policy a merge would set or bring back to the
+baseline (`organization policies`), and `bedrock org check` compares them
+after the README check. A record without the folders or the tags is a finding,
+and that folder's policies wait for them.
 
 ## Delegating a domain to this organization
 

@@ -401,6 +401,18 @@ type Placement struct {
 	// its first placement, org render prints the block), for the operations workflow
 	// that starts a restore from GitHub.
 	ProjectNumbers map[string]string `json:"projectNumbers,omitempty"`
+	// Folders are the folders 1-org made under the organization's folder, by key (shared,
+	// tst, stg, prd), as numeric ids; PublicInvokerTags are the public-invoker tag key and
+	// its value true in each environment project, by environment, as resource names
+	// (tagKeys/N, tagValues/N). Both are recorded by the creation from 1-org's first
+	// apply (its outputs folder_ids, public_invoker_tag_key and public_invoker_tag_value):
+	// the root organization sets the organization-policy baseline on the folders, with the
+	// tags as the public-invoker exception of domain-restricted sharing (the root's
+	// README, "The organization-policy baseline"). A hosting organization holds no role
+	// at the organization node, where Google grants Organization Policy Administrator and
+	// nowhere lower.
+	Folders           map[string]string           `json:"folders,omitempty"`
+	PublicInvokerTags map[string]PublicInvokerTag `json:"publicInvokerTags,omitempty"`
 	// Labels are the labels every project and bucket carries beyond the model's own.
 	Labels map[string]string `json:"labels"`
 }
@@ -2184,4 +2196,13 @@ func (p *Placement) Write(path string) error {
 	}
 
 	return nil
+}
+
+// PublicInvokerTag is an environment project's public-invoker tag: the key and its value
+// true, as resource names (tagKeys/N, tagValues/N), which the domain-restricted sharing
+// policy on the environment's folder names in its exception, and an application stack
+// binds to a Cloud Run service before granting allUsers.
+type PublicInvokerTag struct {
+	Key   string `json:"key"`
+	Value string `json:"value"`
 }

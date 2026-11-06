@@ -223,6 +223,9 @@ type (
 	LocksFunc func(ctx context.Context) (Locks, error)
 	// GoogleFunc opens the creation seam: folders, projects, identities and buckets.
 	GoogleFunc func(ctx context.Context) (create.Google, error)
+	// OrgPoliciesFunc opens the Org Policy client (the root project's runners hold
+	// Organization Policy Administrator and Viewer at the organization node).
+	OrgPoliciesFunc func(ctx context.Context) (OrgPolicies, error)
 )
 
 // Clients are the engine's seams: Google Cloud as the run's own credentials (the
@@ -230,14 +233,15 @@ type (
 // with a token, the state bucket, and the creation of hosting organizations as the
 // creating identity. Tests pass fakes.
 type Clients struct {
-	Google  GoogleFunc
-	Secrets SecretsFunc
-	DNS     DNSFunc
-	Builds  BuildsFunc
-	IAM     IAMFunc
-	Locks   LocksFunc
-	GitHub  deploy.GitHubFunc
-	Store   deploy.StoreFunc
+	Google      GoogleFunc
+	OrgPolicies OrgPoliciesFunc
+	Secrets     SecretsFunc
+	DNS         DNSFunc
+	Builds      BuildsFunc
+	IAM         IAMFunc
+	Locks       LocksFunc
+	GitHub      deploy.GitHubFunc
+	Store       deploy.StoreFunc
 	// Create are the creation's seams, for the hosting organizations the apply creates;
 	// nil when the run creates none (check, plan).
 	Create *create.Clients
@@ -252,4 +256,41 @@ type Clients struct {
 	Clone CloneFunc
 	// Now is the clock, for the lock's record and the markers.
 	Now func() time.Time
+}
+
+// OrgPolicies reads and writes organization policies: the baseline the root organization
+// sets on each hosting organization's folders.
+type OrgPolicies interface {
+	// Policy is the policy by resource name (folders/F/policies/CONSTRAINT), and whether
+	// there is one.
+	Policy(ctx context.Context, name string) (*Policy, bool, error)
+	// CreatePolicy makes the policy on its parent (folders/F); UpdatePolicy replaces an
+	// existing policy's rules with the policy's.
+	CreatePolicy(ctx context.Context, parent string, policy *Policy) error
+	UpdatePolicy(ctx context.Context, policy *Policy) error
+	// Close releases the connection.
+	Close() error
+}
+
+// Policy is one organization policy: its resource name and its rules, which replace the
+// parent's (inheritFromParent false) so that the policy is the whole of the constraint
+// on the subtree.
+type Policy struct {
+	Name  string
+	Rules []PolicyRule
+}
+
+// PolicyRule is one rule of a policy, in one of four shapes: a boolean constraint
+// enforced or not (Enforce), a list constraint denying every value (DenyAll) or allowing
+// every value (AllowAll), or a list constraint with values allowed or denied (Values);
+// Condition, when set, limits the rule to the resources its CEL expression matches, and
+// Parameters are a managed constraint's parameters as JSON.
+type PolicyRule struct {
+	Enforce       *bool
+	DenyAll       bool
+	AllowAll      bool
+	AllowedValues []string
+	DeniedValues  []string
+	Condition     *Condition
+	Parameters    string
 }

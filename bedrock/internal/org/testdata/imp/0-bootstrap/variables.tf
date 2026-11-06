@@ -97,7 +97,6 @@ variable "org_layer_roles" {
     "roles/essentialcontacts.admin",         # Essential Contacts per folder
     "roles/iam.serviceAccountAdmin",         # per-layer OpenTofu and plan service accounts
     "roles/iam.serviceAccountUser",          # act as those service accounts
-    "roles/orgpolicy.policyAdmin",           # folder-scoped org policy constraints
     "roles/resourcemanager.folderAdmin",     # environment folders
     "roles/resourcemanager.lienModifier",    # the lien on every project (1-org projects.tf)
     "roles/resourcemanager.projectCreator",  # environment projects

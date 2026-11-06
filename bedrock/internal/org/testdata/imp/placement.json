@@ -67,6 +67,17 @@
     "stg": "100000000003",
     "prd": "100000000004"
   },
+  "folders": {
+    "shared": "900000000011",
+    "tst": "900000000012",
+    "stg": "900000000013",
+    "prd": "900000000014"
+  },
+  "publicInvokerTags": {
+    "tst": {"key": "tagKeys/281000000001", "value": "tagValues/282000000001"},
+    "stg": {"key": "tagKeys/281000000002", "value": "tagValues/282000000002"},
+    "prd": {"key": "tagKeys/281000000003", "value": "tagValues/282000000003"}
+  },
   "labels": {
     "bedrock-lab": "true"
   }

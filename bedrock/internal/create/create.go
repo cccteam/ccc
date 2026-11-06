@@ -64,9 +64,14 @@ type Marker struct {
 	// boot project the seed made and the six 1-org's first apply made.
 	Projects       map[string]string `json:"projects"`
 	ProjectNumbers map[string]string `json:"projectNumbers"`
-	Repository     string            `json:"repository"`
-	CreatedAt      string            `json:"createdAt"`
-	CreatedFrom    string            `json:"createdFrom"`
+	// Folders and PublicInvokerTags are what 1-org's first apply made that the root
+	// organization's policies name: the folders by key, and each environment project's
+	// public-invoker tag.
+	Folders           map[string]string               `json:"folders"`
+	PublicInvokerTags map[string]org.PublicInvokerTag `json:"publicInvokerTags"`
+	Repository        string                          `json:"repository"`
+	CreatedAt         string                          `json:"createdAt"`
+	CreatedFrom       string                          `json:"createdFrom"`
 }
 
 // MarkerObject is the marker's object in the state bucket, under the applier's markers.
@@ -86,10 +91,15 @@ func (m *Marker) record(h *org.Placement) {
 	for key, number := range m.ProjectNumbers {
 		h.ProjectNumbers[key] = number
 	}
+	h.Folders, h.PublicInvokerTags = m.Folders, m.PublicInvokerTags
 }
 
 // Result is what the creation did: the marker, and the hand-off pull request's URL.
 type Result struct {
+	// Placement is the hosting organization's placement as the creation recorded it (or as
+	// the marker of an earlier creation says), with the folders and tags the root
+	// organization's policies name.
+	Placement   *org.Placement
 	Marker      Marker
 	PullRequest string
 	// Already says the organization was created by an earlier run; this one only made
@@ -105,7 +115,6 @@ const (
 	bootKey             = "boot"
 	// services are the APIs the boot project needs before its 0-bootstrap applies.
 	bootProjectRoleCreator = "roles/resourcemanager.projectCreator"
-	orgPolicyAdminRole     = "roles/orgpolicy.policyAdmin"
 	tagAdminRole           = "roles/resourcemanager.tagAdmin"
 	folderAdminRole        = "roles/resourcemanager.folderAdmin"
 	folderEditorRole       = "roles/resourcemanager.folderEditor"
@@ -127,7 +136,7 @@ const (
 // its folders, and Tag Administrator for the tag keys 1-org makes in the environment
 // projects. Its Folder Admin, a creator's, covers the rest; the withdrawal takes all of
 // it off.
-var creatingFolderRoles = []string{bootProjectRoleCreator, orgPolicyAdminRole, tagAdminRole}
+var creatingFolderRoles = []string{bootProjectRoleCreator, tagAdminRole}
 
 // services are the APIs the creation enables in a boot project before its 0-bootstrap
 // applies.
@@ -160,7 +169,7 @@ func Run(ctx context.Context, clients *Clients, req *Request, out io.Writer) (*R
 			return nil, err
 		}
 
-		return &Result{Marker: *marker, PullRequest: url, Already: true}, nil
+		return &Result{Placement: h, Marker: *marker, PullRequest: url, Already: true}, nil
 	}
 
 	return f.create(ctx)
@@ -343,7 +352,8 @@ func (f *creation) establish(ctx context.Context, g Google, h *org.Placement, se
 	}
 	marker := Marker{
 		Prefix: h.Prefix, OrganizationFolder: seed.OrganizationFolder, TerraformFolder: seed.TerraformFolder, BootProject: h.Projects[bootKey], BootProjectNumber: number,
-		StateBucket: h.StateBucket, Projects: h.Projects, ProjectNumbers: h.ProjectNumbers, Repository: repository, CreatedAt: time.Now().UTC().Format(time.RFC3339), CreatedFrom: f.req.Commit,
+		StateBucket: h.StateBucket, Projects: h.Projects, ProjectNumbers: h.ProjectNumbers, Folders: h.Folders, PublicInvokerTags: h.PublicInvokerTags,
+		Repository: repository, CreatedAt: time.Now().UTC().Format(time.RFC3339), CreatedFrom: f.req.Commit,
 	}
 	if err := f.writeMarker(ctx, &marker); err != nil {
 		return nil, err
@@ -354,7 +364,7 @@ func (f *creation) establish(ctx context.Context, g Google, h *org.Placement, se
 		return nil, err
 	}
 
-	return &Result{Marker: marker, PullRequest: url}, nil
+	return &Result{Placement: h, Marker: marker, PullRequest: url}, nil
 }
 
 // billingUsers grants the new organization's boot and org identities Billing Account User

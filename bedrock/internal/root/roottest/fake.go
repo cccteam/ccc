@@ -15,6 +15,10 @@ import (
 
 	"github.com/go-playground/errors/v5"
 
+	"google.golang.org/grpc/codes"
+
+	"google.golang.org/grpc/status"
+
 	"github.com/cccteam/ccc/bedrock/internal/create"
 	"github.com/cccteam/ccc/bedrock/internal/deploy"
 	"github.com/cccteam/ccc/bedrock/internal/org"
@@ -59,6 +63,9 @@ type Fake struct {
 	BillingOf      map[string]string
 
 	// Locked by "bucket/object" to the lock's data.
+	// OrgPolicies by resource name (folders/F/policies/C).
+	OrgPolicies map[string]*root.Policy
+
 	Locked map[string][]byte
 	// Objects are the store's objects (the markers), by bucket/object.
 	Objects map[string][]byte
@@ -84,13 +91,15 @@ func New() *Fake {
 		Folders: map[string]string{}, Projects: map[string]bool{}, Numbers: map[string]string{}, Accounts: map[string]bool{}, Buckets: map[string]bool{},
 		Connections: map[string]root.Connection{}, Links: map[string]string{}, Triggers: map[string]*root.Trigger{}, ConnectionPolicies: map[string][]org.Binding{},
 		Roles: map[string]root.Role{}, Policies: map[string][]org.Binding{}, BucketPolicies: map[string][]root.ConditionedBinding{}, Enabled: map[string][]string{}, BillingOf: map[string]string{},
-		Locked: map[string][]byte{}, Objects: map[string][]byte{},
+		OrgPolicies: map[string]*root.Policy{},
+		Locked:      map[string][]byte{}, Objects: map[string][]byte{},
 	}
 }
 
 // Clients wires the stand-in into every seam of the engine's clients it stands in for.
 func (f *Fake) Clients(c *root.Clients) {
 	c.Google = func(context.Context) (create.Google, error) { return f, nil }
+	c.OrgPolicies = func(context.Context) (root.OrgPolicies, error) { return f, nil }
 	c.Secrets = func(context.Context) (root.Secrets, error) { return f, nil }
 	c.DNS = func(context.Context) (root.DNS, error) { return f, nil }
 	c.Builds = func(context.Context) (root.Builds, error) { return f, nil }
@@ -1071,4 +1080,55 @@ func (f *Fake) Grant(_ context.Context, container, role, member string) error {
 // Add adds a version with the payload and answers its number.
 func (f *Fake) Add(ctx context.Context, container string, payload []byte) (string, error) {
 	return f.AddSecretVersion(ctx, container, payload)
+}
+
+// Policy is the organization policy by name, when there is one.
+func (f *Fake) Policy(_ context.Context, name string) (*root.Policy, bool, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if err := f.call("Policy", name); err != nil {
+		return nil, false, err
+	}
+	p, ok := f.OrgPolicies[name]
+	if !ok {
+		return nil, false, nil
+	}
+	c := *p
+	c.Rules = slices.Clone(p.Rules)
+
+	return &c, true, nil
+}
+
+// CreatePolicy stores the policy under its name; one there already is an error, as the
+// API answers.
+func (f *Fake) CreatePolicy(_ context.Context, parent string, policy *root.Policy) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if err := f.call("CreatePolicy", parent, policy.Name); err != nil {
+		return err
+	}
+	if _, ok := f.OrgPolicies[policy.Name]; ok {
+		return errors.Wrap(status.Error(codes.AlreadyExists, policy.Name+" exists"), "orgpolicy.Client.CreatePolicy()")
+	}
+	c := *policy
+	f.OrgPolicies[policy.Name] = &c
+
+	return nil
+}
+
+// UpdatePolicy replaces the policy under its name; one not there is an error, as the API
+// answers.
+func (f *Fake) UpdatePolicy(_ context.Context, policy *root.Policy) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if err := f.call("UpdatePolicy", policy.Name); err != nil {
+		return err
+	}
+	if _, ok := f.OrgPolicies[policy.Name]; !ok {
+		return errors.Wrap(status.Error(codes.NotFound, policy.Name+" does not exist"), "orgpolicy.Client.UpdatePolicy()")
+	}
+	c := *policy
+	f.OrgPolicies[policy.Name] = &c
+
+	return nil
 }

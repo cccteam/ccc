@@ -31,12 +31,19 @@ const (
 	orgLayer       = "1-org"
 )
 
-// The 1-org outputs the creation records (1-org/outputs.tf).
+// The 1-org outputs the creation records (1-org/outputs.tf): the projects' ids and
+// numbers, the folders' ids, and the public-invoker tag key and value of each environment
+// project, which the root organization names in its policies.
 const (
 	projectIDsOutput     = "project_ids"
 	projectNumbersOutput = "project_numbers"
 	folderIDsOutput      = "folder_ids"
+	tagKeyOutput         = "public_invoker_tag_key"
+	tagValueOutput       = "public_invoker_tag_value"
 )
+
+// recordedOutputs are the outputs the creation reads, in this order.
+var recordedOutputs = []string{projectIDsOutput, projectNumbersOutput, folderIDsOutput, tagKeyOutput, tagValueOutput}
 
 // firstApply applies the rendered layer in the directory as the creating identity,
 // against the organization's own state bucket, with env in the programs' environment
@@ -64,8 +71,9 @@ func (f *creation) firstApply(ctx context.Context, dir string, h *org.Placement,
 
 // organize is 1-org's first apply, with the infrastructure app's token for the layer's
 // GitHub provider, and the record of what it made: the projects' ids and numbers go into
-// the placement (projects, projectNumbers), and the folders' ids come back for the
-// withdrawal.
+// the placement (projects, projectNumbers), with the folders' ids (folders) and each
+// environment project's public-invoker tag (publicInvokerTags), which the root
+// organization's policies name; the folders' ids come back for the withdrawal too.
 func (f *creation) organize(ctx context.Context, dir string, h *org.Placement) (map[string]string, error) {
 	env := []string{githubEnv + "=" + f.req.Token}
 	if err := f.firstApply(ctx, dir, h, orgLayer, env); err != nil {
@@ -81,12 +89,21 @@ func (f *creation) organize(ctx context.Context, dir string, h *org.Placement) (
 	for key, number := range outputs[projectNumbersOutput] {
 		h.ProjectNumbers[key] = number
 	}
-	fmt.Fprintf(f.out, "Applied %s's %s and recorded its %d projects in the placement (projects, projectNumbers); it made %d folders.\n", h.Prefix, orgLayer, len(outputs[projectIDsOutput]), len(outputs[folderIDsOutput]))
+	h.Folders = outputs[folderIDsOutput]
+	h.PublicInvokerTags = map[string]org.PublicInvokerTag{}
+	for env, key := range outputs[tagKeyOutput] {
+		value, ok := outputs[tagValueOutput][env]
+		if !ok {
+			return nil, errors.Newf("the outputs of %s's %s name a public-invoker tag key for %s and no value", h.Prefix, orgLayer, env)
+		}
+		h.PublicInvokerTags[env] = org.PublicInvokerTag{Key: key, Value: value}
+	}
+	fmt.Fprintf(f.out, "Applied %s's %s and recorded its %d projects, %d folders and %d public-invoker tags in the placement (projects, projectNumbers, folders, publicInvokerTags).\n", h.Prefix, orgLayer, len(outputs[projectIDsOutput]), len(outputs[folderIDsOutput]), len(h.PublicInvokerTags))
 
 	return outputs[folderIDsOutput], nil
 }
 
-// outputs reads the three outputs of 1-org the creation records, each a map by key.
+// outputs reads the outputs of 1-org the creation records, each a map by key.
 func (f *creation) outputs(ctx context.Context, layerDir string, h *org.Placement, env []string) (map[string]map[string]string, error) {
 	env = append([]string{identityEnv + "=" + f.req.Root.CreatingIdentity()}, env...)
 	data, err := f.clients.Exec.Output(ctx, deploy.Command{Dir: layerDir, Env: env, Name: tofuProgram, Args: []string{"output", noColor, "-json"}}, f.out)
@@ -100,7 +117,7 @@ func (f *creation) outputs(ctx context.Context, layerDir string, h *org.Placemen
 		return nil, errors.Wrapf(err, "json.Unmarshal(): the outputs of %s's %s", h.Prefix, orgLayer)
 	}
 	outputs := map[string]map[string]string{}
-	for _, name := range []string{projectIDsOutput, projectNumbersOutput, folderIDsOutput} {
+	for _, name := range recordedOutputs {
 		if len(raw[name].Value) == 0 {
 			return nil, errors.Newf("the outputs of %s's %s lack %s, which the creation records", h.Prefix, orgLayer, name)
 		}
