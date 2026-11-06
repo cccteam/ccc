@@ -114,11 +114,36 @@ func rulesetDiff(got, want *github.Ruleset) string {
 	if !cmp.Equal(got.Conditions, want.Conditions, cmp.Transformer("empty", emptySlice)) {
 		parts = append(parts, "branches")
 	}
-	if !cmp.Equal(ruleMap(got.Rules), ruleMap(want.Rules)) {
+	if rulesDiffer(got.Rules, want.Rules) {
 		parts = append(parts, "rules")
 	}
 
 	return joined(parts)
+}
+
+// rulesDiffer compares the rules that stand with the ones wanted, by type, so that order
+// does not count: a rule wanted and missing, a rule standing that is not wanted, or a
+// parameter declared whose value differs. A parameter GitHub adds beyond the declaration
+// (required_reviewers, dismissal_restriction and the like, which it fills in with
+// defaults on every ruleset it stores; the lab, 2026-11-06) does not count.
+func rulesDiffer(got, want []github.Rule) bool {
+	g, w := ruleMap(got), ruleMap(want)
+	if len(g) != len(w) {
+		return true
+	}
+	for kind, wanted := range w {
+		standing, ok := g[kind]
+		if !ok {
+			return true
+		}
+		for key, value := range wanted {
+			if !cmp.Equal(standing[key], value) {
+				return true
+			}
+		}
+	}
+
+	return false
 }
 
 func emptyActors(a []github.BypassActor) []github.BypassActor {
@@ -129,9 +154,7 @@ func emptyActors(a []github.BypassActor) []github.BypassActor {
 	return a
 }
 
-// ruleMap keys the rules by type, so that order does not count, and compares the
-// parameters wanted against the ones that stand: a parameter GitHub adds beyond the
-// declaration does not count.
+// ruleMap keys the rules by type with their parameters, for rulesDiffer.
 func ruleMap(rules []github.Rule) map[string]map[string]any {
 	m := map[string]map[string]any{}
 	for _, r := range rules {
