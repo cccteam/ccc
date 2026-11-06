@@ -86,7 +86,8 @@ func MarkerObject(prefix string) string {
 	return org.MarkerPrefix + "/created/" + prefix
 }
 
-// record puts the projects the creation made into the placement.
+// record puts what the creation made into the placement: the projects, the folders, the
+// public-invoker tags and the apps zone, for the hand-off of a run that makes nothing.
 func (m *Marker) record(h *org.Placement) {
 	if h.ProjectNumbers == nil {
 		h.ProjectNumbers = map[string]string{}
@@ -99,6 +100,7 @@ func (m *Marker) record(h *org.Placement) {
 		h.ProjectNumbers[key] = number
 	}
 	h.Folders, h.PublicInvokerTags = m.Folders, m.PublicInvokerTags
+	h.AppsZone = m.AppsZone
 }
 
 // Result is what the creation did: the marker, and the hand-off pull request's URL.

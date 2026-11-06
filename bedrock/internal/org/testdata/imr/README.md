@@ -589,7 +589,9 @@ grants the new organization's identities their use of the billing account.
    to its zone (`domains`), branch and pull request as the infrastructure
    app. A creation that stops finishes on the next push,
    since every step looks before it makes; a created organization is left
-   alone.
+   alone, and its hand-off is opened again by the next apply when the pull
+   request was closed unmerged (the closed one stays as history), until its
+   merge records the folder or the record is taken out of `placement.json`.
 3. **The hand-off.** Its merge records the folder, from which the apply keeps
    the new boot identity's grants on the shared secrets, and that is the last
    reach into the new organization: nothing under its folder is this

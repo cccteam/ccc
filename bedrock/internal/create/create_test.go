@@ -583,6 +583,56 @@ func TestRunStartsOverHandOff(t *testing.T) {
 	}
 }
 
+// TestRunHandsOffFromMarker: the hand-off of a run that makes nothing (the marker says
+// created) carries everything the marker records, the apps zone and the label handed
+// onward among them; and a closed unmerged hand-off pull request is history, so this run
+// opens another.
+func TestRunHandsOffFromMarker(t *testing.T) {
+	t.Parallel()
+
+	f := newFlow(t)
+	dir, root := checkout(t)
+	var out bytes.Buffer
+	first, err := create.Run(t.Context(), f.clients(), request(root, dir), &out)
+	if err != nil {
+		t.Fatalf("Run() error = %v; output:\n%s", err, out.String())
+	}
+	f.repo.PullRequests[0].State = "closed"
+	f.repo.PullStates[1] = "closed"
+	out.Reset()
+	again, err := create.Run(t.Context(), f.clients(), request(root, dir), &out)
+	if err != nil {
+		t.Fatalf("Run() again error = %v; output:\n%s", err, out.String())
+	}
+	opened := "https://github.com/" + owner + "/" + rootRepo + "/pull/2"
+	if !again.Already || again.PullRequest != opened || len(f.repo.PullRequests) != 2 || f.repo.PullRequests[1].State != "open" {
+		t.Errorf("result %+v, pull requests %v", again, f.repo.PullRequests)
+	}
+	for _, want := range []string{
+		"The hand-off pull request of rgb was closed unmerged: " + first.PullRequest + "; it stays as history, and this creation opens another (to end the hand-off, take rgb's record out of placement.json).\n",
+		"Opened the hand-off pull request of rgb: " + opened + ".\n",
+	} {
+		if !strings.Contains(out.String(), want) {
+			t.Errorf("output lacks %q:\n%s", want, out.String())
+		}
+	}
+	tree := f.repo.Trees[f.repo.Refs["refs/heads/create/rgb"].SHA]
+	var handedOff org.Placement
+	if err := json.Unmarshal([]byte(f.repo.Files[tree+":placement.json"]), &handedOff); err != nil {
+		t.Fatalf("the hand-off's placement.json: %v", err)
+	}
+	if got := handedOff.Domains["impapps.example"].Labels["rgb"]; got.Organization != "rgb" || !slices.Equal(got.NameServers, createtest.ZoneNameServers) {
+		t.Errorf("the hand-off from the marker hands the label rgb onward as %+v, want rgb with the zone's name servers", got)
+	}
+	created := f.repo.Files[tree+":organizations/rgb/placement.json"]
+	if !strings.Contains(created, `"appsZone"`) || !strings.Contains(created, `"rgb-net-gbl-dns-apps"`) || !strings.Contains(created, `"spn": "rgb-spn-gbl-core-e5f6"`) {
+		t.Errorf("the hand-off's record from the marker lacks the zone or the projects:\n%s", created)
+	}
+	if body := f.srv.Bodies[1]; !strings.Contains(body, "`rgb-net-gbl-dns-apps`") || strings.Contains(body, "no zone was recorded") {
+		t.Errorf("the hand-off's body from the marker:\n%s", body)
+	}
+}
+
 // TestRunFirstApplyAgainAfterRace: 1-org's first apply is refused once by Google's race
 // (an API enabled moments ago not seen by every service yet); the creation waits and
 // runs the apply once more, and goes on.
