@@ -14,6 +14,9 @@ import (
 	"strings"
 	"time"
 
+	"google.golang.org/api/impersonate"
+	siteverification "google.golang.org/api/siteverification/v1"
+
 	"google.golang.org/api/option"
 
 	orgpolicy "cloud.google.com/go/orgpolicy/apiv2"
@@ -220,6 +223,94 @@ func NewDNS(ctx context.Context) (DNS, error) {
 	}
 
 	return &cloudDNS{service: service}, nil
+}
+
+// NewDNSAs opens Cloud DNS as the identity, impersonated by the process's credentials:
+// the bootstrap makes the zones as the applier.
+func NewDNSAs(ctx context.Context, identity string) (DNS, error) {
+	source, err := impersonate.CredentialsTokenSource(ctx, impersonate.CredentialsConfig{TargetPrincipal: identity, Scopes: []string{cloudPlatformScope}})
+	if err != nil {
+		return nil, errors.Wrapf(err, "impersonate.CredentialsTokenSource(): %s", identity)
+	}
+	service, err := dns.NewService(ctx, option.WithTokenSource(source))
+	if err != nil {
+		return nil, errors.Wrapf(err, "dns.NewService(): as %s", identity)
+	}
+
+	return &cloudDNS{service: service}, nil
+}
+
+// NewVerifierAs opens Google's webmaster verification as the identity, impersonated with
+// the verification's own scope beside Cloud Platform's: the applier impersonates the
+// creating identity, and itself, since a token for a Google API outside Cloud Platform's
+// scope comes from IAM Credentials and not from the build's own credentials.
+func NewVerifierAs(ctx context.Context, identity string) (Verifier, error) {
+	source, err := impersonate.CredentialsTokenSource(ctx, impersonate.CredentialsConfig{TargetPrincipal: identity, Scopes: []string{cloudPlatformScope, siteverification.SiteverificationScope}})
+	if err != nil {
+		return nil, errors.Wrapf(err, "impersonate.CredentialsTokenSource(): %s", identity)
+	}
+	service, err := siteverification.NewService(ctx, option.WithTokenSource(source))
+	if err != nil {
+		return nil, errors.Wrapf(err, "siteverification.NewService(): as %s", identity)
+	}
+
+	return &siteVerifier{service: service}, nil
+}
+
+// siteVerifier is the real seam over the Site Verification API: a domain is an
+// INET_DOMAIN resource, verified by a DNS_TXT record at its apex.
+type siteVerifier struct {
+	service *siteverification.Service
+}
+
+const (
+	inetDomain = "INET_DOMAIN"
+	dnsTXT     = "DNS_TXT"
+)
+
+func (v *siteVerifier) Owned(ctx context.Context, domain string) (bool, error) {
+	list, err := v.service.WebResource.List().Context(ctx).Do()
+	if err != nil {
+		return false, errors.Wrap(err, "siteverification: WebResource.List()")
+	}
+	for _, r := range list.Items {
+		if r.Site != nil && r.Site.Type == inetDomain && strings.TrimSuffix(r.Site.Identifier, ".") == domain {
+			return true, nil
+		}
+	}
+
+	return false, nil
+}
+
+func (v *siteVerifier) Token(ctx context.Context, domain string) (string, error) {
+	res, err := v.service.WebResource.GetToken(&siteverification.SiteVerificationWebResourceGettokenRequest{
+		Site:               &siteverification.SiteVerificationWebResourceGettokenRequestSite{Type: inetDomain, Identifier: domain},
+		VerificationMethod: dnsTXT,
+	}).Context(ctx).Do()
+	if err != nil {
+		return "", errors.Wrapf(err, "siteverification: WebResource.GetToken(): %s", domain)
+	}
+
+	return res.Token, nil
+}
+
+func (v *siteVerifier) Verify(ctx context.Context, domain string) (seen bool, err error) {
+	_, err = v.service.WebResource.Insert(dnsTXT, &siteverification.SiteVerificationWebResourceResource{
+		Site: &siteverification.SiteVerificationWebResourceResourceSite{Type: inetDomain, Identifier: domain},
+	}).Context(ctx).Do()
+	var gerr *googleapi.Error
+	if errors.As(err, &gerr) && gerr.Code == http.StatusBadRequest {
+		return false, nil
+	}
+	if err != nil {
+		return false, errors.Wrapf(err, "siteverification: WebResource.Insert(): %s", domain)
+	}
+
+	return true, nil
+}
+
+func (*siteVerifier) Close() error {
+	return nil
 }
 
 func (d *cloudDNS) Zones(ctx context.Context, project string) ([]Zone, error) {
@@ -797,6 +888,10 @@ func (c *iamClients) ServiceAccountPolicy(ctx context.Context, email string) ([]
 
 func (c *iamClients) GrantServiceAccount(ctx context.Context, email, role, member string) error {
 	return c.serviceAccountPolicy(email).grant(ctx, role, member)
+}
+
+func (c *iamClients) RevokeServiceAccount(ctx context.Context, email, role, member string) error {
+	return c.serviceAccountPolicy(email).revoke(ctx, member, []string{role})
 }
 
 func (c *iamClients) BillingPolicy(ctx context.Context, account string) ([]org.Binding, error) {

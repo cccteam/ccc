@@ -2520,8 +2520,9 @@ boot and org identities, which 1-org needs the day it links a project it creates
 public zone of the apps domain in the net project, made as the creating identity and
 recorded in the new placement as `appsZone`, which 2-net adopts with an import block (Cloud
 DNS asks whoever makes a zone for a name under a verified domain to own the domain in
-Google's webmaster verification, so a verified owner makes the creating identity an owner
-once, at the bootstrap, and no hosting organization's net identity by hand); then the
+Google's webmaster verification; the root organization's apply verifies the creating
+identity itself, by its token as a TXT record at the domain's apex in the zone it keeps,
+and nobody is made an owner by hand); then the
 repository `<prefix>-infrastructure`, private in the GitHub
 organization, with the rendered foundation as its first push, which the new apply trigger
 runs on, every layer as its own identity; then the creating identity's grants off

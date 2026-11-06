@@ -12,11 +12,13 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
+	"github.com/cccteam/ccc/bedrock/internal/create"
 	"github.com/cccteam/ccc/bedrock/internal/github"
 	"github.com/cccteam/ccc/bedrock/internal/github/githubtest"
 	"github.com/cccteam/ccc/bedrock/internal/org"
 	"github.com/cccteam/ccc/bedrock/internal/root"
 	"github.com/cccteam/ccc/bedrock/internal/root/roottest"
+	"github.com/go-playground/errors/v5"
 )
 
 // world is a root organization as the bootstrap leaves it before the engine's first run:
@@ -206,6 +208,7 @@ func TestEngineReadsNothingAboveTheFolder(t *testing.T) {
 	want := []string{
 		"the grants at the organization node (the creating identity's Folder Creator, the applier's Organization Policy Administrator, the planner's Organization Policy Viewer) were not compared: this run holds no read of the organization node's IAM policy, as the triggers' runners hold their roles under the organization's folder alone; the bootstrap made the grants and compares them, and so does bedrock org check run by an Organization Administrator",
 		"the creating identity's Billing Account Administrator on billing account 012345-6789AB-CDEF01 was not compared: this run holds no read of the billing account's IAM policy, as the triggers' runners hold their roles under the organization's folder alone; the bootstrap made the grants and compares them, and so does bedrock org check run by a Billing Account Administrator of it",
+		"the ownership of the domains in Google's webmaster verification by " + w.p.ApplierIdentity() + " and " + w.p.CreatingIdentity() + " was not compared: this run cannot act as them (the apply's runner does, and the bootstrap); the apply keeps their tokens in the zones, verifies them and says so",
 	}
 	if !slices.Equal(report.Notes, want) {
 		t.Errorf("notes = %q, want %q", report.Notes, want)
@@ -501,5 +504,126 @@ func TestEngineHostingMembersStay(t *testing.T) {
 		if !strings.Contains(got[0], m) {
 			t.Errorf("the policy to set lacks %s:\n%s", m, got[0])
 		}
+	}
+}
+
+// TestEngineVerifiesIdentities: the apply keeps the applier's and the creating
+// identity's tokens at each domain's apex, beside what the apex carries, and verifies
+// each identity that is not an owner; a token Google does not see yet leaves a note and
+// no error; a run again finds the owners and changes nothing; a check says the ownership
+// is not compared.
+func TestEngineVerifiesIdentities(t *testing.T) {
+	t.Parallel()
+
+	w := newWorld(t)
+	applier, creator := w.p.ApplierIdentity(), w.p.CreatingIdentity()
+	w.fake.Unowned[creator+"|clientbay.example"], w.fake.Unowned[creator+"|impapps.example"], w.fake.Unowned[applier+"|impapps.example"] = true, true, true
+	w.fake.Unseen[applier+"|impapps.example"] = true
+	report, out := w.run(t, root.Apply, true)
+	if strings.Contains(out, "finding") {
+		t.Fatalf("the first apply:\n%s", out)
+	}
+	project := w.p.Projects[org.RootProjectKey]
+	clientbay, impapps := w.p.ZoneName("clientbay.example"), w.p.ZoneName("impapps.example")
+	containsAll(t, whats(report),
+		"verification: in the zone "+clientbay+": adds the token of "+applier+" for clientbay.example (a TXT record at the apex)",
+		"verification: in the zone "+clientbay+": adds the token of "+creator+" for clientbay.example (a TXT record at the apex)",
+		"verification: verifies "+creator+" as an owner of clientbay.example in Google's webmaster verification",
+		"verification: verifies "+creator+" as an owner of impapps.example in Google's webmaster verification",
+	)
+	if slices.ContainsFunc(whats(report), func(s string) bool { return strings.Contains(s, "verifies "+applier) }) {
+		t.Errorf("the applier was verified though Google does not see its token, or owns the domain already: %v", whats(report))
+	}
+	if !slices.ContainsFunc(report.Notes, func(n string) bool {
+		return strings.HasPrefix(n, "the verification of "+applier+" as an owner of impapps.example waits: Google does not see the token at the domain's apex yet")
+	}) {
+		t.Errorf("notes = %q", report.Notes)
+	}
+	if !w.fake.Verified[creator+"|clientbay.example"] || !w.fake.Verified[creator+"|impapps.example"] || w.fake.Verified[applier+"|impapps.example"] {
+		t.Errorf("verified = %v", w.fake.Verified)
+	}
+	apex := func(zone, domain string) root.RecordSet {
+		for _, r := range w.fake.Records[project+"/"+zone] {
+			if r.Name == domain+"." && r.Type == "TXT" {
+				return r
+			}
+		}
+
+		return root.RecordSet{}
+	}
+	if got, want := apex(clientbay, "clientbay.example").Data, []string{`"google-site-verification=imr-root-gbl-applier-clientbay-example"`, `"google-site-verification=imr-create-gbl-tofu-clientbay-example"`}; !slices.Equal(got, want) {
+		t.Errorf("the apex of clientbay.example carries %q, want %q", got, want)
+	}
+	// A mail policy at an apex stays beside the tokens.
+	w.fake.Records[project+"/"+impapps] = append(w.fake.Records[project+"/"+impapps], root.RecordSet{Name: "impapps.example.", Type: "TXT", TTL: 300, Data: []string{`"v=spf1 -all"`}})
+	w.fake.Records[project+"/"+impapps] = slices.DeleteFunc(w.fake.Records[project+"/"+impapps], func(r root.RecordSet) bool {
+		return r.Type == "TXT" && !slices.Contains(r.Data, `"v=spf1 -all"`)
+	})
+	report, _ = w.run(t, root.Apply, false)
+	if got, want := apex(impapps, "impapps.example").Data, []string{`"v=spf1 -all"`, `"google-site-verification=imr-root-gbl-applier-impapps-example"`, `"google-site-verification=imr-create-gbl-tofu-impapps-example"`}; !slices.Equal(got, want) || apex(impapps, "impapps.example").TTL != 300 {
+		t.Errorf("the apex of impapps.example carries %q (TTL %d), want %q at TTL 300", got, apex(impapps, "impapps.example").TTL, want)
+	}
+	for _, c := range whats(report) {
+		if strings.HasPrefix(c, "verification: verifies") {
+			t.Errorf("verified again: %s", c)
+		}
+	}
+	// Google sees the applier's token now.
+	delete(w.fake.Unseen, applier+"|impapps.example")
+	report, _ = w.run(t, root.Apply, false)
+	if want := []string{"verification: verifies " + applier + " as an owner of impapps.example in Google's webmaster verification"}; !slices.Equal(whats(report), want) {
+		t.Errorf("changes = %v, want %v", whats(report), want)
+	}
+	report, _ = w.run(t, root.Apply, false)
+	if !report.Clean() {
+		t.Errorf("a run again changes: %v", whats(report))
+	}
+	report, _ = w.run(t, root.Check, false)
+	if !report.Clean() || !slices.ContainsFunc(report.Notes, func(n string) bool { return strings.Contains(n, "was not compared: this run cannot act as them") }) {
+		t.Errorf("the check: changes %v, notes %q", whats(report), report.Notes)
+	}
+}
+
+// TestEngineZoneWaitsForTheApplier: Cloud DNS refuses the zone of a domain Google holds
+// as verified until the applier owns it, which its token where the domain's DNS is
+// served today lets it; the apply says which record, as a finding, and makes the zone on
+// the run after Google sees it.
+func TestEngineZoneWaitsForTheApplier(t *testing.T) {
+	t.Parallel()
+
+	w := newWorld(t)
+	applier := w.p.ApplierIdentity()
+	if _, out := w.run(t, root.Apply, true); strings.Contains(out, "finding") {
+		t.Fatalf("the first apply:\n%s", out)
+	}
+	// The zone of clientbay.example is gone (README.md, "Making a zone again"), and the
+	// applier's ownership of the domain with it; Google does not see its token.
+	project := w.p.Projects[org.RootProjectKey]
+	zone := w.p.ZoneName("clientbay.example")
+	delete(w.fake.ZoneMap[project], zone)
+	delete(w.fake.Records, project+"/"+zone)
+	w.fake.Unowned[applier+"|clientbay.example"] = true
+	w.fake.Unseen[applier+"|clientbay.example"] = true
+	w.fake.Refuse["CreateZone"] = errors.New("googleapi: Error 403: Please verify ownership of the 'clientbay.example.' domain (or a project parent domain) at http://www.google.com/webmasters/verification/ and try again, " + create.OwnershipCode)
+	report, out := w.run(t, root.Apply, false)
+	want := "Cloud DNS asks the maker of the zone " + zone + " to own clientbay.example in Google's webmaster verification, and the zone waits: where clientbay.example's DNS is served today (the registrar's, until the delegation), a person adds a TXT record at the apex with the value google-site-verification=imr-root-gbl-applier-clientbay-example, the token of " + applier
+	if !slices.ContainsFunc(report.Findings, func(f string) bool { return strings.HasPrefix(f, want) }) {
+		t.Errorf("findings = %q\n%s", report.Findings, out)
+	}
+	if slices.ContainsFunc(whats(report), func(s string) bool { return strings.Contains(s, "clientbay") }) {
+		t.Errorf("the zone or its records were made: %v", whats(report))
+	}
+	// The person put the record there; the refusal stands once more, for the first try.
+	delete(w.fake.Unseen, applier+"|clientbay.example")
+	delete(w.fake.Refuse, "CreateZone")
+	w.fake.RefuseOnce["CreateZone"] = errors.New("googleapi: Error 403: " + create.OwnershipCode)
+	report, out = w.run(t, root.Apply, false)
+	if len(report.Findings) != 0 || !strings.Contains(out, applier+" owns clientbay.example in Google's webmaster verification now, by the record a person put where the domain's DNS is served; the zone can be made.") {
+		t.Errorf("findings = %q\n%s", report.Findings, out)
+	}
+	containsAll(t, whats(report), "zones: creates the zone "+zone+" for clientbay.example", "zones: in the zone "+zone+": hands beacon.clientbay.example onward",
+		"verification: in the zone "+zone+": adds the token of "+applier+" for clientbay.example (a TXT record at the apex)")
+	if _, ok := w.fake.ZoneMap[project][zone]; !ok || !w.fake.Verified[applier+"|clientbay.example"] {
+		t.Errorf("zone made %v, verified %v", ok, w.fake.Verified)
 	}
 }

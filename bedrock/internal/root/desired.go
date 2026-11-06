@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"slices"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/cccteam/ccc/bedrock/internal/github"
@@ -47,11 +48,11 @@ const (
 // the identities and the creation's impersonation, Cloud Resource Manager and Service
 // Usage for the creation of hosting organizations, Cloud Billing and its budgets for
 // their billing links and budgets, Cloud Storage for the state bucket, Cloud Logging
-// for the triggers' logs.
+// for the triggers' logs, Site Verification for the domains' ownership.
 var Services = []string{
 	"billingbudgets.googleapis.com", "cloudbilling.googleapis.com", "cloudbuild.googleapis.com", "cloudresourcemanager.googleapis.com",
 	"dns.googleapis.com", "iam.googleapis.com", "iamcredentials.googleapis.com", "logging.googleapis.com", "orgpolicy.googleapis.com",
-	"secretmanager.googleapis.com", "serviceusage.googleapis.com", "storage.googleapis.com",
+	"secretmanager.googleapis.com", "serviceusage.googleapis.com", "siteverification.googleapis.com", "storage.googleapis.com",
 }
 
 // The lock and the marker the apply keeps in the state bucket.
@@ -158,14 +159,37 @@ type Grant struct {
 }
 
 // ServiceAccountGrants are the bindings on the identities themselves: the Cloud Build
-// service agent runs the triggers' builds as the two runners, and the applier creates
-// hosting organizations as the creating identity.
+// service agent runs the triggers' builds as the two runners, the applier creates
+// hosting organizations as the creating identity, and the applier impersonates itself
+// for a token of Google's webmaster verification, whose scope is not Cloud Platform's
+// and so not the build's credentials'.
 func (d *Desired) ServiceAccountGrants() []Grant {
 	return []Grant{
 		{Resource: d.Planner(), Role: roleServiceAccountUser, Member: d.ServiceAgent()},
 		{Resource: d.Applier(), Role: roleServiceAccountUser, Member: d.ServiceAgent()},
 		{Resource: d.Creator(), Role: roleImpersonator, Member: member(d.Applier())},
+		{Resource: d.Applier(), Role: roleImpersonator, Member: member(d.Applier())},
 	}
+}
+
+// BootstrapGrants are the break-glass account's grants for the bootstrap's run alone:
+// Service Account Token Creator on the applier, as which the bootstrap makes the zones,
+// and on the creating identity, which it verifies as the domains' owner beside the
+// applier. The bootstrap takes them off at its end, and an apply takes off any it left.
+func (d *Desired) BootstrapGrants() []Grant {
+	account := "user:" + d.p.BreakGlassAccount
+
+	return []Grant{
+		{Resource: d.Applier(), Role: roleImpersonator, Member: account},
+		{Resource: d.Creator(), Role: roleImpersonator, Member: account},
+	}
+}
+
+// VerificationRecord is the TXT record set at the domain's apex that carries one
+// identity's token, as Google's webmaster verification looks for it (the value quoted,
+// as Cloud DNS takes TXT data); the engine merges it into the record set the apex holds.
+func VerificationRecord(domain, token string) RecordSet {
+	return RecordSet{Name: domain + ".", Type: "TXT", TTL: 3600, Data: []string{strconv.Quote(token)}}
 }
 
 // OrganizationGrants are the roles at the organization node, which the bootstrap grants

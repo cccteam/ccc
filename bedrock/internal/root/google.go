@@ -83,6 +83,36 @@ type DNS interface {
 	Close() error
 }
 
+// DNSAsFunc opens Cloud DNS as an identity the process's credentials impersonate: the
+// bootstrap makes the zones as the applier, the identity Google verifies as each domain's
+// owner, and never as the person's account.
+type DNSAsFunc func(ctx context.Context, identity string) (DNS, error)
+
+// Verifier is Google's webmaster verification as one identity: whether it owns a domain,
+// its token for the domain, and the verification itself. Cloud DNS asks whoever makes a
+// public zone for a name under a domain Google holds as verified to own the domain, or a
+// parent, there; the applier makes the root organization's zones and the creating
+// identity makes each hosting organization's apps zone, and the apply keeps both verified
+// by their tokens as TXT records at the domain's apex in the zone here.
+type Verifier interface {
+	// Owned reports whether the identity is an owner of the domain, verified or delegated.
+	Owned(ctx context.Context, domain string) (bool, error)
+	// Token is the identity's token for the domain: the value of the TXT record Google
+	// looks for at the domain's apex.
+	Token(ctx context.Context, domain string) (string, error)
+	// Verify asks Google to look for the token and make the identity a verified owner;
+	// seen is false when Google does not find the record yet.
+	Verify(ctx context.Context, domain string) (seen bool, err error)
+	Close() error
+}
+
+// VerifierFunc opens the verification as the identity, which the run's credentials
+// impersonate: the applier impersonates the creating identity, and itself for the
+// verification's own scope; the bootstrap impersonates both with the grants it makes for
+// its run. A run that cannot act as them (the plan's runner, a person's check) says the
+// ownership is not compared.
+type VerifierFunc func(ctx context.Context, identity string) (Verifier, error)
+
 // Connection is a Cloud Build GitHub connection: the Cloud Build GitHub App's
 // installation and the token secret version the connection authorizes with.
 type Connection struct {
@@ -170,10 +200,12 @@ type IAM interface {
 	RevokeOrganization(ctx context.Context, organizationID, member string, roles []string) error
 	GrantBilling(ctx context.Context, account, role, member string) error
 	RevokeBilling(ctx context.Context, account, member string, roles []string) error
-	// ServiceAccountPolicy is the bindings on the service account (by email), and
+	// ServiceAccountPolicy is the bindings on the service account (by email);
 	// GrantServiceAccount adds one.
 	ServiceAccountPolicy(ctx context.Context, email string) ([]org.Binding, error)
 	GrantServiceAccount(ctx context.Context, email, role, member string) error
+	// RevokeServiceAccount takes the member off the role on the service account.
+	RevokeServiceAccount(ctx context.Context, email, role, member string) error
 	// BucketBindings are the bucket's bindings with their conditions, and GrantBucket
 	// adds one, conditioned when the condition is not nil.
 	BucketBindings(ctx context.Context, bucket string) ([]ConditionedBinding, error)
@@ -239,11 +271,16 @@ type Clients struct {
 	OrgPolicies OrgPoliciesFunc
 	Secrets     SecretsFunc
 	DNS         DNSFunc
-	Builds      BuildsFunc
-	IAM         IAMFunc
-	Locks       LocksFunc
-	GitHub      deploy.GitHubFunc
-	Store       deploy.StoreFunc
+	// DNSAs and Verifier act as an identity the credentials impersonate: the bootstrap
+	// makes the zones as the applier, and the apply verifies the applier and the
+	// creating identity as the domains' owners.
+	DNSAs    DNSAsFunc
+	Verifier VerifierFunc
+	Builds   BuildsFunc
+	IAM      IAMFunc
+	Locks    LocksFunc
+	GitHub   deploy.GitHubFunc
+	Store    deploy.StoreFunc
 	// Create are the creation's seams, for the hosting organizations the apply creates;
 	// nil when the run creates none (check, plan).
 	Create *create.Clients

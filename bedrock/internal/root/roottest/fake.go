@@ -80,6 +80,18 @@ type Fake struct {
 	Accounts       map[string]bool
 	Buckets        map[string]bool
 	next           int64
+
+	// The verification seam's memory (root.Verifier), keyed "identity|domain": Unowned
+	// says the identity is not an owner; Tokens is its token (made up when absent);
+	// Unseen says Google does not see the token, so Verify answers false; Verified is
+	// what Verify made. Verifiers lists the identities opened, DNSIdentities the ones
+	// Cloud DNS was opened as.
+	Unowned       map[string]bool
+	Tokens        map[string]string
+	Unseen        map[string]bool
+	Verified      map[string]bool
+	Verifiers     []string
+	DNSIdentities []string
 }
 
 // New makes an empty stand-in.
@@ -93,6 +105,7 @@ func New() *Fake {
 		Roles: map[string]root.Role{}, Policies: map[string][]org.Binding{}, BucketPolicies: map[string][]root.ConditionedBinding{}, Enabled: map[string][]string{}, BillingOf: map[string]string{},
 		OrgPolicies: map[string]*root.Policy{},
 		Locked:      map[string][]byte{}, Objects: map[string][]byte{},
+		Unowned: map[string]bool{}, Tokens: map[string]string{}, Unseen: map[string]bool{}, Verified: map[string]bool{},
 	}
 }
 
@@ -102,6 +115,20 @@ func (f *Fake) Clients(c *root.Clients) {
 	c.OrgPolicies = func(context.Context, string) (root.OrgPolicies, error) { return f, nil }
 	c.Secrets = func(context.Context) (root.Secrets, error) { return f, nil }
 	c.DNS = func(context.Context) (root.DNS, error) { return f, nil }
+	c.DNSAs = func(_ context.Context, identity string) (root.DNS, error) {
+		f.mu.Lock()
+		defer f.mu.Unlock()
+		f.DNSIdentities = append(f.DNSIdentities, identity)
+
+		return f, nil
+	}
+	c.Verifier = func(_ context.Context, identity string) (root.Verifier, error) {
+		f.mu.Lock()
+		defer f.mu.Unlock()
+		f.Verifiers = append(f.Verifiers, identity)
+
+		return &verifier{f: f, identity: identity}, nil
+	}
 	c.Builds = func(context.Context) (root.Builds, error) { return f, nil }
 	c.IAM = func(context.Context) (root.IAM, error) { return f, nil }
 	c.Locks = func(context.Context) (root.Locks, error) { return f, nil }
@@ -652,6 +679,11 @@ func (f *Fake) GrantServiceAccount(_ context.Context, email, role, member string
 	return f.grantCall("GrantServiceAccount", "serviceAccounts/"+email, role, member)
 }
 
+// RevokeServiceAccount takes the member off the role on the service account.
+func (f *Fake) RevokeServiceAccount(_ context.Context, email, role, member string) error {
+	return f.revokeCall("RevokeServiceAccount", "serviceAccounts/"+email, member, []string{role})
+}
+
 // GrantProject and RevokeProject, GrantFolder and RevokeFolder are the create seam's
 // grants over the same policies, so a test wires one stand-in for both.
 func (f *Fake) GrantProject(_ context.Context, id, role, member string) error {
@@ -1154,5 +1186,63 @@ func (f *Fake) UpdatePolicy(_ context.Context, policy *root.Policy) error {
 	c := *policy
 	f.OrgPolicies[policy.Name] = &c
 
+	return nil
+}
+
+// --- Verifier ---
+
+// verifier is the stand-in's webmaster verification as one identity.
+type verifier struct {
+	f        *Fake
+	identity string
+}
+
+func (v *verifier) key(domain string) string {
+	return v.identity + "|" + domain
+}
+
+// Owned reports the identity an owner unless Unowned says otherwise and Verify has not
+// made it one.
+func (v *verifier) Owned(_ context.Context, domain string) (bool, error) {
+	v.f.mu.Lock()
+	defer v.f.mu.Unlock()
+	if err := v.f.call("Owned", v.identity, domain); err != nil {
+		return false, err
+	}
+
+	return !v.f.Unowned[v.key(domain)] || v.f.Verified[v.key(domain)], nil
+}
+
+// Token is the token Tokens holds, or one made from the identity and the domain.
+func (v *verifier) Token(_ context.Context, domain string) (string, error) {
+	v.f.mu.Lock()
+	defer v.f.mu.Unlock()
+	if err := v.f.call("Token", v.identity, domain); err != nil {
+		return "", err
+	}
+	if token, ok := v.f.Tokens[v.key(domain)]; ok {
+		return token, nil
+	}
+
+	return "google-site-verification=" + strings.ReplaceAll(strings.SplitN(v.identity, "@", 2)[0]+"-"+domain, ".", "-"), nil
+}
+
+// Verify makes the identity an owner, unless Unseen says Google does not see the token.
+func (v *verifier) Verify(_ context.Context, domain string) (bool, error) {
+	v.f.mu.Lock()
+	defer v.f.mu.Unlock()
+	if err := v.f.call("Verify", v.identity, domain); err != nil {
+		return false, err
+	}
+	if v.f.Unseen[v.key(domain)] {
+		return false, nil
+	}
+	v.f.Verified[v.key(domain)] = true
+
+	return true, nil
+}
+
+// Close releases nothing.
+func (*verifier) Close() error {
 	return nil
 }

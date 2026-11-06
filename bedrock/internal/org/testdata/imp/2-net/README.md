@@ -23,8 +23,9 @@ There is no VPC in this project. See "Cross-project backends" for why.
   copied from the DNS authorization, and whatever `extra_records` lists. In
   an organization the root organization created, the zone is the creation's,
   made as the creating identity (Cloud DNS asks whoever makes a zone to own
-  the domain in Google's webmaster verification, which that identity does
-  once) and adopted here through an `import` block from `placement.json`'s
+  the domain in Google's webmaster verification, which the root
+  organization's apply verifies that identity as) and adopted here through an
+  `import` block from `placement.json`'s
   `appsZone`. The zone carries `prevent_destroy`, as every zone a registration here points at
   does, so neither a plan nor a stray destroy can make it again on other name
   servers ("Making a zone again").

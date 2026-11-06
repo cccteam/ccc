@@ -416,8 +416,9 @@ type Placement struct {
 	// AppsZone is the apps domain's public zone, made by the creation in the net project
 	// as the creating identity and adopted by 2-net (an import block): Cloud DNS asks
 	// whoever makes a zone to own the domain, or a parent, in Google's webmaster
-	// verification, which the creating identity does once, from the bootstrap, where the
-	// net identity of each organization would be made an owner by hand. Its name servers,
+	// verification, which the root organization's apply verifies the creating identity
+	// as, by its token in the domain's zone, where the net identity of each organization
+	// would be made an owner by hand. Its name servers,
 	// which Cloud DNS assigns, go into the root placement by the hand-off, as the label of
 	// the apps domain handed onward. Recorded by the creation alone.
 	AppsZone *ZoneRecord `json:"appsZone,omitempty"`

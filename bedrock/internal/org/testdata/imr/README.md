@@ -170,15 +170,6 @@ Before it, by hand, where it happens:
    below); and
    Google's Cloud Build GitHub App (`github.com/apps/google-cloud-build`),
    installed on the organization as the Bot Account, for all repositories.
-3. In Google's webmaster verification
-   (https://www.google.com/webmasters/verification/), as a verified owner of
-   each domain in `domains` (the account that verified it for the Workspace or
-   in Search Console): the creating identity `imr-create-gbl-tofu@imr-root-gbl-core-c3d4.iam.gserviceaccount.com` added as
-   an owner of the domain. Cloud DNS asks whoever makes a public zone for a
-   name under a domain so verified to be an owner of it or of a parent, and
-   the creation makes each hosting organization's apps zone as this identity;
-   so the step is this one, once per domain, and no hosting organization's
-   net identity is ever made an owner by hand.
 
 The bootstrap looks before each step and makes what is missing, so a run that
 stopped finishes on the next run in the same directory, whose `placement.json`
@@ -195,8 +186,10 @@ key going from GitHub into its secret and its version pinned; the Cloud Build
 installation found through the infrastructure app; this repository, private,
 with `placement.json` and this README as its first commit; then everything the
 apply keeps true ("How the root organization is kept", below), through the
-same engine the apply trigger runs; last its own Owner off the root project,
-and the check. No key and no token touches the computer's disk.
+same engine the apply trigger runs, the zones as the applier, which Google
+holds as the domains' owner, with a Token Creator on it and on the creating
+identity that the run grants itself and takes off at its end; last its own
+Owner off the root project, and the check. No key and no token touches the computer's disk.
 
 What it leaves: the break-glass account's Folder Admin on the folder, nothing
 else by hand, and this repository at its first commit, from which every change
@@ -215,6 +208,7 @@ the apply, run on it:
   placement; the plan compares the organization with the pull request's
   placement, section by section (the APIs, the identities and their roles, the
   secrets' aliases and policies, the grants, the zones and their record sets,
+  the applier's and the creating identity's ownership of the domains,
   the connection and the triggers, the repository's settings and ruleset), and
   posts what the merge would change, and which hosting organizations it would
   create, in one comment on the pull request as the deployer app, updated on a
@@ -444,6 +438,33 @@ application's certificate under it waits ("Handing a label onward", step 3).
 `bedrock org check` reads nothing about these domains: the delegation is the
 customer's, and `bedrock domain check` is where it shows.
 
+**Ownership in Google's webmaster verification.** Cloud DNS asks whoever makes
+a public zone for a name under a domain Google holds as verified (one
+registered through Google, or well known) to own the domain, or a parent, in
+Google's webmaster verification. Two identities make zones under this
+organization's domains: the applier, which makes the zone here, and the
+creating identity `imr-create-gbl-tofu@imr-root-gbl-core-c3d4.iam.gserviceaccount.com`, which makes each hosting
+organization's apps zone. The apply keeps both verified, with nobody made an
+owner by hand: as each identity, it asks Google for the identity's token for
+the domain, writes the token as a TXT record at the domain's apex in the zone
+here, beside whatever else the apex carries, and asks Google to see it, which
+makes the identity a verified owner in its own right. Google sees the record
+once the delegation resolves, so until then every apply says the verification
+waits and asks again on the next run, and a creation under the domain refuses
+its zone until the creating identity is verified. The plan and `bedrock org
+check`, which cannot act as the identities, say the ownership is not compared.
+
+A domain Google holds as verified, before its zone exists here: the applier
+cannot own it yet, since its token has nowhere to resolve from, and Cloud DNS
+refuses the zone. The apply reports the refusal as a finding that carries the
+applier's token: where the domain's DNS is served today (the registrar's DNS,
+until the delegation), a person adds a TXT record at the apex with that value.
+The next apply verifies the applier, makes the zone and names its name
+servers, which then go to the registrar as above. The record at the registrar's
+DNS stops being served with the delegation, and by then the apply has put the
+token in the zone here, so the ownership holds. For most domains Cloud DNS
+asks nothing, and the zone is made on the first apply.
+
 ## Handing a label onward
 
 At an application's registration, two pull requests, in this order, by a
@@ -513,7 +534,10 @@ again is deliberate, and the last step is the customer's:
    prints them with the place, and says when the domain points at the zone.
 
 The labels' record sets come back with the zone and need no step: a label
-names the application's servers, not this zone's.
+names the application's servers, not this zone's. So do the two identities'
+tokens, which the apply writes again; Google checks an owner's record now and
+then, not at the moment the zone is gone, so the applier's ownership holds
+across the gap and Cloud DNS accepts the zone made again.
 
 ## Creating a hosting organization
 
@@ -552,8 +576,8 @@ grants the new organization's identities their use of the billing account.
    `0-bootstrap` and `1-org`, with the projects recorded in its placement, and
    Billing Account User on the billing account for its boot and org identities;
    then the public zone of its apps domain in its net project, made as the
-   creating identity (which owns the domain in Google's webmaster
-   verification, "Before it, by hand") and recorded in its placement
+   creating identity (which the apply verified as an owner of the domain,
+   "Delegating a domain to this organization") and recorded in its placement
    (`appsZone`), which its `2-net` adopts; then the repository `<prefix>-infrastructure`, private in
    `imp-example`, with the rendered foundation as its first push,
    which its apply trigger runs on, every layer as its own identity; then the

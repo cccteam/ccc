@@ -158,7 +158,7 @@ func rootClients() *rootorg.Clients {
 			return create.NewGoogle(ctx)
 		},
 		OrgPolicies: rootorg.NewOrgPolicies,
-		Secrets:     rootorg.NewSecrets, DNS: rootorg.NewDNS, Builds: rootorg.NewBuilds, IAM: rootorg.NewIAM, Locks: rootorg.NewLocks,
+		Secrets:     rootorg.NewSecrets, DNS: rootorg.NewDNS, DNSAs: rootorg.NewDNSAs, Verifier: rootorg.NewVerifierAs, Builds: rootorg.NewBuilds, IAM: rootorg.NewIAM, Locks: rootorg.NewLocks,
 		GitHub: rootorg.GitHubClient, Store: deploy.NewStorage, Discovery: rootorg.NewDiscovery, Permissions: org.NewPermissionTester, Sleep: deploy.Sleep,
 		Clone: rootorg.GitClone,
 	}

@@ -10,8 +10,9 @@
 # go (README.md, "Delegating the domain").
 # ---------------------------------------------------------------------------
 # The zone is the creation's: the root organization made it in this project as the
-# creating identity, which owns the domain in Google's webmaster verification (Cloud DNS
-# asks whoever makes a zone to), and recorded it in placement.json (appsZone). Adopted here
+# creating identity, which its apply verified as an owner of the domain in Google's
+# webmaster verification (Cloud DNS asks that of whoever makes a zone), and recorded it in
+# placement.json (appsZone). Adopted here
 # by an import block, a no-op once the zone is in the state.
 import {
   id = "projects/${local.project_id}/managedZones/imp-net-gbl-dns-apps"

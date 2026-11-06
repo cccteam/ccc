@@ -308,7 +308,8 @@ func TestRootOrgPlanApply(t *testing.T) {
 	if err != nil {
 		t.Fatalf("org apply = %v; printed:\n%s", err, out)
 	}
-	if !strings.Contains(out, "zones: creates the zone imr-root-gbl-dns-harbor-example for harbor.example") || !strings.Contains(out, "Applied 1 change(s)") {
+	// The apply makes the zone, then keeps the two identities' tokens at its apex.
+	if !strings.Contains(out, "zones: creates the zone imr-root-gbl-dns-harbor-example for harbor.example") || !strings.Contains(out, "verification: in the zone imr-root-gbl-dns-harbor-example: adds the token of imr-root-gbl-applier@imr-root-gbl-core-c3d4.iam.gserviceaccount.com for harbor.example (a TXT record at the apex)") || !strings.Contains(out, "Applied 3 change(s)") {
 		t.Errorf("org apply printed:\n%s", out)
 	}
 	if _, ok := fake.ZoneMap["imr-root-gbl-core-c3d4"]["imr-root-gbl-dns-harbor-example"]; !ok {

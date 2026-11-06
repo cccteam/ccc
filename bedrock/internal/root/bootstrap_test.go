@@ -170,6 +170,20 @@ func TestBootstrapBroughtApps(t *testing.T) {
 	if !slices.Contains(fake.Calls, "GrantFolder(folders/900000000001, roles/resourcemanager.folderAdmin, user:bedrock@imp.example)") || !slices.Contains(fake.Calls, "RevokeProject(projects/"+project+", user:bedrock@imp.example, roles/owner)") || !slices.Contains(fake.Calls, "RevokeFolder(folders/900000000001, user:bedrock@imp.example, roles/resourcemanager.folderEditor)") {
 		t.Errorf("the break-glass account's grants: %v", fake.Calls)
 	}
+	// The zones are made as the applier, with the Token Creator the run grants the
+	// break-glass account on it and on the creating identity and takes off at its end.
+	applier := res.Placement.ApplierIdentity()
+	if !slices.Equal(fake.DNSIdentities, []string{applier}) {
+		t.Errorf("Cloud DNS opened as %v, want the applier alone", fake.DNSIdentities)
+	}
+	for _, identity := range []string{applier, res.Placement.CreatingIdentity()} {
+		if !slices.Contains(fake.Calls, "GrantServiceAccount(serviceAccounts/"+identity+", roles/iam.serviceAccountTokenCreator, user:bedrock@imp.example)") || !slices.Contains(fake.Calls, "RevokeServiceAccount(serviceAccounts/"+identity+", user:bedrock@imp.example, roles/iam.serviceAccountTokenCreator)") {
+			t.Errorf("the bootstrap's Token Creator on %s was not granted and taken off: %v", identity, fake.Calls)
+		}
+	}
+	if !slices.Contains(fake.Verifiers, applier) || !slices.Contains(fake.Verifiers, res.Placement.CreatingIdentity()) {
+		t.Errorf("the identities verified: %v", fake.Verifiers)
+	}
 	if !slices.Contains(srv.Created, "imp-example/imr-root-infrastructure") {
 		t.Errorf("the repository was not made: %v", srv.Created)
 	}

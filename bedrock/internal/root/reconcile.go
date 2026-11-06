@@ -10,10 +10,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net/http"
 	"slices"
 	"sort"
 	"strings"
 	"time"
+
+	"google.golang.org/api/googleapi"
 
 	"github.com/go-playground/errors/v5"
 	"github.com/google/go-cmp/cmp"
@@ -128,12 +131,15 @@ func Run(ctx context.Context, clients *Clients, req *Request, out io.Writer) (*R
 		e.d.ProjectNumber = number
 	}
 	sections := []func(ctx context.Context) error{
-		e.services, e.identities, e.customRole, e.secretsSection, e.grants, e.zones, e.cloudBuild, e.githubSection, e.apps,
+		e.services, e.identities, e.customRole, e.secretsSection, e.grants, e.zones, e.verification, e.cloudBuild, e.githubSection, e.apps,
 	}
 	if req.Mode == Apply && !req.Bootstrap {
 		sections = append(sections, e.creations)
 	}
 	sections = append(sections, e.orgPolicies)
+	if req.Bootstrap {
+		sections = append(sections, e.bootstrapWithdrawal)
+	}
 	for _, section := range sections {
 		if err := section(ctx); err != nil {
 			return e.report, err
@@ -157,7 +163,14 @@ func (e *engine) open(ctx context.Context) error {
 	if e.secrets, err = e.clients.Secrets(ctx); err != nil {
 		return err
 	}
-	if e.dns, err = e.clients.DNS(ctx); err != nil {
+	if e.req.Bootstrap && e.clients.DNSAs != nil {
+		// The bootstrap makes the zones as the applier, the identity Google verifies as
+		// the domains' owner, with the Token Creator it grants itself for the run.
+		e.dns, err = e.clients.DNSAs(ctx, e.d.Applier())
+	} else {
+		e.dns, err = e.clients.DNS(ctx)
+	}
+	if err != nil {
 		return err
 	}
 	if e.builds, err = e.clients.Builds(ctx); err != nil {
@@ -244,17 +257,18 @@ func (e *engine) note(n string) {
 
 // The sections, as the report names them.
 const (
-	sectionServices   = "APIs"
-	sectionIdentities = "identities"
-	sectionRoles      = "roles"
-	sectionSecrets    = "secrets"
-	sectionGrants     = "grants"
-	sectionZones      = "zones"
-	sectionCloudBuild = "Cloud Build"
-	sectionGitHub     = "GitHub"
-	sectionApps       = "GitHub Apps"
-	sectionCreations  = "creations"
-	sectionPolicies   = "organization policies"
+	sectionServices     = "APIs"
+	sectionIdentities   = "identities"
+	sectionRoles        = "roles"
+	sectionSecrets      = "secrets"
+	sectionGrants       = "grants"
+	sectionZones        = "zones"
+	sectionVerification = "verification"
+	sectionCloudBuild   = "Cloud Build"
+	sectionGitHub       = "GitHub"
+	sectionApps         = "GitHub Apps"
+	sectionCreations    = "creations"
+	sectionPolicies     = "organization policies"
 )
 
 // services enables the APIs the root project lacks.
@@ -500,6 +514,53 @@ func describeBindings(bs []org.Binding, managed []string) string {
 	return joined(parts)
 }
 
+// bootstrapGrants makes the break-glass account's Token Creator on the applier and the
+// creating identity in the bootstrap's run, which takes them off at its end
+// (bootstrapWithdrawal); any other run takes off what a bootstrap that stopped left.
+func (e *engine) bootstrapGrants(ctx context.Context) error {
+	if !e.req.Bootstrap {
+		return e.bootstrapWithdrawal(ctx)
+	}
+	for _, g := range e.d.BootstrapGrants() {
+		bindings, err := e.iam.ServiceAccountPolicy(ctx, g.Resource)
+		if err != nil {
+			return err
+		}
+		if holds(bindings, g.Role, g.Member) {
+			continue
+		}
+		if err := e.change(ctx, sectionGrants, fmt.Sprintf("grants %s %s on the identity %s, for the bootstrap's run", g.Member, g.Role, g.Resource), func(ctx context.Context) error {
+			return e.iam.GrantServiceAccount(ctx, g.Resource, g.Role, g.Member)
+		}); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+// bootstrapWithdrawal takes the bootstrap's grants off: at the end of the bootstrap's
+// run, once the zones are made and the identities verified, and in any other run that
+// finds them.
+func (e *engine) bootstrapWithdrawal(ctx context.Context) error {
+	for _, g := range e.d.BootstrapGrants() {
+		bindings, err := e.iam.ServiceAccountPolicy(ctx, g.Resource)
+		if err != nil {
+			return err
+		}
+		if !holds(bindings, g.Role, g.Member) {
+			continue
+		}
+		if err := e.change(ctx, sectionGrants, fmt.Sprintf("takes %s's %s off the identity %s, the bootstrap's grant for its run", g.Member, g.Role, g.Resource), func(ctx context.Context) error {
+			return e.iam.RevokeServiceAccount(ctx, g.Resource, g.Role, g.Member)
+		}); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
 // grants brings each identity's roles on the project and the folder to the desired
 // list, and makes the bindings on the identities themselves; at the bootstrap, the
 // creating identity's roles at the organization node and on the billing account and the
@@ -530,6 +591,9 @@ func (e *engine) grants(ctx context.Context) error {
 		}); err != nil {
 			return err
 		}
+	}
+	if err := e.bootstrapGrants(ctx); err != nil {
+		return err
 	}
 
 	return e.outerGrants(ctx)
@@ -698,8 +762,13 @@ func (e *engine) folder(ctx context.Context) (string, error) {
 // the labels handed onward; a zone whose domain the placement no longer lists is
 // reported, never deleted.
 func (e *engine) zones(ctx context.Context) error {
-	existing, err := e.dns.Zones(ctx, e.d.Project())
-	if err != nil {
+	var existing []Zone
+	if err := e.patient(ctx, func() error {
+		var err error
+		existing, err = e.dns.Zones(ctx, e.d.Project())
+
+		return err
+	}); err != nil {
 		return err
 	}
 	wanted := map[string]bool{}
@@ -710,16 +779,20 @@ func (e *engine) zones(ctx context.Context) error {
 		i := slices.IndexFunc(existing, func(z Zone) bool { return z.Name == spec.Zone.Name })
 		switch {
 		case i < 0:
-			if err := e.change(ctx, sectionZones, "creates the zone "+spec.Zone.Name+" for "+spec.Domain, func(ctx context.Context) error {
-				return e.dns.CreateZone(ctx, e.d.Project(), spec.Zone)
-			}); err != nil {
-				return err
-			}
+			what := "creates the zone " + spec.Zone.Name + " for " + spec.Domain
 			if e.req.Mode != Apply {
+				e.report.Changes = append(e.report.Changes, Change{Section: sectionZones, What: what})
 				for _, r := range spec.Records {
 					e.report.Changes = append(e.report.Changes, Change{Section: sectionZones, What: "hands " + strings.TrimSuffix(r.Name, ".") + " onward to " + joined(r.Data)})
 				}
 
+				continue
+			}
+			made, err := e.makeZone(ctx, *spec, what)
+			if err != nil {
+				return err
+			}
+			if !made {
 				continue
 			}
 		case existing[i].DNSName != spec.Zone.DNSName:
@@ -784,6 +857,213 @@ func (e *engine) records(ctx context.Context, spec ZoneSpec) error {
 	return e.change(ctx, sectionZones, "in the zone "+spec.Zone.Name+": "+strings.Join(what, "; "), func(ctx context.Context) error {
 		return e.dns.ChangeRecordSets(ctx, e.d.Project(), spec.Zone.Name, additions, deletions)
 	})
+}
+
+// makeZone makes the zone in an apply, and meets Cloud DNS's ownership check when the
+// domain is one Google holds as verified (registered through Google, or well known): the
+// applier, as which the zone is made, must own the domain in Google's webmaster
+// verification, and before the zone exists its token can only be where the domain's DNS
+// is served today, by a person. The run says which record, and the zone waits for the
+// next apply.
+func (e *engine) makeZone(ctx context.Context, spec ZoneSpec, what string) (made bool, err error) {
+	fmt.Fprintf(e.out, "%s: %s\n", sectionZones, what)
+	err = e.patient(ctx, func() error { return e.dns.CreateZone(ctx, e.d.Project(), spec.Zone) })
+	if err != nil && strings.Contains(err.Error(), create.OwnershipCode) {
+		verified, verr := e.applierVerified(ctx, spec)
+		if verr != nil {
+			return false, verr
+		}
+		if !verified {
+			return false, nil
+		}
+		err = e.dns.CreateZone(ctx, e.d.Project(), spec.Zone)
+	}
+	if err != nil {
+		return false, errors.Wrapf(err, "%s: %s", sectionZones, what)
+	}
+	e.report.Changes = append(e.report.Changes, Change{Section: sectionZones, What: what})
+	e.report.Applied++
+
+	return true, nil
+}
+
+// applierVerified verifies the applier as an owner of the domain through the token a
+// person put where the domain's DNS is served today, or says which record to put there,
+// as a finding; false while Google does not see it.
+func (e *engine) applierVerified(ctx context.Context, spec ZoneSpec) (bool, error) {
+	applier := e.d.Applier()
+	if e.clients.Verifier == nil {
+		return false, errors.Newf("Cloud DNS asks the maker of the zone %s to own %s in Google's webmaster verification, and this run cannot act as %s to verify it", spec.Zone.Name, spec.Domain, applier)
+	}
+	v, err := e.clients.Verifier(ctx, applier)
+	if err != nil {
+		return false, err
+	}
+	defer v.Close()
+	token, err := e.token(ctx, v, spec.Domain)
+	if err != nil {
+		return false, err
+	}
+	seen, err := v.Verify(ctx, spec.Domain)
+	if err != nil {
+		return false, err
+	}
+	if seen {
+		fmt.Fprintf(e.out, "  %s owns %s in Google's webmaster verification now, by the record a person put where the domain's DNS is served; the zone can be made.\n", applier, spec.Domain)
+
+		return true, nil
+	}
+	e.finding(fmt.Sprintf("Cloud DNS asks the maker of the zone %s to own %s in Google's webmaster verification, and the zone waits: where %s's DNS is served today (the registrar's, until the delegation), a person adds a TXT record at the apex with the value %s, the token of %s; the next apply verifies it, makes the zone and names its name servers for the registrar (README.md, \"Delegating a domain to this organization\")", spec.Zone.Name, spec.Domain, spec.Domain, token, applier))
+
+	return false, nil
+}
+
+// verification keeps the applier and the creating identity verified owners of each
+// domain whose zone stands: their tokens as TXT records at the domain's apex in the
+// zone, beside whatever else the apex carries, and the verification itself where one is
+// not an owner yet, which Google answers once the registration points at the zone and
+// the record resolves; until then the run says the verification waits. The plan's
+// runner and a person's check cannot act as the identities and say the ownership is not
+// compared.
+func (e *engine) verification(ctx context.Context) error {
+	specs := e.d.Zones()
+	if len(specs) == 0 {
+		return nil
+	}
+	if e.clients.Verifier == nil || e.req.Mode != Apply {
+		e.note("the ownership of the domains in Google's webmaster verification by " + e.d.Applier() + " and " + e.d.Creator() + " was not compared: this run cannot act as them (the apply's runner does, and the bootstrap); the apply keeps their tokens in the zones, verifies them and says so")
+
+		return nil
+	}
+	existing, err := e.dns.Zones(ctx, e.d.Project())
+	if err != nil {
+		return err
+	}
+	for _, identity := range []string{e.d.Applier(), e.d.Creator()} {
+		if err := e.verifyAs(ctx, identity, specs, existing); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+// verifyAs keeps the identity's token in each standing zone and verifies the identity
+// where it is not an owner yet.
+func (e *engine) verifyAs(ctx context.Context, identity string, specs []ZoneSpec, existing []Zone) error {
+	v, err := e.clients.Verifier(ctx, identity)
+	if err != nil {
+		return err
+	}
+	defer v.Close()
+	for i := range specs {
+		spec := &specs[i]
+		if !slices.ContainsFunc(existing, func(z Zone) bool { return z.Name == spec.Zone.Name }) {
+			continue
+		}
+		token, err := e.token(ctx, v, spec.Domain)
+		if err != nil {
+			return err
+		}
+		if err := e.tokenRecord(ctx, *spec, identity, token); err != nil {
+			return err
+		}
+		owned, err := v.Owned(ctx, spec.Domain)
+		if err != nil {
+			return err
+		}
+		if owned {
+			continue
+		}
+		what := "verifies " + identity + " as an owner of " + spec.Domain + " in Google's webmaster verification"
+		fmt.Fprintf(e.out, "%s: %s\n", sectionVerification, what)
+		seen, err := v.Verify(ctx, spec.Domain)
+		if err != nil {
+			return errors.Wrapf(err, "%s: %s", sectionVerification, what)
+		}
+		if !seen {
+			e.note("the verification of " + identity + " as an owner of " + spec.Domain + " waits: Google does not see the token at the domain's apex yet; the registration must point at the zone's name servers (README.md, \"Delegating a domain to this organization\"), and a record just written takes a while to resolve; the next apply asks again")
+
+			continue
+		}
+		e.report.Changes = append(e.report.Changes, Change{Section: sectionVerification, What: what})
+		e.report.Applied++
+	}
+
+	return nil
+}
+
+// token is the identity's token for the domain, asked for again while the impersonation
+// a grant moments ago allows is still refused.
+func (e *engine) token(ctx context.Context, v Verifier, domain string) (string, error) {
+	var token string
+	err := e.patient(ctx, func() error {
+		var err error
+		token, err = v.Token(ctx, domain)
+
+		return err
+	})
+
+	return token, err
+}
+
+// tokenRecord puts the token among the TXT values at the domain's apex, leaving the
+// values there (a mail policy, another owner's token) as they are.
+func (e *engine) tokenRecord(ctx context.Context, spec ZoneSpec, identity, token string) error {
+	current, err := e.dns.RecordSets(ctx, e.d.Project(), spec.Zone.Name)
+	if err != nil {
+		return err
+	}
+	want := VerificationRecord(spec.Domain, token)
+	var deletions []RecordSet
+	if i := slices.IndexFunc(current, func(r RecordSet) bool { return r.Name == want.Name && r.Type == want.Type }); i >= 0 {
+		if slices.Contains(current[i].Data, want.Data[0]) {
+			return nil
+		}
+		deletions = []RecordSet{current[i]}
+		want.TTL = current[i].TTL
+		want.Data = append(slices.Clone(current[i].Data), want.Data...)
+	}
+
+	return e.change(ctx, sectionVerification, "in the zone "+spec.Zone.Name+": adds the token of "+identity+" for "+spec.Domain+" (a TXT record at the apex)", func(ctx context.Context) error {
+		return e.dns.ChangeRecordSets(ctx, e.d.Project(), spec.Zone.Name, []RecordSet{want}, deletions)
+	})
+}
+
+// A grant made moments ago is not seen by IAM at once: an impersonation it allows, or a
+// call it permits, is refused with PermissionDenied for a while. patient runs the call
+// again while that is the answer, grantPoll apart, up to grantSettle (the bootstrap's
+// constants). Cloud DNS's ownership refusal is a 403 too, and is not waited on.
+func (e *engine) patient(ctx context.Context, call func() error) error {
+	deadline := time.Now().Add(grantSettle)
+	for {
+		err := call()
+		if err == nil || !permissionNotSeen(err) || time.Now().After(deadline) {
+			return err
+		}
+		fmt.Fprintln(e.out, "  (a grant made moments ago has not reached IAM yet; trying again in a moment)")
+		if werr := e.sleep(ctx, grantPoll); werr != nil {
+			return werr
+		}
+	}
+}
+
+// permissionNotSeen reports whether the error is a refusal for a permission: a gRPC
+// PermissionDenied, an HTTP 403, or an impersonation refused with one; not Cloud DNS's
+// ownership refusal, which no wait resolves.
+func permissionNotSeen(err error) bool {
+	if strings.Contains(err.Error(), create.OwnershipCode) {
+		return false
+	}
+	if status.Code(errors.Cause(err)) == codes.PermissionDenied {
+		return true
+	}
+	var gerr *googleapi.Error
+	if errors.As(err, &gerr) && gerr.Code == http.StatusForbidden {
+		return true
+	}
+
+	return strings.Contains(err.Error(), "status code 403")
 }
 
 // cloudBuild makes the connection, the repository link and the two triggers, and grants

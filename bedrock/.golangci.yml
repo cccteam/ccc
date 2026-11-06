@@ -82,6 +82,10 @@ linters:
             # the plan ran as, impersonated with the deploy identity's credentials.
             - google.golang.org/api/impersonate
             - google.golang.org/api/idtoken
+            # The root organization's apply verifies the applier and the creating
+            # identity as its domains' owners in Google's webmaster verification, as
+            # each identity, impersonated with the verification's own scope.
+            - google.golang.org/api/siteverification/v1
             # A restore run deletes a Firestore database's documents through the Firestore
             # REST API as the apply identity, impersonated the same way; the token source
             # becomes the HTTP client that calls it.
