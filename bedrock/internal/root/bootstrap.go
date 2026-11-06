@@ -136,9 +136,14 @@ func Bootstrap(ctx context.Context, clients *Clients, req *BootstrapRequest, out
 	}
 	cloned := b.clone(ctx, commit, infraToken)
 	fmt.Fprintf(out, "=== making the root organization as placement.json says ===\n")
-	if _, err := Run(ctx, clients, &Request{Placement: b.p, Dir: req.Dir, Mode: Apply, Commit: commit, GitHubToken: infraToken, Bootstrap: true}, out); err != nil {
+	applied, err := Run(ctx, clients, &Request{Placement: b.p, Dir: req.Dir, Mode: Apply, Commit: commit, GitHubToken: infraToken, Bootstrap: true}, out)
+	if err != nil {
 		return nil, err
 	}
+	// What the run could not make true and what it did not compare (a zone Cloud DNS
+	// refused, with the applier's token to put where the domain's DNS is served; a
+	// verification that waits) is a person's to see here, as it is on an apply's build.
+	applied.Write(out, Apply)
 	if err := b.withdraw(ctx, folder); err != nil {
 		return nil, err
 	}
