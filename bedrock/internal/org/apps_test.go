@@ -34,7 +34,7 @@ func TestAppManifests(t *testing.T) {
 	}
 	infra := p.AppManifest(InfrastructureApp)
 	wantInfra := map[string]string{
-		PermissionActions: LevelRead, PermissionAdministration: LevelWrite, PermissionContents: LevelWrite, PermissionMetadata: LevelRead,
+		PermissionActions: LevelRead, PermissionAdministration: LevelWrite, PermissionContents: LevelWrite, PermissionMetadata: LevelRead, PermissionPullRequests: LevelWrite,
 		PermissionOrgAdmin: LevelWrite, PermissionOrgVariables: LevelWrite, PermissionOrgRunners: LevelWrite,
 	}
 	if diff := cmp.Diff(wantInfra, infra.Permissions); diff != "" {
@@ -155,8 +155,8 @@ func TestAppManifestVerify(t *testing.T) {
 			},
 			installations: installed,
 			want: []string{
-				"the deployer app lacks the Deployments permission (write)",
-				"the deployer app holds the Issues permission as read, not write",
+				"the deployer app lacks the Deployments permission (write): add it on the app's settings page (Permissions & events), then accept the new permission on the organization's installation of the app (the organization's settings, GitHub Apps)",
+				"the deployer app holds the Issues permission as read, not write: raise it on the app's settings page (Permissions & events), then accept the new permission on the organization's installation of the app (the organization's settings, GitHub Apps)",
 				"the deployer app holds the Administration (organization) permission (write), which it does not need: take it off on the app's settings page",
 			},
 		},

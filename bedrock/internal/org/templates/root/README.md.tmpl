@@ -254,7 +254,8 @@ and made by the bootstrap from that declaration (a brought app is held to it):
 - the infrastructure app (`{{.AppNamePrefix}}-infrastructure`), which a run of
   the triggers acts on GitHub as, here and in every hosting organization: it
   configures the repositories and bypasses the branch rules it writes, and the
-  creation pushes a new organization's repository with it;
+  creation pushes a new organization's repository and opens its hand-off pull
+  request with it;
 - the deployer app (`{{.AppNamePrefix}}-deployer`), which the plan trigger posts
   on a pull request as, here and in every hosting organization, and every
   application's pipeline talks back on its pull requests as;
@@ -545,8 +546,8 @@ grants the new organization's identities their use of the billing account.
    organization's state bucket (`applied/created/<prefix>`), and the hand-off:
    a pull request here, from the branch `create/<prefix>`, recording the folder
    in `placement.json` and the placement as created under
-   `organizations/<prefix>/` (the branch pushed as the infrastructure app, the
-   pull request opened as the deployer app). A creation that stops finishes on the next push,
+   `organizations/<prefix>/`, branch and pull request as the infrastructure
+   app. A creation that stops finishes on the next push,
    since every step looks before it makes; a created organization is left
    alone.
 3. **The hand-off.** Its merge records the folder, from which the apply keeps

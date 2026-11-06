@@ -242,16 +242,36 @@ func transient(err error) bool {
 	return errors.As(err, &urlErr)
 }
 
-// message is the API's message field, or the raw answer when there is none.
+// message is the API's message field, with the details a validation failure (422) lists
+// in errors (the resource, the field and the code, or a message of their own), or the
+// raw answer when there is no message.
 func message(data []byte) string {
 	var m struct {
 		Message string `json:"message"`
+		Errors  []struct {
+			Resource string `json:"resource"`
+			Field    string `json:"field"`
+			Code     string `json:"code"`
+			Message  string `json:"message"`
+		} `json:"errors"`
 	}
-	if err := json.Unmarshal(data, &m); err == nil && m.Message != "" {
+	if err := json.Unmarshal(data, &m); err != nil || m.Message == "" {
+		return strings.TrimSpace(string(data))
+	}
+	details := make([]string, 0, len(m.Errors))
+	for _, e := range m.Errors {
+		switch {
+		case e.Message != "":
+			details = append(details, e.Message)
+		case e.Resource != "" || e.Field != "" || e.Code != "":
+			details = append(details, strings.TrimSpace(e.Resource+" "+e.Field+" "+e.Code))
+		}
+	}
+	if len(details) == 0 {
 		return m.Message
 	}
 
-	return strings.TrimSpace(string(data))
+	return m.Message + " (" + strings.Join(details, "; ") + ")"
 }
 
 // Ref is a git reference and the object it points at.

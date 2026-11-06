@@ -111,11 +111,6 @@ type Server struct {
 	Bodies []string
 	// Created are the repositories made through the API (owner/name), oldest first.
 	Created []string
-	// accepted are the tokens the server accepts beside test-token, which it always
-	// accepts, each with the login it belongs to (Accept); Openers are the tokens the
-	// pull requests opened through the API were opened with, oldest first.
-	accepted map[string]string
-	Openers  []string
 	// Login is who the token belongs to, as /user answers; octocat by default.
 	// Memberships are the token's user's roles in organizations, by organization (admin
 	// for an owner, member); an organization not listed answers not found.
@@ -350,9 +345,6 @@ var routes = []route{
 		s.pull(w, m[1]+"/"+m[2], number)
 	}},
 	{pullsRE, func(s *Server, w http.ResponseWriter, r *http.Request, m []string) {
-		if r.Method == http.MethodPost {
-			s.Openers = append(s.Openers, strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer "))
-		}
 		s.pulls(w, r, m[1]+"/"+m[2], m[1])
 	}},
 	{deploysRE, func(s *Server, w http.ResponseWriter, r *http.Request, m []string) {
@@ -536,12 +528,10 @@ func (s *Server) serve(w http.ResponseWriter, r *http.Request) {
 
 		return
 	}
-	if token := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer "); token != "test-token" {
-		if _, ok := s.accepted[token]; !ok {
-			reply(w, http.StatusUnauthorized, map[string]string{messageKey: "Bad credentials"})
+	if r.Header.Get("Authorization") != "Bearer test-token" {
+		reply(w, http.StatusUnauthorized, map[string]string{messageKey: "Bad credentials"})
 
-			return
-		}
+		return
 	}
 	for _, route := range routes {
 		if m := route.re.FindStringSubmatch(path); m != nil {
@@ -1501,13 +1491,4 @@ func (s *Server) updateHostedRunner(w http.ResponseWriter, r *http.Request, org 
 		return
 	}
 	reply(w, http.StatusNotFound, map[string]string{messageKey: notFound})
-}
-
-// Accept makes the server accept the token beside test-token, as login's: a second app's
-// installation token.
-func (s *Server) Accept(token, login string) {
-	if s.accepted == nil {
-		s.accepted = map[string]string{}
-	}
-	s.accepted[token] = login
 }

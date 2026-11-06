@@ -81,9 +81,12 @@ var appPermissions = map[AppRole]map[string]string{
 		// policies on Actions and writes them, with the rulesets, on Administration.
 		PermissionActions:        LevelRead,
 		PermissionAdministration: LevelWrite,
-		// The root organization's apply pushes a created organization's render.
-		PermissionContents: LevelWrite,
-		PermissionMetadata: LevelRead,
+		// The root organization's apply pushes a created organization's render, and
+		// opens the hand-off pull request in the root repository from the branch it
+		// pushed there (GitHub resolves the pull request's head through Contents).
+		PermissionContents:     LevelWrite,
+		PermissionMetadata:     LevelRead,
+		PermissionPullRequests: LevelWrite,
 		// The organization's runner group, hosted runner and CI_LARGE_RUNNER variable,
 		// and the repositories it creates.
 		PermissionOrgAdmin:     LevelWrite,
@@ -228,9 +231,9 @@ func (m AppManifest) Verify(app *github.App, installations []github.Installation
 		want, got := m.Permissions[name], app.Permissions[name]
 		switch {
 		case got == "":
-			findings = append(findings, fmt.Sprintf("%s lacks the %s permission (%s)", m.Role.Title(), permissionTitle(name), want))
+			findings = append(findings, fmt.Sprintf("%s lacks the %s permission (%s): add it on the app's settings page (Permissions & events), then accept the new permission on the organization's installation of the app (the organization's settings, GitHub Apps)", m.Role.Title(), permissionTitle(name), want))
 		case level(got) < level(want):
-			findings = append(findings, fmt.Sprintf("%s holds the %s permission as %s, not %s", m.Role.Title(), permissionTitle(name), got, want))
+			findings = append(findings, fmt.Sprintf("%s holds the %s permission as %s, not %s: raise it on the app's settings page (Permissions & events), then accept the new permission on the organization's installation of the app (the organization's settings, GitHub Apps)", m.Role.Title(), permissionTitle(name), got, want))
 		}
 	}
 	for _, name := range sortedKeys(app.Permissions) {

@@ -214,12 +214,12 @@ func blobs(ctx context.Context, gh *github.Client, dir, owner, repo string) ([]g
 // the created organization's folder (placement.json, hostingOrganizations) and the
 // placement as created (organizations/<prefix>/placement.json), from a branch of its
 // own; a pull request from that branch already open is left as it is. It answers the
-// pull request's URL. The branch is pushed as the creation (the infrastructure app), and
-// the pull request found and opened as the deployer app (Request.PullRequestToken).
+// pull request's URL. The branch and the pull request are the infrastructure app's,
+// whose declaration carries the pull-request permission for it.
 func (f *creation) handOff(ctx context.Context, h *org.Placement, marker *Marker) (string, error) {
 	owner, repo := f.req.Root.GithubOrganization, f.req.Root.SourceRepo
 	branch := handOffBranch + h.Prefix
-	open, err := f.prs.PullRequestsFrom(ctx, owner, repo, branch)
+	open, err := f.gh.PullRequestsFrom(ctx, owner, repo, branch)
 	if err != nil {
 		return "", errors.Wrapf(err, "listing pull requests from %s", branch)
 	}
@@ -285,7 +285,7 @@ func (f *creation) handOff(ctx context.Context, h *org.Placement, marker *Marker
 	if err := f.gh.CreateRef(ctx, owner, repo, "refs/heads/"+branch, commit); err != nil {
 		return "", errors.Wrapf(err, "creating branch %s", branch)
 	}
-	pr, err := f.prs.CreatePullRequest(ctx, owner, repo, github.PullRequestRequest{Title: title, Head: branch, Base: root.GithubDefaultBranch, Body: body})
+	pr, err := f.gh.CreatePullRequest(ctx, owner, repo, github.PullRequestRequest{Title: title, Head: branch, Base: root.GithubDefaultBranch, Body: body})
 	if err != nil {
 		return "", errors.Wrapf(err, "opening the hand-off pull request from %s", branch)
 	}

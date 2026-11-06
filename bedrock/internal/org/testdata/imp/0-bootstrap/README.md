@@ -339,14 +339,16 @@ deployer apps, because widening the deployer app would give every application
 pipeline those rights. The app is the root organization's: its bootstrap made
 it from bedrock's declaration (the root `README.md`, "Bootstrapped by one
 command") with the repository permissions Actions (read), Administration (read
-and write), Contents (read and write) and Metadata (read), and the
+and write), Contents (read and write), Metadata (read) and Pull requests
+(read and write), and the
 organization permissions Administration, Variables and Self-hosted runners
 (read and write), installed on the organization for all repositories, and this
 organization records the same App ID (`githubInfrastructureAppId` in
 `placement.json`, filled in by the creation). The provider reads a repository's
 environments and their branch policies on the Actions permission and writes
 them on Administration; with Contents the creation pushes a new organization's
-rendered repository; the organization permissions are for the
+rendered repository, and with Pull requests it opens the hand-off pull request
+in the root organization's repository; the organization permissions are for the
 `CI_LARGE_RUNNER` variable, the runner and its runner group, which the root
 organization's apply sets and makes when its placement names a larger runner
 (`ciLargeRunner`, `ciLargeRunnerSize`). The app bypasses the branch rules it

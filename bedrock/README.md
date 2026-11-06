@@ -2524,9 +2524,9 @@ everything it made (Owner on each project, Folder Admin and Folder Editor on eac
 its roles on the organization's folder), a marker in the root organization's state bucket
 (`applied/created/<prefix>`), and the hand-off, a pull request in the root organization's
 repository from the branch `create/<prefix>` recording the folder in `placement.json` and
-the placement as created (the branch pushed as the infrastructure app, the pull request
-opened as the deployer app, the app that speaks on pull requests). Every step looks
-before it makes, so a creation that stopped
+the placement as created, branch and pull request both as the infrastructure app, whose
+declaration carries Pull requests for it. Every step looks before it makes, so a creation
+that stopped
 finishes on the next push, and a created organization is left alone. `org plan` says on
 the pull request what its merge creates. Left by hand, after the creation: the spend
 budget, by a billing administrator; the consent screens and the role groups as the
@@ -3056,9 +3056,11 @@ organization's GitHub plan, so its plan must include all four.
   to it: the release app (Contents, Issues and Pull requests, read and write), the
   deployer app (Checks, Deployments, Issues and Pull requests, read and write) and the
   infrastructure app (`0-bootstrap/README.md`: repository Actions, Administration,
-  Contents and Metadata, organization Administration, Variables and Self-hosted runners;
-  Contents read and write is what the creation pushes a new organization's repository
-  with), each installed on all repositories; and Google's Cloud Build GitHub App,
+  Contents, Metadata and Pull requests, organization Administration, Variables and
+  Self-hosted runners; Contents read and write is what the creation pushes a new
+  organization's repository with, and Pull requests what it opens the hand-off pull
+  request in the root organization's repository with), each installed on all
+  repositories; and Google's Cloud Build GitHub App,
   installed on the organization for all repositories as the Bot Account before the
   bootstrap, which finds the installation through the infrastructure app.
 

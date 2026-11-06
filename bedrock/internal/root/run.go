@@ -232,11 +232,6 @@ func ApplyRun(ctx context.Context, clients *Clients, rc *RunClients, req *RunReq
 	if err != nil {
 		return err
 	}
-	// A creation's hand-off pull request is found and opened as the deployer app.
-	deployer, err := AppToken(ctx, rc, clients.GitHub, t.p, org.DeployerApp)
-	if err != nil {
-		return err
-	}
 	locks, err := clients.Locks(ctx)
 	if err != nil {
 		return err
@@ -261,7 +256,7 @@ func ApplyRun(ctx context.Context, clients *Clients, rc *RunClients, req *RunReq
 		return err
 	}
 	defer func() { _ = locks.Unlock(ctx, t.p.StateBucket, LockObject) }()
-	report, err := Run(ctx, clients, &Request{Placement: t.p, Dir: req.Dir, Mode: Apply, Commit: t.commit, GitHubToken: infra, PullRequestToken: deployer}, out)
+	report, err := Run(ctx, clients, &Request{Placement: t.p, Dir: req.Dir, Mode: Apply, Commit: t.commit, GitHubToken: infra}, out)
 	if err != nil {
 		return err
 	}

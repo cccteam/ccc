@@ -183,14 +183,8 @@ func newFlow(t *testing.T) *flow {
 		Files:    map[string]string{"tree0:placement.json": "{}", "tree0:README.md": "# imr\n"},
 	})
 
-	srv.Accept(pullRequestToken, "imr-deployer[bot]")
-
 	return &flow{google: createtest.New(), runner: &fakeRunner{}, store: &fakeStore{objects: map[string]string{}}, srv: srv, repo: repo}
 }
-
-// pullRequestToken is the deployer app's token in the tests, which the hand-off pull
-// request is opened with; test-token is the creation's own.
-const pullRequestToken = "deployer-token"
 
 func (f *flow) clients() *create.Clients {
 	return &create.Clients{
@@ -203,7 +197,7 @@ func (f *flow) clients() *create.Clients {
 }
 
 func request(root *org.Placement, dir string) *create.Request {
-	return &create.Request{Root: root, RootDir: dir, Record: *root.HostingOrganization("rgb"), Token: "test-token", PullRequestToken: pullRequestToken, Commit: rootCommit}
+	return &create.Request{Root: root, RootDir: dir, Record: *root.HostingOrganization("rgb"), Token: "test-token", Commit: rootCommit}
 }
 
 // TestRun creates rgb from the root organization imr: the seed by API (both folders, the
@@ -344,9 +338,6 @@ func TestRun(t *testing.T) {
 	}
 	if len(f.repo.PullRequests) != 1 || f.repo.PullRequests[0].Head.Ref != "create/rgb" {
 		t.Fatalf("pull requests %v", f.repo.PullRequests)
-	}
-	if want := []string{pullRequestToken}; !slices.Equal(f.srv.Openers, want) {
-		t.Errorf("the hand-off pull request was opened with %v, want the deployer app's %v", f.srv.Openers, want)
 	}
 	handOffTree := f.repo.Trees[f.repo.Refs["refs/heads/create/rgb"].SHA]
 	if !strings.Contains(f.repo.Files[handOffTree+":placement.json"], `"folder": "`+orgFolder+`"`) {
