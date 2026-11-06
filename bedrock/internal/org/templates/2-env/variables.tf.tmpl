@@ -66,7 +66,7 @@ variable "application_environments" {
   }
 
   validation {
-    condition     = alltrue([for app, envs in var.application_environments : length(envs) > 0 && try(envs == slice({{.EnvironmentsList}}, 0, length(envs)), false)])
+    condition     = alltrue([for app, envs in var.application_environments : length(envs) > 0 && try(envs == tolist(slice({{.EnvironmentsList}}, 0, length(envs))), false)])
     error_message = "Each application's environments are a prefix of the promotion order ({{.EnvironmentsProse}})."
   }
 }
