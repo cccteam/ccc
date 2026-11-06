@@ -213,8 +213,9 @@ func blobs(ctx context.Context, gh *github.Client, dir, owner, repo string) ([]g
 // handOff opens, in the root organization's repository, the pull request that records
 // the created organization's folder (placement.json, hostingOrganizations) and the
 // placement as created (organizations/<prefix>/placement.json), from a branch of its
-// own; a pull request from that branch already open is left as it is. It answers the
-// pull request's URL. The branch and the pull request are the infrastructure app's,
+// own; a pull request from that branch already open is left as it is, and a branch left
+// by a run that stopped before its pull request is moved to this run's commit. It answers
+// the pull request's URL. The branch and the pull request are the infrastructure app's,
 // whose declaration carries the pull-request permission for it.
 func (f *creation) handOff(ctx context.Context, h *org.Placement, marker *Marker) (string, error) {
 	owner, repo := f.req.Root.GithubOrganization, f.req.Root.SourceRepo
@@ -282,8 +283,21 @@ func (f *creation) handOff(ctx context.Context, h *org.Placement, marker *Marker
 	if err != nil {
 		return "", errors.Wrap(err, "creating the hand-off commit")
 	}
-	if err := f.gh.CreateRef(ctx, owner, repo, "refs/heads/"+branch, commit); err != nil {
-		return "", errors.Wrapf(err, "creating branch %s", branch)
+	// A run that stopped between the branch and the pull request left the branch: it is
+	// moved to this run's commit, and the pull request opened from it.
+	stood, err := f.gh.Ref(ctx, owner, repo, "heads/"+branch)
+	switch {
+	case err == nil:
+		if err := f.gh.UpdateRef(ctx, owner, repo, "heads/"+branch, commit, true); err != nil {
+			return "", errors.Wrapf(err, "moving branch %s to the hand-off commit", branch)
+		}
+		fmt.Fprintf(f.out, "Branch %s stood at %s from an earlier run; moved to the hand-off commit %s.\n", branch, short(stood.Object.SHA), short(commit))
+	case github.NotFound(err):
+		if err := f.gh.CreateRef(ctx, owner, repo, "refs/heads/"+branch, commit); err != nil {
+			return "", errors.Wrapf(err, "creating branch %s", branch)
+		}
+	default:
+		return "", errors.Wrapf(err, "reading branch %s", branch)
 	}
 	pr, err := f.gh.CreatePullRequest(ctx, owner, repo, github.PullRequestRequest{Title: title, Head: branch, Base: root.GithubDefaultBranch, Body: body})
 	if err != nil {

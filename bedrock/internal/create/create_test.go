@@ -434,6 +434,34 @@ func TestRunResumes(t *testing.T) {
 	}
 }
 
+// TestRunHandOffBranchLeft: a run that stopped between the hand-off branch and its pull
+// request left the branch; the next run moves the branch to its own commit and opens the
+// pull request from it, instead of refusing on the branch that exists.
+func TestRunHandOffBranchLeft(t *testing.T) {
+	t.Parallel()
+
+	f := newFlow(t)
+	dir, root := checkout(t)
+	f.repo.Refs["refs/heads/create/rgb"] = github.Object{Type: "commit", SHA: "left9"}
+	f.repo.Ancestry["left9"] = []string{"left9", baseSHA}
+	f.repo.Trees["left9"] = "treeleft"
+	var out bytes.Buffer
+	result, err := create.Run(t.Context(), f.clients(), request(root, dir), &out)
+	if err != nil {
+		t.Fatalf("Run() error = %v; output:\n%s", err, out.String())
+	}
+	moved := f.repo.Refs["refs/heads/create/rgb"].SHA
+	if moved == "left9" || moved == "" {
+		t.Errorf("the branch stands at %q, want this run's hand-off commit", moved)
+	}
+	if len(f.repo.PullRequests) != 1 || f.repo.PullRequests[0].Head.Ref != "create/rgb" || result.PullRequest == "" {
+		t.Errorf("pull requests %v, result %+v", f.repo.PullRequests, result)
+	}
+	if want := "Branch create/rgb stood at left9 from an earlier run; moved to the hand-off commit "; !strings.Contains(out.String(), want) {
+		t.Errorf("output lacks %q:\n%s", want, out.String())
+	}
+}
+
 // TestRunRefusals: a record whose boot project is not the listing's, and a seam that
 // refuses a step, each stop the creation with the step named, and nothing after it runs.
 func TestRunRefusals(t *testing.T) {
