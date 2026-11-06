@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -81,12 +82,18 @@ type fakeRunner struct {
 	mu          sync.Mutex
 	ran         []deploy.Command
 	outputsRead []deploy.Command
+	// refuse, when set, answers a command: what it writes and the error, or nil to let it
+	// pass; the test's way of failing one apply.
+	refuse func(c deploy.Command, out io.Writer) error
 }
 
-func (r *fakeRunner) Run(_ context.Context, c deploy.Command, _ io.Writer) error {
+func (r *fakeRunner) Run(_ context.Context, c deploy.Command, out io.Writer) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.ran = append(r.ran, c)
+	if r.refuse != nil {
+		return r.refuse(c, out)
+	}
 
 	return nil
 }
@@ -524,6 +531,42 @@ func TestRunStartsOverMarker(t *testing.T) {
 	}
 	if !strings.Contains(f.store.objects["applied/created/rgb"], `"bootProject": "rgb-boot-gbl-core-e5f6"`) {
 		t.Errorf("the marker after: %s", f.store.objects["applied/created/rgb"])
+	}
+}
+
+// TestRunFirstApplyAgainAfterRace: 1-org's first apply is refused once by Google's race
+// (an API enabled moments ago not seen by every service yet); the creation waits and
+// runs the apply once more, and goes on.
+func TestRunFirstApplyAgainAfterRace(t *testing.T) {
+	t.Parallel()
+
+	f := newFlow(t)
+	dir, root := checkout(t)
+	refused := false
+	f.runner.refuse = func(c deploy.Command, out io.Writer) error {
+		if refused || c.Args[0] != "apply" || filepath.Base(c.Dir) != "1-org" {
+			return nil
+		}
+		refused = true
+		fmt.Fprintln(out, "Error: Error deleting default network in project rgb-prd-gbl-core-1a2b: googleapi: Error 403: Compute Engine API has not been used in project rgb-prd-gbl-core-1a2b before or it is disabled. ... \"reason\": \"SERVICE_DISABLED\"")
+
+		return errors.New("exit status 1")
+	}
+	var out bytes.Buffer
+	if _, err := create.Run(t.Context(), f.clients(), request(root, dir), &out); err != nil {
+		t.Fatalf("Run() error = %v; output:\n%s", err, out.String())
+	}
+	if !strings.Contains(out.String(), "An API enabled moments ago is not seen by every service yet, which Google says to wait out; the first apply of rgb's 1-org runs once more in 1m30s.\n") {
+		t.Errorf("output:\n%s", out.String())
+	}
+	applies := 0
+	for _, c := range f.runner.ran {
+		if c.Args[0] == "apply" && filepath.Base(c.Dir) == "1-org" {
+			applies++
+		}
+	}
+	if applies != 2 {
+		t.Errorf("1-org applied %d time(s), want 2", applies)
 	}
 }
 

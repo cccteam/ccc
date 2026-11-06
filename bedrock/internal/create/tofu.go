@@ -13,7 +13,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"path/filepath"
+	"strings"
+	"time"
 
 	"github.com/go-playground/errors/v5"
 
@@ -62,11 +65,55 @@ func (f *creation) firstApply(ctx context.Context, dir string, h *org.Placement,
 		return errors.Wrapf(err, "the init of %s's %s failed; the log says why", h.Prefix, layer)
 	}
 	apply := deploy.Command{Dir: layerDir, Env: env, Name: tofuProgram, Args: []string{"apply", noInput, noColor, "-auto-approve"}}
-	if err := f.clients.Exec.Run(ctx, apply, f.out); err != nil {
-		return errors.Wrapf(err, "the first apply of %s's %s failed; the log says why", h.Prefix, layer)
+	var tail tailWriter
+	if err := f.clients.Exec.Run(ctx, apply, io.MultiWriter(f.out, &tail)); err != nil {
+		if !apiNotSeen(tail.String()) {
+			return errors.Wrapf(err, "the first apply of %s's %s failed; the log says why", h.Prefix, layer)
+		}
+		// Google's own race: a project's API enabled moments ago is not seen by every
+		// service yet (the project factory enables Compute Engine's and deletes the
+		// default network at once, and the deletion is refused as if the API were off;
+		// Google asks to wait a few minutes and try again). The apply runs once more.
+		fmt.Fprintf(f.out, "An API enabled moments ago is not seen by every service yet, which Google says to wait out; the first apply of %s's %s runs once more in %s.\n", h.Prefix, layer, apiSettle)
+		if err := f.clients.Sleep(ctx, apiSettle); err != nil {
+			return err
+		}
+		if err := f.clients.Exec.Run(ctx, apply, f.out); err != nil {
+			return errors.Wrapf(err, "the first apply of %s's %s failed again; the log says why", h.Prefix, layer)
+		}
 	}
 
 	return nil
+}
+
+// apiSettle is how long the creation waits before it runs a first apply again that an
+// API enabled moments ago refused.
+const apiSettle = 90 * time.Second
+
+// apiNotSeen reports whether tofu's output ends in Google's refusal of a call to an API
+// enabled moments ago.
+func apiNotSeen(output string) bool {
+	return strings.Contains(output, "SERVICE_DISABLED") || strings.Contains(output, "has not been used in project")
+}
+
+// tailWriter keeps the last tailKeep bytes written, for the refusal's words.
+type tailWriter struct {
+	buf []byte
+}
+
+const tailKeep = 64 << 10
+
+func (w *tailWriter) Write(p []byte) (int, error) {
+	w.buf = append(w.buf, p...)
+	if len(w.buf) > tailKeep {
+		w.buf = w.buf[len(w.buf)-tailKeep:]
+	}
+
+	return len(p), nil
+}
+
+func (w *tailWriter) String() string {
+	return string(w.buf)
 }
 
 // organize is 1-org's first apply, with the infrastructure app's token for the layer's
