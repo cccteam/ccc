@@ -283,21 +283,8 @@ func (f *creation) handOff(ctx context.Context, h *org.Placement, marker *Marker
 	if err != nil {
 		return "", errors.Wrap(err, "creating the hand-off commit")
 	}
-	// A run that stopped between the branch and the pull request left the branch: it is
-	// moved to this run's commit, and the pull request opened from it.
-	stood, err := f.gh.Ref(ctx, owner, repo, "heads/"+branch)
-	switch {
-	case err == nil:
-		if err := f.gh.UpdateRef(ctx, owner, repo, "heads/"+branch, commit, true); err != nil {
-			return "", errors.Wrapf(err, "moving branch %s to the hand-off commit", branch)
-		}
-		fmt.Fprintf(f.out, "Branch %s stood at %s from an earlier run; moved to the hand-off commit %s.\n", branch, short(stood.Object.SHA), short(commit))
-	case github.NotFound(err):
-		if err := f.gh.CreateRef(ctx, owner, repo, "refs/heads/"+branch, commit); err != nil {
-			return "", errors.Wrapf(err, "creating branch %s", branch)
-		}
-	default:
-		return "", errors.Wrapf(err, "reading branch %s", branch)
+	if err := f.handOffBranch(ctx, owner, repo, branch, commit); err != nil {
+		return "", err
 	}
 	pr, err := f.gh.CreatePullRequest(ctx, owner, repo, github.PullRequestRequest{Title: title, Head: branch, Base: root.GithubDefaultBranch, Body: body})
 	if err != nil {
@@ -306,4 +293,28 @@ func (f *creation) handOff(ctx context.Context, h *org.Placement, marker *Marker
 	fmt.Fprintf(f.out, "Opened the hand-off pull request of %s: %s.\n", h.Prefix, pr.HTMLURL)
 
 	return pr.HTMLURL, nil
+}
+
+// handOffBranch puts the hand-off branch at the commit: a branch a run that stopped
+// between the branch and its pull request left is moved to this run's commit, and one
+// that does not stand is created.
+func (f *creation) handOffBranch(ctx context.Context, owner, repo, branch, commit string) error {
+	stood, err := f.gh.Ref(ctx, owner, repo, "heads/"+branch)
+	switch {
+	case err == nil:
+		if err := f.gh.UpdateRef(ctx, owner, repo, "heads/"+branch, commit, true); err != nil {
+			return errors.Wrapf(err, "moving branch %s to the hand-off commit", branch)
+		}
+		fmt.Fprintf(f.out, "Branch %s stood at %s from an earlier run; moved to the hand-off commit %s.\n", branch, short(stood.Object.SHA), short(commit))
+
+		return nil
+	case github.NotFound(err):
+		if err := f.gh.CreateRef(ctx, owner, repo, "refs/heads/"+branch, commit); err != nil {
+			return errors.Wrapf(err, "creating branch %s", branch)
+		}
+
+		return nil
+	default:
+		return errors.Wrapf(err, "reading branch %s", branch)
+	}
 }
