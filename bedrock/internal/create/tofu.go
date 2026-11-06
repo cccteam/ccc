@@ -64,6 +64,9 @@ func (f *creation) firstApply(ctx context.Context, dir string, h *org.Placement,
 	if err := f.clients.Exec.Run(ctx, init, f.out); err != nil {
 		return errors.Wrapf(err, "the init of %s's %s failed; the log says why", h.Prefix, layer)
 	}
+	if err := f.untaintProjects(ctx, h, layer, layerDir, env); err != nil {
+		return err
+	}
 	apply := deploy.Command{Dir: layerDir, Env: env, Name: tofuProgram, Args: []string{"apply", noInput, noColor, "-auto-approve"}}
 	var tail tailWriter
 	if err := f.clients.Exec.Run(ctx, apply, io.MultiWriter(f.out, &tail)); err != nil {
@@ -73,9 +76,13 @@ func (f *creation) firstApply(ctx context.Context, dir string, h *org.Placement,
 		// Google's own race: a project's API enabled moments ago is not seen by every
 		// service yet (the project factory enables Compute Engine's and deletes the
 		// default network at once, and the deletion is refused as if the API were off;
-		// Google asks to wait a few minutes and try again). The apply runs once more.
+		// Google asks to wait a few minutes and try again). The apply runs once more,
+		// with the projects it made and then errored on taken out of the taint.
 		fmt.Fprintf(f.out, "An API enabled moments ago is not seen by every service yet, which Google says to wait out; the first apply of %s's %s runs once more in %s.\n", h.Prefix, layer, apiSettle)
 		if err := f.clients.Sleep(ctx, apiSettle); err != nil {
+			return err
+		}
+		if err := f.untaintProjects(ctx, h, layer, layerDir, env); err != nil {
 			return err
 		}
 		if err := f.clients.Exec.Run(ctx, apply, f.out); err != nil {
@@ -84,6 +91,64 @@ func (f *creation) firstApply(ctx context.Context, dir string, h *org.Placement,
 	}
 
 	return nil
+}
+
+// untaintProjects takes the taint off the projects the layer's state holds as made and
+// then errored on: the provider makes a project and deletes its default network in one
+// step, and when the deletion is refused by Google's race the project stands, tainted,
+// and the next apply would replace it, which its deletion policy refuses. Untainted, the
+// apply goes on with it.
+func (f *creation) untaintProjects(ctx context.Context, h *org.Placement, layer, layerDir string, env []string) error {
+	data, err := f.clients.Exec.Output(ctx, deploy.Command{Dir: layerDir, Env: env, Name: tofuProgram, Args: []string{"show", noColor, "-json"}}, f.out)
+	if err != nil {
+		return errors.Wrapf(err, "reading the state of %s's %s", h.Prefix, layer)
+	}
+	for _, address := range taintedProjects(data) {
+		fmt.Fprintf(f.out, "The project %s was made and then errored on (Google's race on an API enabled moments ago); its taint comes off, so the apply goes on with it instead of replacing it.\n", address)
+		if err := f.clients.Exec.Run(ctx, deploy.Command{Dir: layerDir, Env: env, Name: tofuProgram, Args: []string{"untaint", noColor, address}}, f.out); err != nil {
+			return errors.Wrapf(err, "untainting %s in %s's %s", address, h.Prefix, layer)
+		}
+	}
+
+	return nil
+}
+
+// stateModule is the part of tofu show -json the taint check reads, in tofu's names.
+type stateModule struct {
+	Resources []struct {
+		Address string `json:"address"`
+		Type    string `json:"type"`
+		Tainted bool   `json:"tainted"`
+	} `json:"resources"`
+	ChildModules []stateModule `json:"child_modules"` //nolint:tagliatelle // tofu's name
+}
+
+// taintedProjects lists the addresses of the tainted google_project resources in the
+// state tofu show -json printed; none for no state.
+func taintedProjects(data []byte) []string {
+	var state struct {
+		Values struct {
+			RootModule stateModule `json:"root_module"` //nolint:tagliatelle // tofu's name
+		} `json:"values"`
+	}
+	if len(data) == 0 || json.Unmarshal(data, &state) != nil {
+		return nil
+	}
+	var tainted []string
+	var walk func(m stateModule)
+	walk = func(m stateModule) {
+		for _, r := range m.Resources {
+			if r.Tainted && r.Type == "google_project" {
+				tainted = append(tainted, r.Address)
+			}
+		}
+		for _, c := range m.ChildModules {
+			walk(c)
+		}
+	}
+	walk(state.Values.RootModule)
+
+	return tainted
 }
 
 // apiSettle is how long the creation waits before it runs a first apply again that an

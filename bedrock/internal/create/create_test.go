@@ -85,6 +85,9 @@ type fakeRunner struct {
 	// refuse, when set, answers a command: what it writes and the error, or nil to let it
 	// pass; the test's way of failing one apply.
 	refuse func(c deploy.Command, out io.Writer) error
+	// tainted, when set, is the address of a tainted google_project tofu show -json
+	// answers with.
+	tainted string
 }
 
 func (r *fakeRunner) Run(_ context.Context, c deploy.Command, out io.Writer) error {
@@ -100,6 +103,17 @@ func (r *fakeRunner) Run(_ context.Context, c deploy.Command, out io.Writer) err
 
 // Output answers tofu output -json with 1-org's outputs: six projects and four folders.
 func (r *fakeRunner) Output(_ context.Context, c deploy.Command, _ io.Writer) ([]byte, error) {
+	if c.Args[0] == "show" && r.tainted != "" {
+		data, err := json.Marshal(map[string]any{"values": map[string]any{"root_module": map[string]any{
+			"resources":     []any{},
+			"child_modules": []any{map[string]any{"address": `module.project["prd"]`, "resources": []any{map[string]any{"address": r.tainted, "type": "google_project", "tainted": true}}}},
+		}}})
+		if err != nil {
+			return nil, fmt.Errorf("json.Marshal(): %w", err)
+		}
+
+		return data, nil
+	}
 	if c.Args[0] != "output" {
 		return nil, nil
 	}
@@ -567,6 +581,33 @@ func TestRunFirstApplyAgainAfterRace(t *testing.T) {
 	}
 	if applies != 2 {
 		t.Errorf("1-org applied %d time(s), want 2", applies)
+	}
+}
+
+// TestRunUntaintsProjects: the state of 1-org holds a project made and then errored on
+// (tainted); the creation takes the taint off before the apply, so the apply goes on
+// with the project instead of replacing it.
+func TestRunUntaintsProjects(t *testing.T) {
+	t.Parallel()
+
+	f := newFlow(t)
+	dir, root := checkout(t)
+	f.runner.tainted = `module.project["prd"].module.project-factory.google_project.main`
+	var out bytes.Buffer
+	if _, err := create.Run(t.Context(), f.clients(), request(root, dir), &out); err != nil {
+		t.Fatalf("Run() error = %v; output:\n%s", err, out.String())
+	}
+	if !strings.Contains(out.String(), "The project module.project[\"prd\"].module.project-factory.google_project.main was made and then errored on (Google's race on an API enabled moments ago); its taint comes off, so the apply goes on with it instead of replacing it.\n") {
+		t.Errorf("output:\n%s", out.String())
+	}
+	untaints := 0
+	for _, c := range f.runner.ran {
+		if c.Args[0] == "untaint" && c.Args[2] == f.runner.tainted {
+			untaints++
+		}
+	}
+	if untaints == 0 {
+		t.Errorf("no untaint among %v", f.runner.ran)
 	}
 }
 
