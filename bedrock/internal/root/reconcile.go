@@ -398,10 +398,16 @@ func (e *engine) secretPolicy(ctx context.Context, spec SecretSpec, exists bool)
 			want = append(want, b)
 		}
 	}
-	// A creation under way grants the new organization's boot identity the policy
-	// administration before the hand-off records the organization as created: what the
-	// creation granted stays, and the hand-off's merge names it in the placement.
-	want = keepPending(want, current, e.d.SecretPolicyAdminID(), e.pendingBootIdentities())
+	// On the managed roles the root organization owns its own members alone. A hosting
+	// organization's layers grant their identities and their Cloud Build service agent
+	// reads of the keys and the token through the policy administration the creation
+	// gave its boot identity (0-bootstrap, 1-org, 2-env); those members are theirs to
+	// hold, and stay as they stand.
+	theirs, err := e.hostingMembers()
+	if err != nil {
+		return err
+	}
+	want = keepTheirs(want, current, managed, theirs)
 	sort.Slice(want, func(i, j int) bool { return want[i].Role < want[j].Role })
 	if diff := cmp.Diff(current, want, cmp.Transformer("sorted", sortedBindings)); diff == "" {
 		return nil
@@ -412,38 +418,72 @@ func (e *engine) secretPolicy(ctx context.Context, spec SecretSpec, exists bool)
 	})
 }
 
-// pendingBootIdentities are the boot identities of the hosting organizations recorded to
-// create and not created yet, as members.
-func (e *engine) pendingBootIdentities() []string {
-	pending := e.p.Pending()
-	members := make([]string, 0, len(pending))
-	for _, h := range pending {
-		members = append(members, h.BootIdentityMember())
-	}
-
-	return members
-}
-
-// keepPending adds to the role's binding in want each of the members the role's binding
-// in current holds already: a grant a creation under way made, which the hand-off's
-// merge names in the placement.
-func keepPending(want, current []org.Binding, role string, members []string) []org.Binding {
-	held := slices.IndexFunc(current, func(b org.Binding) bool { return b.Role == role })
-	if held < 0 {
-		return want
-	}
-	i := slices.IndexFunc(want, func(b org.Binding) bool { return b.Role == role })
-	if i < 0 {
-		want = append(want, org.Binding{Role: role})
-		i = len(want) - 1
-	}
-	kept := slices.Clone(want[i].Members)
-	for _, m := range members {
-		if slices.Contains(current[held].Members, m) && !slices.Contains(kept, m) {
-			kept = append(kept, m)
+// hostingMembers answers whether a member of a shared secret's policy is a hosting
+// organization's: a service account in one of its projects (the boot project of each
+// organization recorded, created or not, and every project in a created organization's
+// record), or any Cloud Build service agent, which only an organization's connection
+// reads the token through.
+func (e *engine) hostingMembers() (func(member string) bool, error) {
+	projects := map[string]bool{}
+	for _, record := range e.p.HostingOrganizations {
+		projects[record.BootProject] = true
+		h, ok, err := e.hostingRecord(record)
+		if err != nil {
+			return nil, err
+		}
+		if !ok {
+			continue
+		}
+		for _, id := range h.Projects {
+			projects[id] = true
 		}
 	}
-	want[i].Members = kept
+
+	return func(member string) bool {
+		account, ok := strings.CutPrefix(member, "serviceAccount:")
+		if !ok {
+			return false
+		}
+		if strings.HasPrefix(account, "service-") && strings.HasSuffix(account, "@gcp-sa-cloudbuild.iam.gserviceaccount.com") {
+			return true
+		}
+		_, domain, ok := strings.Cut(account, "@")
+		project, isAccount := strings.CutSuffix(domain, ".iam.gserviceaccount.com")
+
+		return ok && isAccount && projects[project]
+	}, nil
+}
+
+// keepTheirs adds to each managed role's binding in want the members of current the
+// hosting organizations hold there (theirs), so that the root organization's apply
+// leaves them as they stand.
+func keepTheirs(want, current []org.Binding, managed []string, theirs func(member string) bool) []org.Binding {
+	for _, b := range current {
+		if !slices.Contains(managed, b.Role) {
+			continue
+		}
+		var kept []string
+		for _, m := range b.Members {
+			if theirs(m) {
+				kept = append(kept, m)
+			}
+		}
+		if len(kept) == 0 {
+			continue
+		}
+		i := slices.IndexFunc(want, func(w org.Binding) bool { return w.Role == b.Role })
+		if i < 0 {
+			want = append(want, org.Binding{Role: b.Role})
+			i = len(want) - 1
+		}
+		members := slices.Clone(want[i].Members)
+		for _, m := range kept {
+			if !slices.Contains(members, m) {
+				members = append(members, m)
+			}
+		}
+		want[i].Members = members
+	}
 
 	return want
 }

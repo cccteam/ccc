@@ -438,12 +438,12 @@ func TestEnginePolicies(t *testing.T) {
 	}
 }
 
-// TestEnginePendingBootIdentityKeepsItsGrant: a creation under way grants the new
-// organization's boot identity the policy administration of the shared secrets before the
-// hand-off records the organization as created; the engine keeps that grant rather than
-// taking it off and letting the creation make it again, while any other stranger's grant
-// on the role still goes.
-func TestEnginePendingBootIdentityKeepsItsGrant(t *testing.T) {
+// TestEngineHostingMembersStay: a hosting organization's grants on the shared secrets
+// are its own, made through the policy administration its creation gave its boot
+// identity: the boot identity of an organization under creation, the identities in a
+// created organization's projects and any Cloud Build service agent stay on the managed
+// roles as they stand, while a stranger's grant goes.
+func TestEngineHostingMembersStay(t *testing.T) {
 	t.Parallel()
 
 	w := newWorld(t)
@@ -459,9 +459,10 @@ func TestEnginePendingBootIdentityKeepsItsGrant(t *testing.T) {
 	if rgb == nil || rgb.Created() {
 		t.Fatalf("the fixture's rgb: %+v", rgb)
 	}
-	secret := "projects/" + w.p.Projects[org.RootProjectKey] + "/secrets/imr-root-gbl-github-token"
-	role := "projects/" + w.p.Projects[org.RootProjectKey] + "/roles/" + org.SecretPolicyAdminRole
-	grant := func(member string) {
+	project := w.p.Projects[org.RootProjectKey]
+	secret := "projects/" + project + "/secrets/imr-root-gbl-github-token"
+	policyAdmin := "projects/" + project + "/roles/" + org.SecretPolicyAdminRole
+	grant := func(role, member string) {
 		for i, b := range w.fake.SecretPolicies[secret] {
 			if b.Role == role {
 				w.fake.SecretPolicies[secret][i].Members = append(slices.Clone(b.Members), member)
@@ -469,16 +470,32 @@ func TestEnginePendingBootIdentityKeepsItsGrant(t *testing.T) {
 				return
 			}
 		}
-		t.Fatalf("no %s binding on %s", role, secret)
+		w.fake.SecretPolicies[secret] = append(w.fake.SecretPolicies[secret], org.Binding{Role: role, Members: []string{member}})
 	}
-	grant(rgb.BootIdentityMember())
+	theirs := []string{
+		rgb.BootIdentityMember(),
+		"serviceAccount:imp-org-gbl-applier@imp-boot-gbl-core-a1b2.iam.gserviceaccount.com",
+		"serviceAccount:imp-tst-gbl-deploy@imp-tst-gbl-core-1a2b.iam.gserviceaccount.com",
+		"serviceAccount:service-100000000001@gcp-sa-cloudbuild.iam.gserviceaccount.com",
+	}
+	grant(policyAdmin, theirs[0])
+	for _, m := range theirs[1:] {
+		grant("roles/secretmanager.secretAccessor", m)
+	}
 	report, out := w.run(t, root.Check, false)
 	if !report.Clean() {
-		t.Errorf("the pending boot identity's grant is a change:\n%s\n%v", out, whats(report))
+		t.Errorf("the hosting organizations' grants are a change:\n%s\n%v", out, whats(report))
 	}
-	grant("serviceAccount:stranger@elsewhere.iam.gserviceaccount.com")
+	grant("roles/secretmanager.secretAccessor", "serviceAccount:stranger@elsewhere-gbl-core-9z9z.iam.gserviceaccount.com")
+	grant(policyAdmin, "user:someone@imp.example")
 	report, _ = w.run(t, root.Check, false)
-	if got := whats(report); len(got) != 1 || !strings.HasPrefix(got[0], "secrets: sets the policy of imr-root-gbl-github-token: ") || !strings.Contains(got[0], rgb.BootIdentityMember()) || strings.Contains(got[0], "stranger") {
-		t.Errorf("with a stranger's grant: %v", got)
+	got := whats(report)
+	if len(got) != 1 || !strings.HasPrefix(got[0], "secrets: sets the policy of imr-root-gbl-github-token: ") || strings.Contains(got[0], "stranger") || strings.Contains(got[0], "someone@") {
+		t.Errorf("with strangers' grants: %v", got)
+	}
+	for _, m := range theirs {
+		if !strings.Contains(got[0], m) {
+			t.Errorf("the policy to set lacks %s:\n%s", m, got[0])
+		}
 	}
 }
