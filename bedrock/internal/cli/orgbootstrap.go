@@ -397,9 +397,10 @@ func readBrought(flags map[org.AppRole]*broughtFlags) (map[org.AppRole]rootorg.B
 }
 
 // bootstrapEpilogue says what follows the bootstrap, each where it happens; cloned says
-// whether the directory is a clone of the repository, else the clone is the first step.
+// whether the directory is a clone of the repository (at the pushed commit, or on whatever
+// branch a run again found it), else the clone is the first step.
 func bootstrapEpilogue(p *org.Placement, dir string, cloned bool) string {
-	where := fmt.Sprintf("%s is a clone of %s/%s at its first commit", dir, p.GithubOrganization, p.SourceRepo)
+	where := fmt.Sprintf("%s is a clone of %s/%s", dir, p.GithubOrganization, p.SourceRepo)
 	if !cloned {
 		where = fmt.Sprintf("clone %s/%s (git clone https://github.com/%s/%s.git), which holds what %s holds, at its first commit", p.GithubOrganization, p.SourceRepo, p.GithubOrganization, p.SourceRepo, dir)
 	}
