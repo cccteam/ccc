@@ -176,13 +176,14 @@ func PlanRun(ctx context.Context, clients *Clients, rc *RunClients, req *RunRequ
 func (r *Report) Comment(commit string, p *org.Placement) string {
 	var b strings.Builder
 	b.WriteString(planMarker + "\n### what the merge changes in the " + p.Prefix + " root organization\n\nAt " + short(commit) + ":\n\n")
-	if len(r.Changes) == 0 {
+	pending := r.pendingCreations(p)
+	if len(r.Changes) == 0 && len(pending) == 0 {
 		b.WriteString("Nothing: the root organization stands as placement.json says.\n")
 	}
 	for _, c := range r.Changes {
 		b.WriteString("- " + c.Section + ": " + c.What + "\n")
 	}
-	for _, p := range r.pendingCreations(p) {
+	for _, p := range pending {
 		b.WriteString("- creations: creates the hosting organization " + p + " as the creating identity (its folder, its boot project, the first applies, its repository, the hand-off pull request)\n")
 	}
 	if len(r.Findings) > 0 {

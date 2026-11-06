@@ -1793,3 +1793,80 @@ func TestOrgCheckCapacity(t *testing.T) {
 		})
 	}
 }
+
+// TestOrgRegisterAdopted: register asks GitHub whether the application's repository
+// exists; one that does is recorded adopted, so 1-org adopts it on its first apply instead
+// of making it, and the render lists it; one that does not is made; a refusal to read
+// stops the registration.
+func TestOrgRegisterAdopted(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name        string
+		repository  string
+		exists      bool
+		refuse      bool
+		wantAdopted bool
+		wantErr     string
+	}{
+		{name: "an existing repository is adopted", repository: "quill", exists: true, wantAdopted: true},
+		{name: "a repository not on GitHub yet is made", repository: "quill-service"},
+		{name: "GitHub unreadable", repository: "quill", refuse: true, wantErr: "reading whether " + orgOrganization + "/quill exists on GitHub, which decides whether 1-org adopts the repository or makes it"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			dir := orgRepo(t)
+			if code, out := runOrg(t, "org", "new", dir); code != 0 {
+				t.Fatalf("org new: %d %s", code, out)
+			}
+			server := githubtest.New(t)
+			if tt.exists {
+				server.AddRepo(orgOrganization, tt.repository, &githubtest.Repo{})
+			}
+			d := orgDeps(dir)
+			d.github = func(context.Context) (*github.Client, error) {
+				if tt.refuse {
+					return nil, errors.New("no token in this test")
+				}
+
+				return server.Client(), nil
+			}
+			out, err := execute(d, "", "org", "register", "quill", "--dir", dir, appCheckout(t, "github.com/"+orgOrganization+"/"+tt.repository))
+			if tt.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+					t.Fatalf("org register error = %v, want %q", err, tt.wantErr)
+				}
+
+				return
+			}
+			if err != nil {
+				t.Fatalf("org register error = %v; output:\n%s", err, out)
+			}
+			adoptedLine := orgOrganization + "/" + tt.repository + " exists on GitHub already: 1-org adopts the repository on its first apply (adopted in placement.json) instead of making it; a ruleset or Environment made on it by hand is imported by hand first (1-org/README.md)."
+			if strings.Contains(out, adoptedLine) != tt.wantAdopted {
+				t.Errorf("adopted line printed = %v, want %v:\n%s", !tt.wantAdopted, tt.wantAdopted, out)
+			}
+			p, err := org.ReadPlacement(filepath.Join(dir, "placement.json"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got := p.Adopted(); slices.Contains(got, "quill") != tt.wantAdopted {
+				t.Errorf("Adopted() = %v, want quill adopted %v", got, tt.wantAdopted)
+			}
+			tfvars, err := os.ReadFile(filepath.Join(dir, "1-org", "applications.auto.tfvars"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			// The fixture registers beacon adopted already.
+			want := `adopted_applications = ["beacon"]`
+			if tt.wantAdopted {
+				want = `adopted_applications = ["beacon", "quill"]`
+			}
+			if !strings.Contains(string(tfvars), want) {
+				t.Errorf("1-org/applications.auto.tfvars lacks %q:\n%s", want, tfvars)
+			}
+		})
+	}
+}

@@ -877,6 +877,16 @@ func (d deps) registerFirst(ctx context.Context, out io.Writer, p *org.Placement
 	if err := p.Register(app, repository, environments); err != nil {
 		return err
 	}
+	exists, err := d.repositoryExists(ctx, p.GithubOrganization, repository)
+	if err != nil {
+		return err
+	}
+	if exists {
+		if err := p.Adopt(app); err != nil {
+			return err
+		}
+		fmt.Fprintf(out, "%s/%s exists on GitHub already: 1-org adopts the repository on its first apply (adopted in placement.json) instead of making it; a ruleset or Environment made on it by hand is imported by hand first (1-org/README.md).\n", p.GithubOrganization, repository)
+	}
 	if unset := p.ConnectionUnset(); len(unset) > 0 {
 		return errors.Newf("placement.json leaves %s unset: the root organization's Cloud Build authorization, which the creation copies into this placement, comes before the first application (0-bootstrap/README.md, \"Created by the root organization\"); record both and register again", strings.Join(unset, " and "))
 	}
@@ -1397,8 +1407,8 @@ layers it touches, in layer order). placement.json records how far the registrat
 (registration), the layers render what that step may apply, and every pull request carries
 every rendered file:
   1. This render, %[4]s at its identities: its repository (private, squash the only merge,
-     its rulesets and Environments; a repository made before this is imported first,
-     1-org/README.md) and its registry repository, then, in %[5]s, its
+     its rulesets and Environments; a repository that exists already is adopted, not
+     made) and its registry repository, then, in %[5]s, its
      identities, database, repository link and triggers.
   2. The apply trigger by hand with 2-env, in a terminal:
      %[3]s
@@ -1420,6 +1430,29 @@ every rendered file:
      the repository's pull requests merge on the CI jobs alone.
   6. After 2-net's apply: bedrock domain check, which passes when the apps domain and each vanity domain resolve to their zones.
 `, p.GithubDefaultBranch, app, triggerRun(p, ""), repository, strings.Join(p.PlacedEnvironments(app), ", "))
+}
+
+// repositoryExists asks GitHub whether the organization's repository exists, which decides
+// whether 1-org adopts it or makes it: found is true, not found or a name that forwards to
+// a renamed repository false, and a refusal to read is an error. Without a GitHub client
+// wired (the tests), nothing is asked and the repository is taken as new.
+func (d deps) repositoryExists(ctx context.Context, owner, repository string) (bool, error) {
+	if d.github == nil {
+		return false, nil
+	}
+	gh, err := d.github(ctx)
+	if err != nil {
+		return false, errors.Wrapf(err, "reading whether %s/%s exists on GitHub, which decides whether 1-org adopts the repository or makes it", owner, repository)
+	}
+	if _, err := gh.Repository(ctx, owner, repository); err != nil {
+		if github.NotFound(err) || github.Moved(err) {
+			return false, nil
+		}
+
+		return false, errors.Wrapf(err, "reading %s/%s on GitHub", owner, repository)
+	}
+
+	return true, nil
 }
 
 // triggerUnrendered says, while the placement records no Cloud Build authorization, that

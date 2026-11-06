@@ -1407,6 +1407,11 @@ type Application struct {
 	// placement written before this field reads as it did; bedrock org register
 	// --environments writes a prefix and bedrock org place changes it.
 	Environments []string `json:"environments,omitempty"`
+	// Adopted says the repository existed on GitHub before the application was
+	// registered (one made by hand, or left by an organization that was destroyed), so
+	// 1-org adopts it on its first apply through an import block instead of making a
+	// second one and failing on the name. bedrock org register records it from GitHub.
+	Adopted bool `json:"adopted,omitempty"`
 }
 
 // UnmarshalJSON reads an entry as written, or as a placement before the repository was
@@ -1509,6 +1514,32 @@ func (p *Placement) Register(code, repository string, environments []string) err
 	p.startRegistration(code, p.PlacedEnvironments(code))
 
 	return nil
+}
+
+// Adopt records that the application's repository exists on GitHub already, so 1-org
+// adopts it on its first apply instead of making it; an application not registered is
+// an error.
+func (p *Placement) Adopt(code string) error {
+	i := slices.IndexFunc(p.Applications, func(a Application) bool { return a.Code == code })
+	if i < 0 {
+		return errors.Newf("application %q is not registered", code)
+	}
+	p.Applications[i].Adopted = true
+
+	return nil
+}
+
+// Adopted are the codes of the applications whose repositories 1-org adopts rather than
+// makes, in placement order.
+func (p *Placement) Adopted() []string {
+	var codes []string
+	for _, a := range p.Applications {
+		if a.Adopted {
+			codes = append(codes, a.Code)
+		}
+	}
+
+	return codes
 }
 
 // placedPrefix is the environments an application's entry records: nil for every

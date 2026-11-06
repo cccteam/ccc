@@ -26,6 +26,17 @@ variable "application_repositories" {
   }
 }
 
+variable "adopted_applications" {
+  description = "The applications whose repositories existed on GitHub before they were registered, by code: this layer adopts each on its first apply through an import block (github.tf) instead of making it. Rendered into applications.auto.tfvars from placement.json's applications (adopted), which bedrock org register records from GitHub."
+  type        = list(string)
+  default     = []
+
+  validation {
+    condition     = alltrue([for a in var.adopted_applications : contains(var.applications, a)])
+    error_message = "adopted_applications names registered application codes alone."
+  }
+}
+
 variable "application_environments" {
   description = "The environments each application is placed in, by code, a prefix of the promotion order (the first environment; the first two; every one): the repository's GitHub Environments and their deployment policies are made for those alone (github.tf). Rendered into applications.auto.tfvars from placement.json's applications."
   type        = map(list(string))

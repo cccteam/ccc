@@ -187,6 +187,17 @@ locals {
   }
 }
 
+# An application's repository that existed before this layer declared it (made by
+# hand, or left by an organization that was destroyed; adopted in placement.json, which
+# bedrock org register records from GitHub) is adopted on the first apply through an
+# import block, a no-op once the repository is in the state, so the apply changes it
+# instead of making a second one and failing on the name.
+import {
+  for_each = toset(var.adopted_applications)
+  id       = var.application_repositories[each.key]
+  to       = github_repository.app[each.key]
+}
+
 resource "github_repository" "app" {
   for_each = toset(var.applications)
 

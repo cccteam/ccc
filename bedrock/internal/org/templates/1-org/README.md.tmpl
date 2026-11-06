@@ -462,16 +462,20 @@ status checks and required reviewers, and deployment branch policies on
 Environments. The layer asks GitHub nothing about the organization's plan; a
 feature the plan lacks is refused by GitHub, and that refusal is the message.
 
-A repository that exists before this layer declares it (one made by hand) is
-imported into the state before the first apply, so the apply changes it
-instead of making a second one. For each such application, in this directory,
-with `GITHUB_TOKEN` set (the ruleset ids come from
+A repository that exists before this layer declares it (one made by hand, or
+left by an organization that was destroyed) is adopted on the first apply:
+`bedrock org register` asks GitHub whether the repository exists and records
+`adopted` on the application's entry in `placement.json`, the layer renders it
+into `adopted_applications`, and an import block adopts the repository into the
+state (`github.tf`; a no-op once it is there), so the apply changes it instead
+of making a second one and failing on the name. Rulesets and Environments made
+on such a repository by hand are imported by hand before the first apply, in
+this directory, with `GITHUB_TOKEN` set (the ruleset ids come from
 `gh api repos/<org>/<app>/rulesets`, the deployment policy ids from
 `gh api repos/<org>/<repository>/environments/<env>/deployment-branch-policies`), the
 resources keyed by the application's code and the imports naming its repository:
 
 ```bash
-tofu import 'github_repository.app["<app>"]' <repository>
 tofu import 'github_repository_ruleset.release_tags["<app>"]' <repository>:<id>
 tofu import 'github_repository_ruleset.branch["<app>:default"]' <repository>:<id>
 tofu import 'github_repository_ruleset.branch["<app>:patch"]' <repository>:<id>

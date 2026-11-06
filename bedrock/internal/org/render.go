@@ -627,6 +627,13 @@ func (v *view) ApplicationsList() string {
 	return `["` + strings.Join(v.Codes(), `", "`) + `"]`
 }
 
+// AdoptedList is the codes of the applications whose repositories exist on GitHub
+// already, which 1-org adopts through an import block instead of making, as an HCL list;
+// [] with none.
+func (v *view) AdoptedList() string {
+	return hclList(v.Adopted())
+}
+
 // ApplicationRepositoriesHCL is the applications' repository names by code as an HCL
 // map, the values in one column; {} with no application.
 func (v *view) ApplicationRepositoriesHCL() string {

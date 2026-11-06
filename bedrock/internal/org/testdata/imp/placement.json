@@ -50,7 +50,7 @@
   ],
   "applications": [
     "harbor",
-    "beacon"
+    {"code": "beacon", "repository": "beacon", "adopted": true}
   ],
   "projects": {
     "boot": "imp-boot-gbl-core-a1b2",

@@ -308,3 +308,24 @@ func TestEngineRefusals(t *testing.T) {
 		t.Errorf("no project: error = %v", err)
 	}
 }
+
+// TestReportComment: the plan's comment says Nothing only when the merge changes nothing
+// and creates nothing; a pending creation is listed on its own.
+func TestReportComment(t *testing.T) {
+	t.Parallel()
+
+	p, err := org.ReadPlacement("../org/testdata/imr/placement.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	report := &root.Report{}
+	comment := report.Comment("0123456789abcdef", p)
+	if strings.Contains(comment, "Nothing:") || !strings.Contains(comment, "- creations: creates the hosting organization rgb as the creating identity") {
+		t.Errorf("with a pending creation:\n%s", comment)
+	}
+	p.HostingOrganizations = slices.DeleteFunc(p.HostingOrganizations, func(h org.HostingOrganization) bool { return !h.Created() })
+	comment = report.Comment("0123456789abcdef", p)
+	if !strings.Contains(comment, "Nothing: the root organization stands as placement.json says.") || strings.Contains(comment, "creations:") {
+		t.Errorf("with nothing pending:\n%s", comment)
+	}
+}

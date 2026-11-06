@@ -3009,7 +3009,10 @@ runner of the name and size on GitHub's current Ubuntu, in a runner group of the
 application repositories alone, capped at `ciLargeRunnerMaximum` running at once (0 for
 GitHub's default), through the app's Self-hosted runners organization permission; GitHub
 bills it per minute by its size on the Team and Enterprise plans. A repository that existed before the layer
-declared it is imported into the state first; `1-org/README.md` lists the commands.
+declared it is adopted on the first apply: `bedrock org register` records `adopted` on the
+application's entry when GitHub has the repository, and an import block in 1-org adopts it
+into the state; a ruleset or Environment made on it by hand is imported first, and
+`1-org/README.md` lists the commands.
 bedrock's commands use the GitHub API only to act: `restore` dispatches a workflow,
 `patch` creates branches and pull requests, the pipeline talks back on a pull request. OpenTofu reads `*.auto.tfvars` after `terraform.tfvars`, which keeps what a person
 decides. Once `placement.json` records the environment projects' ids and numbers
