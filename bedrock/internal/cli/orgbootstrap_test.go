@@ -150,7 +150,8 @@ func TestOrgBootstrap(t *testing.T) {
 		"zones: creates the zone imr-root-gbl-dns-clientbay-example for clientbay.example",
 		"Bootstrapped the imr root organization as bedrock@imp.example",
 		"Next, each where it happens:",
-		dir + " is a clone of imp-example/imr-root-infrastructure at its first commit.",
+		"clone imp-example/imr-root-infrastructure (git clone https://github.com/imp-example/imr-root-infrastructure.git), which holds what " + dir + " holds, at its first commit.",
+		dir + " holds the files pushed; clone the repository to go on from it: git clone https://github.com/imp-example/imr-root-infrastructure.git",
 		"The break-glass account keeps Folder Admin on the folder imr alone",
 	} {
 		if !strings.Contains(out, want) {

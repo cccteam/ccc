@@ -149,7 +149,7 @@ func (d deps) orgBootstrap(cmd *cobra.Command, dir string, f *bootstrapFlags) er
 	if err != nil {
 		return err
 	}
-	fmt.Fprint(out, bootstrapEpilogue(res.Placement, dir))
+	fmt.Fprint(out, bootstrapEpilogue(res.Placement, dir, res.Cloned))
 
 	return nil
 }
@@ -396,11 +396,17 @@ func readBrought(flags map[org.AppRole]*broughtFlags) (map[org.AppRole]rootorg.B
 	return brought, nil
 }
 
-// bootstrapEpilogue says what follows the bootstrap, each where it happens.
-func bootstrapEpilogue(p *org.Placement, dir string) string {
+// bootstrapEpilogue says what follows the bootstrap, each where it happens; cloned says
+// whether the directory is a clone of the repository, else the clone is the first step.
+func bootstrapEpilogue(p *org.Placement, dir string, cloned bool) string {
+	where := fmt.Sprintf("%s is a clone of %s/%s at its first commit", dir, p.GithubOrganization, p.SourceRepo)
+	if !cloned {
+		where = fmt.Sprintf("clone %s/%s (git clone https://github.com/%s/%s.git), which holds what %s holds, at its first commit", p.GithubOrganization, p.SourceRepo, p.GithubOrganization, p.SourceRepo, dir)
+	}
+
 	return fmt.Sprintf(`
 Next, each where it happens:
-  1. In a terminal: %s is a clone of %s/%s at its first commit. Every change to the root
+  1. In a terminal: %s. Every change to the root
      organization goes from here by pull request (placement.json, then bedrock org render): the
      plan trigger posts what the merge changes, and the apply trigger makes it on the merge
      (README.md, "How the root organization is kept").
@@ -412,5 +418,5 @@ Next, each where it happens:
      hosting organization").
 The break-glass account keeps Folder Admin on the folder %s alone, its key for a recovery by
 hand; nothing else is done by hand.
-`, dir, p.GithubOrganization, p.SourceRepo, p.Prefix)
+`, where, p.Prefix)
 }

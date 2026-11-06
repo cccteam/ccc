@@ -246,6 +246,10 @@ type Clients struct {
 	Discovery   DiscoveryFunc
 	Permissions org.PermissionTesterFunc
 	Sleep       deploy.SleepFunc
+	// Clone makes the bootstrap's directory a clone of the repository it pushed, at the
+	// commit (GitClone runs git); nil leaves the rendered files alone and the bootstrap
+	// says how to clone.
+	Clone CloneFunc
 	// Now is the clock, for the lock's record and the markers.
 	Now func() time.Time
 }

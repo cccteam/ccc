@@ -28,6 +28,7 @@ import (
 
 	"github.com/cccteam/ccc/bedrock/internal/create"
 	"github.com/cccteam/ccc/bedrock/internal/deploy"
+	"github.com/cccteam/ccc/bedrock/internal/gitcmd"
 	"github.com/cccteam/ccc/bedrock/internal/github"
 	"github.com/cccteam/ccc/bedrock/internal/org"
 )
@@ -54,10 +55,12 @@ type BootstrapRequest struct {
 }
 
 // BootstrapResult is what the bootstrap left: the placement as recorded, the commit
-// pushed, and the check's report.
+// pushed, whether the directory is a clone of the repository at it, and the check's
+// report.
 type BootstrapResult struct {
 	Placement *org.Placement
 	Commit    string
+	Cloned    bool
 	Report    *Report
 }
 
@@ -131,6 +134,7 @@ func Bootstrap(ctx context.Context, clients *Clients, req *BootstrapRequest, out
 	if err != nil {
 		return nil, err
 	}
+	cloned := b.clone(ctx, commit, infraToken)
 	fmt.Fprintf(out, "=== making the root organization as placement.json says ===\n")
 	if _, err := Run(ctx, clients, &Request{Placement: b.p, Dir: req.Dir, Mode: Apply, Commit: commit, GitHubToken: infraToken, Bootstrap: true}, out); err != nil {
 		return nil, err
@@ -147,7 +151,7 @@ func Bootstrap(ctx context.Context, clients *Clients, req *BootstrapRequest, out
 	fmt.Fprintf(out, "Bootstrapped the %s root organization as %s: folder %s, project %s, repository %s/%s at %s. The Bot Account is %s; the apps are %s.\n",
 		b.p.Prefix, b.p.BreakGlassAccount, folder, b.p.Projects[org.RootProjectKey], b.p.GithubOrganization, b.p.SourceRepo, short(commit), bot, b.appIDs())
 
-	return &BootstrapResult{Placement: b.p, Commit: commit, Report: report}, nil
+	return &BootstrapResult{Placement: b.p, Commit: commit, Cloned: cloned, Report: report}, nil
 }
 
 // check refuses a draft that lacks what the bootstrap cannot find out.
@@ -473,6 +477,32 @@ func (b *bootstrap) apps(ctx context.Context) error {
 	}
 
 	return nil
+}
+
+// clone makes the directory a clone of the repository at the pushed commit, when the
+// clients know how and it is not one already, and reports whether it is one; a clone that
+// fails is said, with the clone to make by hand, and stops nothing.
+func (b *bootstrap) clone(ctx context.Context, commit, token string) bool {
+	p := b.p
+	url := "https://github.com/" + p.GithubOrganization + "/" + p.SourceRepo + ".git"
+	if gitcmd.InWorkTree(ctx, b.req.Dir) {
+		fmt.Fprintf(b.out, "%s is a clone of %s/%s already.\n", b.req.Dir, p.GithubOrganization, p.SourceRepo)
+
+		return true
+	}
+	if b.clients.Clone == nil {
+		fmt.Fprintf(b.out, "%s holds the files pushed; clone the repository to go on from it: git clone %s\n", b.req.Dir, url)
+
+		return false
+	}
+	if err := b.clients.Clone(ctx, b.req.Dir, url, p.GithubDefaultBranch, commit, token); err != nil {
+		fmt.Fprintf(b.out, "%s holds the files pushed, and could not be made a clone (%v); clone the repository to go on from it: git clone %s\n", b.req.Dir, errors.Cause(err), url)
+
+		return false
+	}
+	fmt.Fprintf(b.out, "%s is a clone of %s/%s at %s, on %s.\n", b.req.Dir, p.GithubOrganization, p.SourceRepo, short(commit), p.GithubDefaultBranch)
+
+	return true
 }
 
 // recordApp puts the key into its secret, pins the version and records the App ID (and

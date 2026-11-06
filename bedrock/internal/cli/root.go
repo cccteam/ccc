@@ -159,6 +159,7 @@ func rootClients() *rootorg.Clients {
 		},
 		Secrets: rootorg.NewSecrets, DNS: rootorg.NewDNS, Builds: rootorg.NewBuilds, IAM: rootorg.NewIAM, Locks: rootorg.NewLocks,
 		GitHub: rootorg.GitHubClient, Store: deploy.NewStorage, Discovery: rootorg.NewDiscovery, Permissions: org.NewPermissionTester, Sleep: deploy.Sleep,
+		Clone: rootorg.GitClone,
 	}
 }
 
