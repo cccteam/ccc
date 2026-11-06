@@ -458,31 +458,44 @@ func (e *engine) grants(ctx context.Context) error {
 
 // outerGrants are the grants above the root project: the creating identity's at the
 // organization node and on the billing account, and the applier's on the bucket. The
-// bootstrap makes them as the break-glass account; a trigger's run reports one missing.
+// bootstrap makes them as the break-glass account, and a run that reads those policies
+// reports one missing as a finding. A trigger's run reads neither the organization
+// node's policy nor the billing account's: the runners hold their roles under the
+// organization's folder and nowhere higher, by design (README.md, "Several
+// organizations"), so the run notes what it did not compare and goes on. The bucket is
+// the root project's, which both runners read.
 func (e *engine) outerGrants(ctx context.Context) error {
-	organization, err := e.iam.OrganizationPolicy(ctx, e.p.OrganizationID)
+	organization, read, err := e.outerPolicy(ctx, "the creating identity's Folder Creator at the organization node", "the organization node's", "an Organization Administrator", func(ctx context.Context) ([]org.Binding, error) {
+		return e.iam.OrganizationPolicy(ctx, e.p.OrganizationID)
+	})
 	if err != nil {
 		return err
 	}
-	for _, g := range e.d.OrganizationGrants() {
-		if !holds(organization, g.Role, g.Member) {
-			if err := e.outerGrant(ctx, fmt.Sprintf("grants %s %s at the organization node", g.Member, g.Role), "an Organization Administrator", func(ctx context.Context) error {
-				return e.iam.GrantOrganization(ctx, e.p.OrganizationID, g.Role, g.Member)
-			}); err != nil {
-				return err
+	if read {
+		for _, g := range e.d.OrganizationGrants() {
+			if !holds(organization, g.Role, g.Member) {
+				if err := e.outerGrant(ctx, fmt.Sprintf("grants %s %s at the organization node", g.Member, g.Role), "an Organization Administrator", func(ctx context.Context) error {
+					return e.iam.GrantOrganization(ctx, e.p.OrganizationID, g.Role, g.Member)
+				}); err != nil {
+					return err
+				}
 			}
 		}
 	}
-	billing, err := e.iam.BillingPolicy(ctx, e.p.BillingAccount)
+	billing, read, err := e.outerPolicy(ctx, "the creating identity's Billing Account Administrator on billing account "+e.p.BillingAccount, "the billing account's", "a Billing Account Administrator of it", func(ctx context.Context) ([]org.Binding, error) {
+		return e.iam.BillingPolicy(ctx, e.p.BillingAccount)
+	})
 	if err != nil {
 		return err
 	}
-	for _, g := range e.d.BillingGrants() {
-		if !holds(billing, g.Role, g.Member) {
-			if err := e.outerGrant(ctx, fmt.Sprintf("grants %s %s on billing account %s", g.Member, g.Role, e.p.BillingAccount), "a Billing Account Administrator of it", func(ctx context.Context) error {
-				return e.iam.GrantBilling(ctx, e.p.BillingAccount, g.Role, g.Member)
-			}); err != nil {
-				return err
+	if read {
+		for _, g := range e.d.BillingGrants() {
+			if !holds(billing, g.Role, g.Member) {
+				if err := e.outerGrant(ctx, fmt.Sprintf("grants %s %s on billing account %s", g.Member, g.Role, e.p.BillingAccount), "a Billing Account Administrator of it", func(ctx context.Context) error {
+					return e.iam.GrantBilling(ctx, e.p.BillingAccount, g.Role, g.Member)
+				}); err != nil {
+					return err
+				}
 			}
 		}
 	}
@@ -501,6 +514,23 @@ func (e *engine) outerGrants(ctx context.Context) error {
 	}
 
 	return nil
+}
+
+// outerPolicy reads an IAM policy above the root project (what names the grant compared
+// against it, whose the policy, who holds the read). A run refused the read, other than
+// the bootstrap's, notes the grant it did not compare and answers read false; the
+// bootstrap's refusal and every other error are returned.
+func (e *engine) outerPolicy(ctx context.Context, what, whose, who string, read func(ctx context.Context) ([]org.Binding, error)) (bindings []org.Binding, ok bool, err error) {
+	bindings, err = read(ctx)
+	if err == nil {
+		return bindings, true, nil
+	}
+	if e.req.Bootstrap || status.Code(errors.Cause(err)) != codes.PermissionDenied {
+		return nil, false, err
+	}
+	e.note(what + " was not compared: this run holds no read of " + whose + " IAM policy, as the triggers' runners hold their roles under the organization's folder alone; the bootstrap made the grant and compares it, and so does bedrock org check run by " + who)
+
+	return nil, false, nil
 }
 
 // outerGrant makes a grant above the root project at the bootstrap, and reports it as a

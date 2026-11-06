@@ -663,18 +663,33 @@ func leftoverReport(ctx context.Context, d deps, p *org.Placement, out io.Writer
 
 			continue
 		}
-		fmt.Fprintf(out, "%s: %s holds %s, %s; it is temporary, removed once the apply trigger applies the layers (0-bootstrap/README.md, \"Recovery, by hand\").\n", l.Place(), l.Member, l.Role, leftoverWhy(p, l))
+		fmt.Fprintf(out, "%s: %s holds %s, %s; it is temporary, %s.\n", l.Place(), l.Member, l.Role, leftoverWhy(p, l), leftoverRemoval(p))
 	}
 }
 
-// leftoverWhy says where a leftover grant came from: a creator's grant, or the seed's
-// grant to the break-glass account for the first apply of the second layer.
+// leftoverRemoval says what takes a leftover grant off: for a root organization the
+// bootstrap run again, which takes off at its end what Google gave it as the creator;
+// for a hosting organization the apply trigger's first applies of the layers.
+func leftoverRemoval(p *org.Placement) string {
+	if p.IsRoot() {
+		return "removed by bedrock org bootstrap run again in a clone, which takes it off at its end"
+	}
+
+	return `removed once the apply trigger applies the layers (0-bootstrap/README.md, "Recovery, by hand")`
+}
+
+// leftoverWhy says where a leftover grant came from: in a root organization Google's
+// grant to the bootstrap as the creator or the bootstrap's own working grant; in a
+// hosting organization a creator's grant, or the seed's grant to the break-glass account
+// for the first apply of the second layer.
 func leftoverWhy(p *org.Placement, l org.Leftover) string {
 	switch {
+	case p.IsRoot() && (l.Role == org.OwnerRole || l.Role == org.FolderEditorRole):
+		return "Google's grant to the creator, from the bootstrap"
+	case p.IsRoot():
+		return "the bootstrap's working grant"
 	case l.Role == org.OwnerRole, l.On == org.OnFolder && (l.Role == org.FolderAdminRole || l.Role == org.FolderEditorRole):
 		return "the creator's grant from the first applies by hand"
-	case l.On == org.OnFolder && l.Key == p.Prefix && p.IsRoot():
-		return "the bootstrap's working grant"
 	case l.On == org.OnFolder && l.Key == p.Prefix:
 		return "a grant for a hand apply of 1-org"
 	default:

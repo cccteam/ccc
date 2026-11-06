@@ -7,6 +7,9 @@ import (
 	"strings"
 	"testing"
 
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
+
 	"github.com/cccteam/ccc/bedrock/internal/github"
 	"github.com/cccteam/ccc/bedrock/internal/github/githubtest"
 	"github.com/cccteam/ccc/bedrock/internal/org"
@@ -153,6 +156,45 @@ func TestEngineFromNothing(t *testing.T) {
 	}
 	if want := []string{"beacon.clientbay.example.", "harbor.clientbay.example."}; !slices.Equal(ns, want) {
 		t.Errorf("delegations = %v, want %v", ns, want)
+	}
+}
+
+// TestEngineReadsNothingAboveTheFolder: a trigger's run holds no read of the organization
+// node's or the billing account's IAM policy; it notes the two grants it did not compare
+// and is clean otherwise. The bootstrap refused the same read stops, as does a run refused
+// for another reason.
+func TestEngineReadsNothingAboveTheFolder(t *testing.T) {
+	t.Parallel()
+
+	w := newWorld(t)
+	if _, out := w.run(t, root.Apply, true); strings.Contains(out, "finding") {
+		t.Fatalf("the first apply:\n%s", out)
+	}
+	w.fake.Refuse["OrganizationPolicy"] = status.Error(codes.PermissionDenied, "Permission 'resourcemanager.organizations.getIamPolicy' denied on resource '//cloudresourcemanager.googleapis.com/organizations/123456789012' (or it may not exist).")
+	w.fake.Refuse["BillingPolicy"] = status.Error(codes.PermissionDenied, "The caller does not have permission")
+	report, _ := w.run(t, root.Check, false)
+	if !report.Clean() {
+		t.Errorf("not clean: changes %v, findings %q", whats(report), report.Findings)
+	}
+	want := []string{
+		"the creating identity's Folder Creator at the organization node was not compared: this run holds no read of the organization node's IAM policy, as the triggers' runners hold their roles under the organization's folder alone; the bootstrap made the grant and compares it, and so does bedrock org check run by an Organization Administrator",
+		"the creating identity's Billing Account Administrator on billing account 012345-6789AB-CDEF01 was not compared: this run holds no read of the billing account's IAM policy, as the triggers' runners hold their roles under the organization's folder alone; the bootstrap made the grant and compares it, and so does bedrock org check run by a Billing Account Administrator of it",
+	}
+	if !slices.Equal(report.Notes, want) {
+		t.Errorf("notes = %q, want %q", report.Notes, want)
+	}
+	var buf bytes.Buffer
+	report.Write(&buf, root.Check)
+	if !strings.Contains(buf.String(), "note: "+want[0]+"\n") || !strings.HasSuffix(buf.String(), "The root organization stands as placement.json says: nothing to change.\n") {
+		t.Errorf("Write() = %q", buf.String())
+	}
+	var out bytes.Buffer
+	if _, err := root.Run(context.Background(), w.clients, &root.Request{Placement: w.p, Mode: root.Check, Commit: "abc1234", GitHubToken: "test-token", Bootstrap: true}, &out); err == nil || !strings.Contains(err.Error(), "resourcemanager.organizations.getIamPolicy") {
+		t.Errorf("the bootstrap refused the read: err = %v", err)
+	}
+	w.fake.Refuse["OrganizationPolicy"] = status.Error(codes.Unavailable, "try again")
+	if _, err := root.Run(context.Background(), w.clients, &root.Request{Placement: w.p, Mode: root.Check, Commit: "abc1234", GitHubToken: "test-token"}, &out); err == nil || !strings.Contains(err.Error(), "try again") {
+		t.Errorf("a refusal for another reason: err = %v", err)
 	}
 }
 

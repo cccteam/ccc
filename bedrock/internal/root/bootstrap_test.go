@@ -157,7 +157,7 @@ func TestBootstrapBroughtApps(t *testing.T) {
 		"Pushed the foundation to imp-example/imr-root-infrastructure at",
 		"grants: grants serviceAccount:imr-create-gbl-tofu@" + project + ".iam.gserviceaccount.com roles/resourcemanager.folderCreator at the organization node",
 		"Cloud Build: creates the trigger imr-root-uc1-apply",
-		"Took bedrock@imp.example's Owner off " + project + "; it keeps Folder Admin on folder 900000000001.",
+		"Took bedrock@imp.example's Owner off " + project + " and its Folder Editor off folder 900000000001; it keeps Folder Admin on the folder.",
 		"The root organization stands as placement.json says: nothing to change.",
 		"Bootstrapped the imr root organization as bedrock@imp.example",
 	} {
@@ -165,7 +165,7 @@ func TestBootstrapBroughtApps(t *testing.T) {
 			t.Errorf("output lacks %q:\n%s", want, out.String())
 		}
 	}
-	if !slices.Contains(fake.Calls, "GrantFolder(folders/900000000001, roles/resourcemanager.folderAdmin, user:bedrock@imp.example)") || !slices.Contains(fake.Calls, "RevokeProject(projects/"+project+", user:bedrock@imp.example, roles/owner)") {
+	if !slices.Contains(fake.Calls, "GrantFolder(folders/900000000001, roles/resourcemanager.folderAdmin, user:bedrock@imp.example)") || !slices.Contains(fake.Calls, "RevokeProject(projects/"+project+", user:bedrock@imp.example, roles/owner)") || !slices.Contains(fake.Calls, "RevokeFolder(folders/900000000001, user:bedrock@imp.example, roles/resourcemanager.folderEditor)") {
 		t.Errorf("the break-glass account's grants: %v", fake.Calls)
 	}
 	if !slices.Contains(srv.Created, "imp-example/imr-root-infrastructure") {

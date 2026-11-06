@@ -209,6 +209,45 @@ func TestRootOrgCheckEngine(t *testing.T) {
 	}
 }
 
+// TestRootOrgCheckLeftovers: in a root organization org check names what Google gave the
+// bootstrap as the creator and the bootstrap's working grants, and what takes them off:
+// the bootstrap run again. The break-glass account's Folder Admin is kept, and not listed.
+func TestRootOrgCheckLeftovers(t *testing.T) {
+	t.Parallel()
+
+	d, _, _, dir := rootWorld(t)
+	d.org.policies = func(context.Context) (org.PolicyReader, error) {
+		return &fakePolicyReader{
+			byProject: map[string][]org.Binding{"imr-root-gbl-core-c3d4": {{Role: "roles/owner", Members: []string{"user:seed@imp.example"}}}},
+			folder:    "900000000001",
+			byFolder: map[string][]org.Binding{"900000000001": {
+				{Role: "roles/resourcemanager.folderAdmin", Members: []string{"user:seed@imp.example"}},
+				{Role: "roles/resourcemanager.folderEditor", Members: []string{"user:seed@imp.example"}},
+				{Role: "roles/resourcemanager.projectCreator", Members: []string{"user:seed@imp.example"}},
+			}},
+		}, nil
+	}
+	out, err := execute(d, "", "org", "check", "--dir", dir)
+	if err != nil {
+		t.Fatalf("org check = %v; printed:\n%s", err, out)
+	}
+	const removal = "; it is temporary, removed by bedrock org bootstrap run again in a clone, which takes it off at its end."
+	for _, want := range []string{
+		"project root (imr-root-gbl-core-c3d4): user:seed@imp.example holds roles/owner, Google's grant to the creator, from the bootstrap" + removal,
+		"folder imr (900000000001): user:seed@imp.example holds roles/resourcemanager.folderEditor, Google's grant to the creator, from the bootstrap" + removal,
+		"folder imr (900000000001): user:seed@imp.example holds roles/resourcemanager.projectCreator, the bootstrap's working grant" + removal,
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("printed:\n%s\nwant it to contain %q", out, want)
+		}
+	}
+	for _, absent := range []string{"Recovery, by hand", "holds roles/resourcemanager.folderAdmin"} {
+		if strings.Contains(out, absent) {
+			t.Errorf("printed:\n%s\nwant nothing of %q", out, absent)
+		}
+	}
+}
+
 // TestRootOrgPlanApply: in a root organization's repository, org plan is the plan
 // trigger's run through the engine, which posts what the merge changes on the pull
 // request, and org apply the apply trigger's, which makes it and leaves the marker.

@@ -593,13 +593,18 @@ func (b *bootstrap) repository(ctx context.Context, token string) (string, error
 	return create.Push(ctx, gh, b.req.Dir, p.GithubOrganization, p.SourceRepo, p.GithubDefaultBranch, message, b.out)
 }
 
-// withdraw takes the break-glass account's Owner off the root project, which Google gave
-// its creator; its Folder Admin on the folder stays, its key for a recovery by hand.
+// withdraw takes off the break-glass account what Google gave it as the creator: Owner
+// on the root project, and Folder Editor on the folder. Its Folder Admin on the folder
+// stays, its key for a recovery by hand.
 func (b *bootstrap) withdraw(ctx context.Context, folder string) error {
-	if err := b.google.RevokeProject(ctx, b.p.Projects[org.RootProjectKey], "user:"+b.p.BreakGlassAccount, []string{ownerRole}); err != nil {
+	account := "user:" + b.p.BreakGlassAccount
+	if err := b.google.RevokeProject(ctx, b.p.Projects[org.RootProjectKey], account, []string{ownerRole}); err != nil {
 		return err
 	}
-	fmt.Fprintf(b.out, "Took %s's Owner off %s; it keeps Folder Admin on folder %s.\n", b.p.BreakGlassAccount, b.p.Projects[org.RootProjectKey], folder)
+	if err := b.google.RevokeFolder(ctx, folder, account, []string{org.FolderEditorRole}); err != nil {
+		return err
+	}
+	fmt.Fprintf(b.out, "Took %s's Owner off %s and its Folder Editor off folder %s; it keeps Folder Admin on the folder.\n", b.p.BreakGlassAccount, b.p.Projects[org.RootProjectKey], folder)
 
 	return nil
 }

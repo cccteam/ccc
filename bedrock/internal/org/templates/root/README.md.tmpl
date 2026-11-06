@@ -214,11 +214,15 @@ the creating identity for a creation alone.
 
 Two things the apply reports and never changes, since they lie outside the
 folder or would break a customer: the creating identity's grants at the
-organization node and on the billing account, made by the bootstrap (a missing
-one is a finding, and an administrator makes it again), and a zone whose
-domain was taken out of `domains`, which stays standing (a finding) until a
-person deletes it in the root project, because every name under the domain
-still points at its name servers ("Making a zone again").
+organization node and on the billing account, made by the bootstrap, and a zone
+whose domain was taken out of `domains`, which stays standing (a finding) until
+a person deletes it in the root project, because every name under the domain
+still points at its name servers ("Making a zone again"). The grants above the
+folder a trigger's run does not even read, since the runners hold nothing
+there: the run notes that it did not compare them. The bootstrap compares them
+on every run of its own, as does `bedrock org check` run by an administrator of
+the organization and the billing account, and a missing one is a finding there,
+made again by the bootstrap run again.
 
 `bedrock org check`, at a terminal in a clone with the break-glass account's
 credentials, prints the same comparison as information after the README check,
