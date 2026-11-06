@@ -272,11 +272,14 @@ previous release's steps. Both triggers pass `_BEDROCK_STEPS`, the shape of
 their steps and the kind of pin they were rendered for, and `bedrock org
 plan` and `apply` say in the run's log when they run under another shape.
 
-To apply one layer again with no change to it, which a registration's second
-pass of `2-env` needs, start the apply trigger by hand on the default branch
-with the layer, and for `2-env` the environment (without one, the three in
-order); in a terminal, as a person holding `roles/cloudbuild.builds.editor`
-on the boot project:
+A push's apply runs `2-env` once more at its end, each environment in order,
+while an application stands at the identities step of its registration: each
+environment but the last grants the next environment's deploy identity read
+on its records bucket, from state the first pass did not have. To apply one
+layer again with no change to it otherwise, start the apply trigger by hand on
+the default branch with the layer, and for `2-env` the environment (without
+one, the three in order); in a terminal, as a person holding
+`roles/cloudbuild.builds.editor` on the boot project:
 
 ```bash
 gcloud builds triggers run {{.ApplyTriggerName}} --region={{.Primary.Name}} --project=<boot project> --branch={{.GithubDefaultBranch}} --substitutions={{.RerunExample}}

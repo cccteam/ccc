@@ -138,9 +138,10 @@ file) and only then plans or applies. No key exists anywhere: the trigger's
 runner identity impersonates each layer's own identity for that layer's
 tofu, the planner the plan identities and the applier the apply identities.
 `gcloud builds triggers run` on the apply trigger applies one layer again
-with no change to it, which a registration's second pass of `2-env` needs
-(`0-bootstrap/README.md`, "The Cloud Build triggers", which also says how a
-change to the steps themselves lands one apply later). Recovery is by hand (`0-bootstrap/README.md`, "Recovery, by hand"):
+with no change to it (`0-bootstrap/README.md`, "The Cloud Build triggers",
+which also says how a change to the steps themselves lands one apply later);
+a registration's second pass of `2-env` is the push's apply's own, run at its
+end while an application stands at the identities step. Recovery is by hand (`0-bootstrap/README.md`, "Recovery, by hand"):
 for `2-env` as a member of the environment's team group under the
 layer administrator and layer state entitlements, which grant the
 environment layer identity's roles for a short time, so the person runs the

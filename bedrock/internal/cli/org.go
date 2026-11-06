@@ -1398,38 +1398,37 @@ func applicationProjects(p *org.Placement, app string) string {
 }
 
 // applySequence says how a registered application reaches the layers through the Cloud
-// Build triggers: the pull requests, in order, and the one run of the apply trigger by
-// hand. It names the application by its repository and keeps the code to the commands.
+// Build triggers: the pull requests, in order. It names the application by its repository
+// and keeps the code to the commands.
 func applySequence(p *org.Placement, app, repository string) string {
 	return fmt.Sprintf(`
 Register through the Cloud Build triggers, as pull requests into %[1]s (each merge applies the
 layers it touches, in layer order). placement.json records how far the registration has gone
 (registration), the layers render what that step may apply, and every pull request carries
 every rendered file:
-  1. This render, %[4]s at its identities: its repository (private, squash the only merge,
+  1. This render, %[3]s at its identities: its repository (private, squash the only merge,
      its rulesets and Environments; a repository that exists already is adopted, not
-     made) and its registry repository, then, in %[5]s, its
-     identities, database, repository link and triggers.
-  2. The apply trigger by hand with 2-env, in a terminal:
-     %[3]s
-     each environment but the last of them grants the next environment's deploy identity
-     read on its records bucket, from state the first pass did not have.
-  3. bedrock org register %[2]s --next, then the pull request it renders: the public-invoker
+     made) and its registry repository, then, in %[4]s, its
+     identities, database, repository link and triggers; the same apply then runs 2-env
+     once more, each environment in order, since each environment but the last grants
+     the next environment's deploy identity read on its records bucket, from state the
+     first pass did not have.
+  2. bedrock org register %[2]s --next, then the pull request it renders: the public-invoker
      tag (1-org), the registry grants (2-shr) and the database admins (2-spn), on
-     identities that exist now. Its output says how step 4 starts.
-  4. %[4]s's own stack, rendered in its repository (bedrock render) from its first
+     identities that exist now. Its output says how step 3 starts.
+  3. %[3]s's own stack, rendered in its repository (bedrock render) from its first
      placement.json (below) and pushed to %[1]s, applied for the first time in each
      environment through its operations workflow (Actions, operations, apply, with the
      environment: the stack trigger 2-env made there applies it as the apply identity),
      which the push that adds or changes its file lists, since the workflow runs its
-     registered job on that push; step 3 prints the way that applies. Every later apply
+     registered job on that push; step 2 prints the way that applies. Every later apply
      is its pipeline's, with each release.
-  5. bedrock org register %[2]s --next once more, then the pull request it renders: the
+  4. bedrock org register %[2]s --next once more, then the pull request it renders: the
      hostnames (2-net), onto the backends the stack created, and the stack's check trigger
      as a required check of the repository (1-org), which the first apply made; until then
      the repository's pull requests merge on the CI jobs alone.
-  6. After 2-net's apply: bedrock domain check, which passes when the apps domain and each vanity domain resolve to their zones.
-`, p.GithubDefaultBranch, app, triggerRun(p, ""), repository, strings.Join(p.PlacedEnvironments(app), ", "))
+  5. After 2-net's apply: bedrock domain check, which passes when the apps domain and each vanity domain resolve to their zones.
+`, p.GithubDefaultBranch, app, repository, strings.Join(p.PlacedEnvironments(app), ", "))
 }
 
 // repositoryExists asks GitHub whether the organization's repository exists, which decides

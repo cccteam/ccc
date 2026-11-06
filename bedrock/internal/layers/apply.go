@@ -75,6 +75,42 @@ func Apply(ctx context.Context, clients *Clients, req *Request, out io.Writer) e
 		}
 	}
 
+	return r.applyEnvironmentsAgain(ctx, store, runs, tofus)
+}
+
+// applyEnvironmentsAgain applies 2-env once more, each environment in order, at the end
+// of a push's apply that applied it, when an application stands at the identities step
+// of its registration: each environment but the last grants the next environment's
+// deploy identity read on its records bucket, from state the first pass did not have
+// (the identities the next environment's 2-env made), which was the one run of the
+// apply trigger by hand in a registration's sequence. A run named with _LAYER applies
+// what it names alone.
+func (r *run) applyEnvironmentsAgain(ctx context.Context, store deploy.Store, runs []org.LayerRun, tofus []*tofu) error {
+	if r.subs[layerSub] != "" {
+		return nil
+	}
+	var apps []string
+	for i := range r.p.Applications {
+		if r.p.Step(r.p.Applications[i].Code) == org.RegistrationIdentities {
+			apps = append(apps, r.p.Applications[i].Code)
+		}
+	}
+	var again []int
+	for i := range runs {
+		if runs[i].Environment != "" {
+			again = append(again, i)
+		}
+	}
+	if len(apps) == 0 || len(again) == 0 {
+		return nil
+	}
+	fmt.Fprintf(r.out, "2-env applies once more, each environment in order: %s at the identities step of its registration, and each environment but the last grants the next environment's deploy identity read on its records bucket, from state the first pass did not have.\n", joined(apps))
+	for _, i := range again {
+		if err := r.applyOne(ctx, store, runs[i], tofus[i]); err != nil {
+			return err
+		}
+	}
+
 	return nil
 }
 

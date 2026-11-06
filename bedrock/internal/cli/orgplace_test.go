@@ -91,7 +91,7 @@ func TestOrgPlace(t *testing.T) {
 			name:        "an environment added starts its registration there",
 			before:      func(p *org.Placement) { p.Applications[1].Environments = []string{"tst"} },
 			args:        []string{"beacon", "tst", "stg"},
-			wantOut:     []string{"Placed beacon in tst, stg (environments in", "1. This render, beacon at its identities in stg: its GitHub Environment (1-org)", "3. bedrock org register beacon --next", `environments in infrastructure/placement.json lists ["tst", "stg"]`},
+			wantOut:     []string{"Placed beacon in tst, stg (environments in", "1. This render, beacon at its identities in stg: its GitHub Environment (1-org)", "2. bedrock org register beacon --next", `environments in infrastructure/placement.json lists ["tst", "stg"]`},
 			wantPlaced:  []string{"tst", "stg"},
 			wantUnder:   []string{"stg"},
 			wantHosts:   []string{`"beacon-tst.`},

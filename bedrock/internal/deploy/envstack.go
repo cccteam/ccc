@@ -869,6 +869,14 @@ func PlanEnvironments(ctx context.Context, clients *Clients, w Workspace, req *B
 	}
 	var summaries []string
 	for _, e := range strings.Split(subs[environmentsSub], ",") {
+		if len(p.Environments) > 0 && !slices.Contains(p.Environments, e) {
+			// The triggers' environments lag one stack apply behind the placement: an
+			// environment the application left has no identity to plan as any more.
+			fmt.Fprintf(out, "%s: left the application's placement (environments in %s): nothing is planned there, and the stack's next apply drops it from the triggers.\n", e, filepath.Join(stackDir, placementFile))
+			summaries = append(summaries, "**"+e+"**: left the application's placement: nothing is planned there, and the stack's next apply drops it from the triggers")
+
+			continue
+		}
 		summary, err := planEnvironment(ctx, clients, w, build, env, subs, e, identities[e], m, out)
 		if err != nil {
 			return err

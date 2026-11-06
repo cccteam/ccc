@@ -859,6 +859,90 @@ func TestApply(t *testing.T) {
 	}
 }
 
+// TestApplyEnvironmentsAgain: a push's apply that applied 2-env runs it once more, each
+// environment in order, when an application stands at the identities step of its
+// registration (the second pass that was the apply trigger run by hand); a run named with
+// _LAYER does not.
+func TestApplyEnvironmentsAgain(t *testing.T) {
+	t.Parallel()
+
+	registering := func(p *org.Placement) {
+		p.Applications = append(p.Applications, org.Application{Code: "quill", Repository: "quill-service"})
+		p.Registration = map[string]org.RegistrationSteps{"quill": {"tst": org.RegistrationIdentities, "stg": org.RegistrationIdentities, "prd": org.RegistrationIdentities}}
+	}
+	runs := func() map[string]tofuRun {
+		return map[string]tofuRun{"2-shr": {text: succeededPlan}, "2-net": {text: succeededPlan}, "2-env tst": {text: succeededPlan}, "2-env stg": {text: succeededPlan}, "2-env prd": {text: succeededPlan}}
+	}
+	markers := func() map[string]string {
+		return map[string]string{
+			"applied/0-bootstrap": pushSHA, "applied/1-org": baseSHA, "applied/2-spn": baseSHA, "applied/2-net": baseSHA,
+			"applied/2-env/tst": baseSHA, "applied/2-env/stg": baseSHA, "applied/2-env/prd": baseSHA,
+		}
+	}
+	applied := func(f *flow) []string {
+		var order []string
+		for _, c := range f.runner.ran {
+			if c.Args[0] == applyCommand {
+				order = append(order, f.runner.key(c))
+			}
+		}
+
+		return order
+	}
+	const again = "2-env applies once more, each environment in order: quill at the identities step of its registration, and each environment but the last grants the next environment's deploy identity read on its records bucket, from state the first pass did not have.\n"
+
+	t.Run("a push's apply", func(t *testing.T) {
+		t.Parallel()
+
+		f := newFlow(t, pushSubs(), deployerAppID, runs())
+		f.store.objects = markers()
+		dir := checkout(t, registering)
+		var out bytes.Buffer
+		if err := Apply(t.Context(), f.clients(), request(dir), &out); err != nil {
+			t.Fatalf("Apply() error = %v; output:\n%s", err, out.String())
+		}
+		if !strings.Contains(out.String(), again) {
+			t.Errorf("output lacks %q:\n%s", again, out.String())
+		}
+		if want := []string{"2-shr", "2-env tst", "2-env stg", "2-env prd", "2-net", "2-env tst", "2-env stg", "2-env prd"}; !slices.Equal(applied(f), want) {
+			t.Errorf("applied in the order %v, want %v", applied(f), want)
+		}
+	})
+	t.Run("a run named with _LAYER", func(t *testing.T) {
+		t.Parallel()
+
+		subs := pushSubs()
+		subs[layerSub] = "2-env"
+		f := newFlow(t, subs, deployerAppID, runs())
+		f.store.objects = markers()
+		dir := checkout(t, registering)
+		var out bytes.Buffer
+		if err := Apply(t.Context(), f.clients(), request(dir), &out); err != nil {
+			t.Fatalf("Apply() error = %v; output:\n%s", err, out.String())
+		}
+		if strings.Contains(out.String(), "applies once more") {
+			t.Errorf("a named run applied 2-env again:\n%s", out.String())
+		}
+		if want := []string{"2-env tst", "2-env stg", "2-env prd"}; !slices.Equal(applied(f), want) {
+			t.Errorf("applied in the order %v, want %v", applied(f), want)
+		}
+	})
+	t.Run("no application at its identities", func(t *testing.T) {
+		t.Parallel()
+
+		f := newFlow(t, pushSubs(), deployerAppID, runs())
+		f.store.objects = markers()
+		dir := checkout(t, func(*org.Placement) {})
+		var out bytes.Buffer
+		if err := Apply(t.Context(), f.clients(), request(dir), &out); err != nil {
+			t.Fatalf("Apply() error = %v; output:\n%s", err, out.String())
+		}
+		if strings.Contains(out.String(), "applies once more") || len(applied(f)) != 5 {
+			t.Errorf("2-env applied again with nobody registering (%v):\n%s", applied(f), out.String())
+		}
+	})
+}
+
 // TestApplyNamed: _LAYER applies one layer again with no change check, and with
 // _ENVIRONMENT one environment of 2-env; without it the three in order.
 func TestApplyNamed(t *testing.T) {

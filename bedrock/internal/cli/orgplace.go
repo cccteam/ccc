@@ -142,32 +142,30 @@ func hclStrings(envs []string) string {
 }
 
 // placeSequence says how the application reaches the layers in the environments added,
-// as applySequence says it for a registration: the pull requests in order and the one run
-// of the apply trigger by hand, the application named by its repository.
+// as applySequence says it for a registration: the pull requests in order, the
+// application named by its repository.
 func placeSequence(p *org.Placement, app, repository string, added []string) string {
 	envs := strings.Join(added, ", ")
 
 	return fmt.Sprintf(`
-%[4]s reaches %[5]s through the Cloud Build triggers, as pull requests into %[1]s (each merge
+%[3]s reaches %[4]s through the Cloud Build triggers, as pull requests into %[1]s (each merge
 applies the layers it touches, in layer order). placement.json records how far the
 registration there has gone (registration), the layers render what that step may apply,
 and every pull request carries every rendered file:
-  1. This render, %[4]s at its identities in %[5]s: its GitHub Environment (1-org), then its
-     identities, database, repository link and triggers there (2-env).
-  2. The apply trigger by hand with 2-env, in a terminal, for the environment before each
-     one added and for %[5]s:
-     %[3]s
-     the environment before grants the new environment's deploy identity read on its
-     records bucket, from state the first pass did not have.
-  3. bedrock org register %[2]s --next, then the pull request it renders: the public-invoker
-     tag (1-org), the registry grants (2-shr) and the database admins (2-spn) in %[5]s, on
+  1. This render, %[3]s at its identities in %[4]s: its GitHub Environment (1-org), then its
+     identities, database, repository link and triggers there (2-env); the same apply then
+     runs 2-env once more, each environment in order, since the environment before grants
+     the new environment's deploy identity read on its records bucket, from state the first
+     pass did not have.
+  2. bedrock org register %[2]s --next, then the pull request it renders: the public-invoker
+     tag (1-org), the registry grants (2-shr) and the database admins (2-spn) in %[4]s, on
      identities that exist now.
-  4. In %[4]s's repository: environments in infrastructure/placement.json lists %[6]s, with
+  3. In %[3]s's repository: environments in infrastructure/placement.json lists %[5]s, with
      the environment's project under projects (bedrock org render prints the ids) and its
-     secret versions pinned; bedrock render, merge, then the stack's first apply in %[5]s
+     secret versions pinned; bedrock render, merge, then the stack's first apply in %[4]s
      through its operations workflow (Actions, operations, apply, with the environment).
-  5. bedrock org register %[2]s --next once more, then the pull request it renders: the
-     hostnames in %[5]s (2-net), onto the backends the stack created.
-  6. After 2-net's apply: bedrock domain check. The next release promotes into %[5]s.
-`, p.GithubDefaultBranch, app, triggerRun(p, ""), repository, envs, hclStrings(p.PlacedEnvironments(app)))
+  4. bedrock org register %[2]s --next once more, then the pull request it renders: the
+     hostnames in %[4]s (2-net), onto the backends the stack created.
+  5. After 2-net's apply: bedrock domain check. The next release promotes into %[4]s.
+`, p.GithubDefaultBranch, app, repository, envs, hclStrings(p.PlacedEnvironments(app)))
 }

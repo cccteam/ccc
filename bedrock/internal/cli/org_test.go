@@ -813,11 +813,10 @@ func TestOrgCommands(t *testing.T) {
 			},
 			wantOut: []string{
 				"Registered quill-service under the code quill in", "at its identities, placed in tst, stg, prd; rendered", "1-org/public-invokers.auto.tfvars among them", "Register through the Cloud Build triggers, as pull requests into master",
-				"1. This render, quill-service at its identities: its repository",
-				"2. The apply trigger by hand with 2-env, in a terminal:\n     gcloud builds triggers run imp-boot-uc1-layers-apply --region=us-central1 --project=imp-boot-gbl-core-a1b2 --branch=master --substitutions=_LAYER=2-env\n     each environment but the last of them grants the next environment's deploy identity\n     read on its records bucket, from state the first pass did not have.",
-				"3. bedrock org register quill --next, then the pull request it renders: the public-invoker\n     tag (1-org), the registry grants (2-shr) and the database admins (2-spn)",
-				"5. bedrock org register quill --next once more, then the pull request it renders: the\n     hostnames (2-net)",
-				"\n  6. After 2-net's apply: bedrock domain check, which passes when the apps domain and each vanity domain resolve to their zones.\n",
+				"1. This render, quill-service at its identities: its repository", "the same apply then runs 2-env\n     once more, each environment in order",
+				"2. bedrock org register quill --next, then the pull request it renders: the public-invoker\n     tag (1-org), the registry grants (2-shr) and the database admins (2-spn)",
+				"4. bedrock org register quill --next once more, then the pull request it renders: the\n     hostnames (2-net)",
+				"\n  5. After 2-net's apply: bedrock domain check, which passes when the apps domain and each vanity domain resolve to their zones.\n",
 			},
 		},
 		{
