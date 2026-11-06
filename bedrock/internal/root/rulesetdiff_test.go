@@ -13,7 +13,8 @@ import (
 func TestRulesetDiffStoredDefaults(t *testing.T) {
 	t.Parallel()
 
-	want := &github.Ruleset{Name: rulesetName, Target: github.RulesetTargetBranch, Enforcement: github.RulesetActive,
+	want := &github.Ruleset{
+		Name: rulesetName, Target: github.RulesetTargetBranch, Enforcement: github.RulesetActive,
 		BypassActors: []github.BypassActor{{ActorID: 5635255, ActorType: github.BypassIntegration, BypassMode: github.BypassAlways}},
 		Conditions:   &github.RulesetConditions{RefName: github.RefNameCondition{Include: []string{github.DefaultBranchPattern}, Exclude: []string{}}},
 		Rules: []github.Rule{
