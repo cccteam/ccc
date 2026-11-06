@@ -545,7 +545,8 @@ grants the new organization's identities their use of the billing account.
    organization's state bucket (`applied/created/<prefix>`), and the hand-off:
    a pull request here, from the branch `create/<prefix>`, recording the folder
    in `placement.json` and the placement as created under
-   `organizations/<prefix>/`. A creation that stops finishes on the next push,
+   `organizations/<prefix>/` (the branch pushed as the infrastructure app, the
+   pull request opened as the deployer app). A creation that stops finishes on the next push,
    since every step looks before it makes; a created organization is left
    alone.
 3. **The hand-off.** Its merge records the folder, from which the apply keeps

@@ -47,8 +47,15 @@ type Request struct {
 	Root    *org.Placement
 	RootDir string
 	Record  org.HostingOrganization
-	Token   string
-	Commit  string
+	// Token is the GitHub token the creation acts with (the infrastructure app's
+	// installation token: the repository, the foundation's push, the hand-off's branch).
+	// PullRequestToken is the token the hand-off pull request is found and opened with:
+	// the deployer app's installation token, the app that speaks on pull requests, since
+	// the infrastructure app's declaration carries no pull-request permission; empty, the
+	// hand-off uses Token (a person's token at a terminal does both).
+	Token            string
+	PullRequestToken string
+	Commit           string
 }
 
 // Marker is what the creation leaves in the root organization's state bucket once the
@@ -153,6 +160,10 @@ func Run(ctx context.Context, clients *Clients, req *Request, out io.Writer) (*R
 		return nil, err
 	}
 	f := &creation{clients: clients, req: req, out: out, gh: clients.GitHub(req.Token)}
+	f.prs = f.gh
+	if req.PullRequestToken != "" && req.PullRequestToken != req.Token {
+		f.prs = clients.GitHub(req.PullRequestToken)
+	}
 	marker, err := f.readMarker(ctx)
 	if err != nil {
 		return nil, err
@@ -200,7 +211,10 @@ type creation struct {
 	clients *Clients
 	req     *Request
 	out     io.Writer
-	gh      *github.Client
+	// gh acts as the creation (Request.Token); prs finds and opens the hand-off pull
+	// request (Request.PullRequestToken, or gh).
+	gh  *github.Client
+	prs *github.Client
 }
 
 // record reads the organization's record and fills it from the root

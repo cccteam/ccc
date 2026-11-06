@@ -74,12 +74,16 @@ func (r *Report) Clean() bool {
 // Request is one run: the placement and its repository, the mode, the commit the run
 // builds (for the marker and the creations) and the GitHub token the run acts with (the
 // infrastructure app's installation token, or a person's; empty leaves GitHub unread).
+// PullRequestToken is the deployer app's installation token, which a creation finds and
+// opens its hand-off pull request with (the infrastructure app holds no pull-request
+// permission); empty, the creation uses GitHubToken.
 type Request struct {
-	Placement   *org.Placement
-	Dir         string
-	Mode        Mode
-	Commit      string
-	GitHubToken string
+	Placement        *org.Placement
+	Dir              string
+	Mode             Mode
+	Commit           string
+	GitHubToken      string
+	PullRequestToken string
 	// Bootstrap marks the bootstrap's run: the organization-node and billing grants and
 	// the bucket's grant are made (an apply trigger's run holds no right to them and
 	// reports them instead), and no hosting organization is created.
@@ -963,10 +967,12 @@ func (e *engine) creations(ctx context.Context) error {
 	if e.clients.Create == nil {
 		return errors.New("placement.json records a hosting organization to create, and no creation clients are wired")
 	}
-	token := e.req.GitHubToken
 	for _, record := range pending {
 		fmt.Fprintf(e.out, "%s: creates the hosting organization %s\n", sectionCreations, record.Prefix)
-		res, err := create.Run(ctx, e.clients.Create, &create.Request{Root: e.p, RootDir: e.req.Dir, Record: record, Token: token, Commit: e.req.Commit}, e.out)
+		res, err := create.Run(ctx, e.clients.Create, &create.Request{
+			Root: e.p, RootDir: e.req.Dir, Record: record, Commit: e.req.Commit,
+			Token: e.req.GitHubToken, PullRequestToken: e.req.PullRequestToken,
+		}, e.out)
 		if err != nil {
 			return errors.Wrapf(err, "the creation of %s", record.Prefix)
 		}

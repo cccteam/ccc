@@ -2524,7 +2524,9 @@ everything it made (Owner on each project, Folder Admin and Folder Editor on eac
 its roles on the organization's folder), a marker in the root organization's state bucket
 (`applied/created/<prefix>`), and the hand-off, a pull request in the root organization's
 repository from the branch `create/<prefix>` recording the folder in `placement.json` and
-the placement as created. Every step looks before it makes, so a creation that stopped
+the placement as created (the branch pushed as the infrastructure app, the pull request
+opened as the deployer app, the app that speaks on pull requests). Every step looks
+before it makes, so a creation that stopped
 finishes on the next push, and a created organization is left alone. `org plan` says on
 the pull request what its merge creates. Left by hand, after the creation: the spend
 budget, by a billing administrator; the consent screens and the role groups as the
