@@ -458,6 +458,45 @@ func TestRunResumes(t *testing.T) {
 	}
 }
 
+// TestRunStartsOver creates an organization again in the repository its earlier
+// foundation was pushed to, destroyed since (0-bootstrap/README.md, "Destroying the
+// organization"): the branch's placement names another state bucket, so it is history
+// and not this run's own push, and the new foundation lands on it.
+func TestRunStartsOver(t *testing.T) {
+	t.Parallel()
+
+	f := newFlow(t)
+	dir, root := checkout(t)
+	f.srv.AddRepo(owner, "rgb-infrastructure", &githubtest.Repo{
+		Refs: map[string]github.Object{"refs/heads/master": {Type: "commit", SHA: "old1"}}, Ancestry: map[string][]string{"old1": {"old1"}},
+		Trees: map[string]string{"old1": "treeold"}, Files: map[string]string{"treeold:placement.json": "{\"prefix\": \"rgb\", \"stateBucket\": \"rgb-boot-gbl-state-0ld1\"}\n", "treeold:README.md": "# rgb-infrastructure\n"},
+	})
+	var out bytes.Buffer
+	if _, err := create.Run(t.Context(), f.clients(), request(root, dir), &out); err != nil {
+		t.Fatalf("Run() error = %v; output:\n%s", err, out.String())
+	}
+	if len(f.srv.Created) != 0 {
+		t.Errorf("repositories created: %v", f.srv.Created)
+	}
+	hosting := f.srv.Repos[owner+"/rgb-infrastructure"]
+	head := hosting.Refs["refs/heads/master"].SHA
+	if head == "old1" || !slices.Contains(hosting.Ancestry[head], "old1") {
+		t.Errorf("master is at %s with ancestry %v: the foundation goes on the earlier one", head, hosting.Ancestry[head])
+	}
+	if placement := hosting.Files[hosting.Trees[head]+":placement.json"]; !strings.Contains(placement, `"stateBucket": "rgb-boot-gbl-state-e5f6"`) {
+		t.Errorf("placement.json on master:\n%s", placement)
+	}
+	wantOut := []string{
+		"master of " + owner + "/rgb-infrastructure carries the foundation of an earlier rgb organization (state bucket rgb-boot-gbl-state-0ld1), destroyed since; it stays as history, and this foundation is pushed on it.\n",
+		"Pushed the foundation to " + owner + "/rgb-infrastructure at ",
+	}
+	for _, want := range wantOut {
+		if !strings.Contains(out.String(), want) {
+			t.Errorf("output lacks %q:\n%s", want, out.String())
+		}
+	}
+}
+
 // TestRunHandOffBranchLeft: a run that stopped between the hand-off branch and its pull
 // request left the branch; the next run moves the branch to its own commit and opens the
 // pull request from it, instead of refusing on the branch that exists.

@@ -603,7 +603,7 @@ func (b *bootstrap) repository(ctx context.Context, token string) (string, error
 	if err := create.DefaultBranch(ctx, gh, p.GithubOrganization, p.SourceRepo, p.GithubDefaultBranch, b.sleep, b.out); err != nil {
 		return "", err
 	}
-	head, carries, err := create.Foundation(ctx, gh, p.GithubOrganization, p.SourceRepo, p.GithubDefaultBranch)
+	head, carries, _, err := create.Foundation(ctx, gh, p)
 	if err != nil {
 		return "", err
 	}
@@ -626,7 +626,7 @@ func (b *bootstrap) repository(ctx context.Context, token string) (string, error
 	fmt.Fprintf(b.out, "Rendered the %s root organization into %s: %d owned file(s) and placement.json.\n", p.Prefix, b.req.Dir, written.Owned)
 	message := "chore: the " + p.Prefix + " root organization, bootstrapped by bedrock org bootstrap\n\nRendered from placement.json. The apply trigger makes the organization as the placement says on every push to " + p.GithubDefaultBranch + ", and creates the hosting organizations recorded without a folder."
 
-	return create.Push(ctx, gh, b.req.Dir, p.GithubOrganization, p.SourceRepo, p.GithubDefaultBranch, message, b.out)
+	return create.Push(ctx, gh, b.req.Dir, p, message, b.out)
 }
 
 // withdraw takes off the break-glass account what Google gave it as the creator: Owner

@@ -9,6 +9,7 @@ package create
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"io/fs"
@@ -116,17 +117,20 @@ func AwaitBranch(ctx context.Context, gh *github.Client, owner, repo, branch str
 func (f *creation) push(ctx context.Context, dir string, h *org.Placement) (string, error) {
 	message := "chore: the foundation of " + h.Prefix + ", created by the root organization " + f.req.Root.Prefix + "\n\nRendered by bedrock org create from " + org.RecordsDir + "/" + h.Prefix + "/" + org.PlacementFile + " in " + f.req.Root.SourceRepo + " at " + short(f.req.Commit) + ". The apply trigger applies 0-bootstrap, then 1-org, from this push."
 
-	return Push(ctx, f.gh, dir, h.GithubOrganization, h.SourceRepo, h.GithubDefaultBranch, message, f.out)
+	return Push(ctx, f.gh, dir, h, message, f.out)
 }
 
 // Push puts the directory's files on the repository's branch as one commit on the
-// branch's head, unless the branch carries placement.json already (a run that stopped
-// after its push), and answers the commit. The first applies' inits leave each layer's
+// branch's head, unless the branch carries this organization's placement.json already (a
+// run that stopped after its push), and answers the commit. An earlier organization's
+// foundation on the branch (one destroyed and started over in the same repository) is
+// history, and the commit lands on it. The first applies' inits leave each layer's
 // providers under .terraform and its lock file beside them: the lock file is committed,
 // as a person commits the one their first init writes, the providers never are; a local
 // state is never pushed either.
-func Push(ctx context.Context, gh *github.Client, dir, owner, repo, branch, message string, out io.Writer) (string, error) {
-	head, carries, err := Foundation(ctx, gh, owner, repo, branch)
+func Push(ctx context.Context, gh *github.Client, dir string, p *org.Placement, message string, out io.Writer) (string, error) {
+	owner, repo, branch := p.GithubOrganization, p.SourceRepo, p.GithubDefaultBranch
+	head, carries, earlier, err := Foundation(ctx, gh, p)
 	if err != nil {
 		return "", err
 	}
@@ -134,6 +138,9 @@ func Push(ctx context.Context, gh *github.Client, dir, owner, repo, branch, mess
 		fmt.Fprintf(out, "%s of %s/%s carries the foundation already (%s).\n", branch, owner, repo, short(head))
 
 		return head, nil
+	}
+	if earlier != "" {
+		fmt.Fprintf(out, "%s of %s/%s carries the foundation of an earlier %s organization (state bucket %s), destroyed since; it stays as history, and this foundation is pushed on it.\n", branch, owner, repo, p.Prefix, earlier)
 	}
 	entries, err := blobs(ctx, gh, dir, owner, repo)
 	if err != nil {
@@ -155,21 +162,37 @@ func Push(ctx context.Context, gh *github.Client, dir, owner, repo, branch, mess
 	return commit, nil
 }
 
-// Foundation reads whether the branch of the repository carries a placement, the mark of
-// the foundation commit, and answers the branch's head either way: a run again pushes
-// nothing then, and renders nothing into a clone of what it pushed.
-func Foundation(ctx context.Context, gh *github.Client, owner, repo, branch string) (head string, carries bool, err error) {
+// Foundation reads whether the branch of the repository carries this organization's
+// placement, the mark of the foundation commit, and answers the branch's head either way:
+// a run again pushes nothing then, and renders nothing into a clone of what it pushed. A
+// placement with another state bucket on the branch is an earlier foundation of an
+// organization destroyed and started over in the same repository (0-bootstrap/README.md,
+// "Destroying the organization"): earlier names its state bucket, and the new foundation
+// is pushed on that history.
+func Foundation(ctx context.Context, gh *github.Client, p *org.Placement) (head string, carries bool, earlier string, err error) {
+	owner, repo, branch := p.GithubOrganization, p.SourceRepo, p.GithubDefaultBranch
 	ref, err := gh.Ref(ctx, owner, repo, "heads/"+branch)
 	if err != nil {
-		return "", false, errors.Wrapf(err, "reading %s of %s/%s", branch, owner, repo)
+		return "", false, "", errors.Wrapf(err, "reading %s of %s/%s", branch, owner, repo)
 	}
-	if _, err := gh.Contents(ctx, owner, repo, org.PlacementFile, branch); err == nil {
-		return ref.Object.SHA, true, nil
-	} else if !github.NotFound(err) {
-		return "", false, errors.Wrapf(err, "reading %s on %s", org.PlacementFile, branch)
+	data, err := gh.Contents(ctx, owner, repo, org.PlacementFile, branch)
+	if github.NotFound(err) {
+		return ref.Object.SHA, false, "", nil
+	}
+	if err != nil {
+		return "", false, "", errors.Wrapf(err, "reading %s on %s", org.PlacementFile, branch)
+	}
+	var carried struct {
+		StateBucket string `json:"stateBucket"`
+	}
+	if err := json.Unmarshal(data, &carried); err != nil {
+		return "", false, "", errors.Wrapf(err, "json.Unmarshal(): %s on %s of %s/%s", org.PlacementFile, branch, owner, repo)
+	}
+	if carried.StateBucket != p.StateBucket {
+		return ref.Object.SHA, false, carried.StateBucket, nil
 	}
 
-	return ref.Object.SHA, false, nil
+	return ref.Object.SHA, true, "", nil
 }
 
 // blobs stores every file of the rendered directory as a blob and answers the tree
