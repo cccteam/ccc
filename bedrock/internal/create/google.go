@@ -9,6 +9,7 @@ package create
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"slices"
 	"strings"
 	"time"
@@ -23,6 +24,8 @@ import (
 	"cloud.google.com/go/storage"
 	"github.com/go-playground/errors/v5"
 	"google.golang.org/api/cloudbilling/v1"
+	"google.golang.org/api/dns/v1"
+	"google.golang.org/api/googleapi"
 	"google.golang.org/api/impersonate"
 	"google.golang.org/api/iterator"
 	"google.golang.org/api/option"
@@ -67,6 +70,12 @@ type Google interface {
 	GrantBillingAccount(ctx context.Context, billingAccount, role, member string) error
 	// EnableServices enables the APIs in the project and waits for them.
 	EnableServices(ctx context.Context, id string, services []string) error
+	// Zone answers the name servers of the public zone named in the project, and whether
+	// it exists.
+	PublicZone(ctx context.Context, project, name string) (nameServers []string, exists bool, err error)
+	// CreateZone makes the public zone in the project, DNSSEC on, and answers the name
+	// servers Cloud DNS assigned it.
+	CreatePublicZone(ctx context.Context, project, name, dnsName, description string, labels map[string]string) ([]string, error)
 	// ServiceAccountExists reports whether the service account (by email) exists.
 	ServiceAccountExists(ctx context.Context, email string) (bool, error)
 	// CreateServiceAccount makes the service account in the project.
@@ -98,6 +107,7 @@ type google struct {
 	services *serviceusage.Service
 	storage  *storage.Client
 	secrets  *secretmanager.Client
+	dns      *dns.Service
 	opts     []option.ClientOption
 	regional map[string]*secretmanager.Client
 }
@@ -138,8 +148,38 @@ func NewGoogle(ctx context.Context, opts ...option.ClientOption) (Google, error)
 	if g.secrets, err = secretmanager.NewClient(ctx, opts...); err != nil {
 		return nil, errors.Wrap(err, "secretmanager.NewClient()")
 	}
+	if g.dns, err = dns.NewService(ctx, opts...); err != nil {
+		return nil, errors.Wrap(err, "dns.NewService()")
+	}
 
 	return g, nil
+}
+
+// PublicZone reads the zone, answering nothing when there is none.
+func (g *google) PublicZone(ctx context.Context, project, name string) (nameServers []string, exists bool, err error) {
+	zone, err := g.dns.ManagedZones.Get(project, name).Context(ctx).Do()
+	var apiErr *googleapi.Error
+	if errors.As(err, &apiErr) && apiErr.Code == http.StatusNotFound {
+		return nil, false, nil
+	}
+	if err != nil {
+		return nil, false, errors.Wrapf(err, "dns.ManagedZones.Get(): %s in %s", name, project)
+	}
+
+	return zone.NameServers, true, nil
+}
+
+// CreatePublicZone makes the public zone with DNSSEC on, as 2-net declares it.
+func (g *google) CreatePublicZone(ctx context.Context, project, name, dnsName, description string, labels map[string]string) ([]string, error) {
+	zone, err := g.dns.ManagedZones.Create(project, &dns.ManagedZone{
+		Name: name, DnsName: dnsName, Description: description, Labels: labels, Visibility: "public",
+		DnssecConfig: &dns.ManagedZoneDnsSecConfig{State: "on"},
+	}).Context(ctx).Do()
+	if err != nil {
+		return nil, errors.Wrapf(err, "dns.ManagedZones.Create(): %s (%s) in %s", name, dnsName, project)
+	}
+
+	return zone.NameServers, nil
 }
 
 // FindFolder answers the active folder of the name under the parent, or nothing. A folder

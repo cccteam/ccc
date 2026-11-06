@@ -146,7 +146,7 @@ func checkRequests(p *org.Placement, dir string) ([]domain.CheckRequest, error) 
 
 		return requests, nil
 	}
-	project, zone := p.AppsZone()
+	project, zone := p.AppsZoneName()
 	if project == "" {
 		return nil, errors.New("placement.json records no network project (projects.net): record 1-org's project_ids in placement.json (projects), then check again")
 	}

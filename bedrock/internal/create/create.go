@@ -18,6 +18,7 @@ import (
 	"path/filepath"
 	"slices"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/go-playground/errors/v5"
@@ -72,9 +73,12 @@ type Marker struct {
 	// public-invoker tag.
 	Folders           map[string]string               `json:"folders"`
 	PublicInvokerTags map[string]org.PublicInvokerTag `json:"publicInvokerTags"`
-	Repository        string                          `json:"repository"`
-	CreatedAt         string                          `json:"createdAt"`
-	CreatedFrom       string                          `json:"createdFrom"`
+	// AppsZone is the apps domain's zone the creation made in the net project, which
+	// 2-net adopts and the hand-off hands onward.
+	AppsZone    *org.ZoneRecord `json:"appsZone,omitempty"`
+	Repository  string          `json:"repository"`
+	CreatedAt   string          `json:"createdAt"`
+	CreatedFrom string          `json:"createdFrom"`
 }
 
 // MarkerObject is the marker's object in the state bucket, under the applier's markers.
@@ -116,6 +120,11 @@ type Result struct {
 const (
 	terraformFolderName = "terraform"
 	bootKey             = "boot"
+	netKey              = "net"
+	netLayer            = "2-net"
+	// ownershipCode is Cloud DNS's refusal of a zone whose maker does not own the domain
+	// in Google's webmaster verification.
+	ownershipCode = "verifyManagedZoneDnsNameOwnership"
 	// services are the APIs the boot project needs before its 0-bootstrap applies.
 	bootProjectRoleCreator = "roles/resourcemanager.projectCreator"
 	tagAdminRole           = "roles/resourcemanager.tagAdmin"
@@ -343,6 +352,9 @@ func (f *creation) establish(ctx context.Context, g Google, h *org.Placement, se
 	if err != nil {
 		return nil, err
 	}
+	if err := f.zone(ctx, g, h); err != nil {
+		return nil, err
+	}
 	if err := f.render(h, seed, dir); err != nil {
 		return nil, err
 	}
@@ -356,7 +368,7 @@ func (f *creation) establish(ctx context.Context, g Google, h *org.Placement, se
 	marker := Marker{
 		Prefix: h.Prefix, OrganizationFolder: seed.OrganizationFolder, TerraformFolder: seed.TerraformFolder, BootProject: h.Projects[bootKey], BootProjectNumber: number,
 		StateBucket: h.StateBucket, Projects: h.Projects, ProjectNumbers: h.ProjectNumbers, Folders: h.Folders, PublicInvokerTags: h.PublicInvokerTags,
-		Repository: repository, CreatedAt: time.Now().UTC().Format(time.RFC3339), CreatedFrom: f.req.Commit,
+		AppsZone: h.AppsZone, Repository: repository, CreatedAt: time.Now().UTC().Format(time.RFC3339), CreatedFrom: f.req.Commit,
 	}
 	if err := f.writeMarker(ctx, &marker); err != nil {
 		return nil, err
@@ -574,4 +586,37 @@ func short(sha string) string {
 	}
 
 	return sha
+}
+
+// zone makes the apps domain's public zone in the net project, or finds it, and records
+// it in the placement (appsZone), with the name servers Cloud DNS assigned. The creation
+// makes it rather than 2-net because Cloud DNS asks whoever makes a zone to own the domain,
+// or a parent, in Google's webmaster verification: the creating identity is made an owner
+// once, at the root organization's bootstrap, where every organization's net identity
+// would be made one by hand; 2-net adopts the zone on its first apply (an import block).
+func (f *creation) zone(ctx context.Context, g Google, h *org.Placement) error {
+	project, name := h.AppsZoneName()
+	if project == "" {
+		return errors.Newf("the record of %s names no net project (projects.%s) after %s's first apply", h.Prefix, netKey, orgLayer)
+	}
+	servers, exists, err := g.PublicZone(ctx, project, name)
+	if err != nil {
+		return err
+	}
+	if exists {
+		fmt.Fprintf(f.out, "Zone %s for %s exists in %s, on %s.\n", name, h.AppsDomain, project, strings.Join(servers, ", "))
+	} else {
+		servers, err = g.CreatePublicZone(ctx, project, name, h.AppsDomain+".", "Public zone for "+h.AppsDomain+"; the registration points at it", h.ProjectLabels(netLayer, netKey))
+		if err != nil {
+			if strings.Contains(err.Error(), ownershipCode) {
+				return errors.Wrapf(err, "Cloud DNS asks whoever makes a zone for %s to own the domain, or a parent, in Google's webmaster verification: a verified owner of the domain adds the creating identity %s as an owner at https://www.google.com/webmasters/verification/ (the root organization's README, \"Before it, by hand\"), and the next push makes the zone", h.AppsDomain, f.req.Root.CreatingIdentity())
+			}
+
+			return err
+		}
+		fmt.Fprintf(f.out, "Made the zone %s for %s in %s, on %s.\n", name, h.AppsDomain, project, strings.Join(servers, ", "))
+	}
+	h.AppsZone = &org.ZoneRecord{Name: name, NameServers: servers}
+
+	return nil
 }

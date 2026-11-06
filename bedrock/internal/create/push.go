@@ -238,6 +238,7 @@ func (f *creation) handOff(ctx context.Context, h *org.Placement, marker *Marker
 		return "", errors.Newf("placement.json no longer records %s (hostingOrganizations)", h.Prefix)
 	}
 	record.Folder = marker.OrganizationFolder
+	handed := handOnward(root, h)
 	placement, err := root.JSON()
 	if err != nil {
 		return "", err
@@ -274,6 +275,7 @@ func (f *creation) handOff(ctx context.Context, h *org.Placement, marker *Marker
 		"- folder `" + marker.OrganizationFolder + "` at the organization node (named `" + h.Prefix + "`), with the `terraform` folder `" + marker.TerraformFolder + "` under it",
 		"- boot project `" + marker.BootProject + "` (" + marker.BootProjectNumber + "), its APIs, its billing link, the boot identity with its roles on the folder, and the state bucket `" + marker.StateBucket + "`",
 		"- the first apply of its `0-bootstrap` (the connection from the recorded authorization, the repository link, the two triggers) and of its `1-org` (the folders, the projects with their identities and roles, the public-invoker tags), with the projects, the folders and the tags recorded in its placement (`projects`, `projectNumbers`, `folders`, `publicInvokerTags`); the organization-policy baseline on its folders is this organization's, set by this apply",
+		"- the public zone of its apps domain `" + h.AppsDomain + "` in its net project (`" + zoneName(h) + "`, recorded in its placement as `appsZone`), made as the creating identity, which owns the domain in Google's webmaster verification, and adopted by its `2-net`; " + handed,
 		"- repository `" + marker.Repository + "`, with the rendered foundation as its first push, which its apply trigger runs on: every layer, as its own identity, with nothing left to apply by hand",
 		"- the creating identity's own grants taken off everything it made; the break-glass account holds Folder Admin on the folder",
 		"",
@@ -317,4 +319,51 @@ func (f *creation) handOffBranch(ctx context.Context, owner, repo, branch, commi
 	default:
 		return errors.Wrapf(err, "reading branch %s", branch)
 	}
+}
+
+// zoneName names the apps zone the creation made, for the hand-off's body.
+func zoneName(h *org.Placement) string {
+	if h.AppsZone == nil {
+		return "none"
+	}
+
+	return h.AppsZone.Name
+}
+
+// handOnward hands the apps domain onward in the root placement: when the apps domain is a
+// label of a domain the root organization holds a zone for, the label is recorded under
+// that domain with the new organization and its zone's name servers, from which the root
+// organization's apply writes the NS record set. It answers the sentence the hand-off's
+// body says about it.
+func handOnward(root, h *org.Placement) string {
+	if h.AppsZone == nil {
+		return "no zone was recorded, so nothing is handed onward"
+	}
+	domain, label := labelOf(root, h.AppsDomain)
+	if domain == "" {
+		return "the apps domain is under no domain of this organization, so it is delegated where the domain is served (`bedrock domain check` in the new organization prints the records)"
+	}
+	d := root.Domains[domain]
+	if d.Labels == nil {
+		d.Labels = map[string]org.Delegation{}
+	}
+	d.Labels[label] = org.Delegation{Organization: h.Prefix, NameServers: h.AppsZone.NameServers}
+	root.Domains[domain] = d
+
+	return "this pull request hands the label `" + label + "` of `" + domain + "` onward to that zone (`domains` in `placement.json`), and the merge's apply writes the NS record set, so the apps domain resolves within the hour"
+}
+
+// labelOf is the domain the root organization holds a zone for that the name is under,
+// the longest when several, and the name's label under it; empty when there is none.
+func labelOf(root *org.Placement, name string) (domain, label string) {
+	for d := range root.Domains {
+		if strings.HasSuffix(name, "."+d) && len(d) > len(domain) {
+			domain = d
+		}
+	}
+	if domain == "" {
+		return "", ""
+	}
+
+	return domain, strings.TrimSuffix(name, "."+domain)
 }

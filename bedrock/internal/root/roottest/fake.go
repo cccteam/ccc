@@ -281,6 +281,30 @@ func (f *Fake) Zones(_ context.Context, project string) ([]root.Zone, error) {
 	return zones, nil
 }
 
+// PublicZone is the creation seam's read of a zone: the name servers of the zone in the
+// project when it exists.
+func (f *Fake) PublicZone(_ context.Context, project, name string) (nameServers []string, exists bool, err error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if err := f.call("PublicZone", project, name); err != nil {
+		return nil, false, err
+	}
+	zone, ok := f.ZoneMap[project][name]
+
+	return zone.NameServers, ok, nil
+}
+
+// CreatePublicZone is the creation seam's zone: made as CreateZone makes the root's.
+func (f *Fake) CreatePublicZone(ctx context.Context, project, name, dnsName, description string, labels map[string]string) ([]string, error) {
+	if err := f.CreateZone(ctx, project, root.Zone{Name: name, DNSName: dnsName, Description: description, Labels: labels, DNSSEC: true}); err != nil {
+		return nil, err
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	return f.ZoneMap[project][name].NameServers, nil
+}
+
 // CreateZone makes the zone, on four name servers of its own.
 func (f *Fake) CreateZone(_ context.Context, project string, zone root.Zone) error {
 	f.mu.Lock()

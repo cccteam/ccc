@@ -2517,15 +2517,22 @@ applies of the new organization's 0-bootstrap and 1-org, as the creating identit
 1-org's `project_ids` and `project_numbers` recorded in the new placement and the layers
 rendered again, and Billing Account User on the billing account for the new organization's
 boot and org identities, which 1-org needs the day it links a project it creates; then the
+public zone of the apps domain in the net project, made as the creating identity and
+recorded in the new placement as `appsZone`, which 2-net adopts with an import block (Cloud
+DNS asks whoever makes a zone for a name under a verified domain to own the domain in
+Google's webmaster verification, so a verified owner makes the creating identity an owner
+once, at the bootstrap, and no hosting organization's net identity by hand); then the
 repository `<prefix>-infrastructure`, private in the GitHub
 organization, with the rendered foundation as its first push, which the new apply trigger
 runs on, every layer as its own identity; then the creating identity's grants off
 everything it made (Owner on each project, Folder Admin and Folder Editor on each folder,
 its roles on the organization's folder), a marker in the root organization's state bucket
 (`applied/created/<prefix>`), and the hand-off, a pull request in the root organization's
-repository from the branch `create/<prefix>` recording the folder in `placement.json` and
-the placement as created, branch and pull request both as the infrastructure app, whose
-declaration carries Pull requests for it. Every step looks before it makes, so a creation
+repository from the branch `create/<prefix>` recording the folder in `placement.json`, the
+placement as created, and the label of the apps domain handed onward to the zone
+(`domains`), from which the root organization's apply writes the NS record set, branch and
+pull request both as the infrastructure app, whose declaration carries Pull requests for
+it. Every step looks before it makes, so a creation
 that stopped
 finishes on the next push, and a created organization is left alone. `org plan` says on
 the pull request what its merge creates. Left by hand, after the creation: the spend

@@ -602,7 +602,7 @@ func registrationReport(ctx context.Context, d deps, p *org.Placement, dir strin
 	if d.org != nil {
 		open = d.org.registrations
 	}
-	project, _ := p.AppsZone()
+	project, _ := p.AppsZoneName()
 	r, err := domain.Registrations(ctx, open, domain.RegistrationsRequest{Dir: dir, Project: project, Now: time.Now()})
 	if err != nil {
 		fmt.Fprintf(out, "Registrations not checked (%v): %s.\n", errors.Cause(err), does)

@@ -413,6 +413,14 @@ type Placement struct {
 	// nowhere lower.
 	Folders           map[string]string           `json:"folders,omitempty"`
 	PublicInvokerTags map[string]PublicInvokerTag `json:"publicInvokerTags,omitempty"`
+	// AppsZone is the apps domain's public zone, made by the creation in the net project
+	// as the creating identity and adopted by 2-net (an import block): Cloud DNS asks
+	// whoever makes a zone to own the domain, or a parent, in Google's webmaster
+	// verification, which the creating identity does once, from the bootstrap, where the
+	// net identity of each organization would be made an owner by hand. Its name servers,
+	// which Cloud DNS assigns, go into the root placement by the hand-off, as the label of
+	// the apps domain handed onward. Recorded by the creation alone.
+	AppsZone *ZoneRecord `json:"appsZone,omitempty"`
 	// Labels are the labels every project and bucket carries beyond the model's own.
 	Labels map[string]string `json:"labels"`
 }
@@ -977,14 +985,14 @@ func (p *Placement) BootProject() string {
 	return p.Project(p.pipelineProject())
 }
 
-// AppsZone is where the apps domain's zone is: the network project, empty until the
+// AppsZoneName is where the apps domain's zone is: the network project, empty until the
 // placement records 1-org's project_ids (projects.net), and the name 2-net's dns.tf gives
 // the zone, <prefix>-net-gbl-dns-apps.
-func (p *Placement) AppsZone() (project, zone string) {
+func (p *Placement) AppsZoneName() (project, zone string) {
 	return p.Projects[netProject], p.Prefix + "-" + netProject + "-gbl-dns-apps"
 }
 
-// VanityZone is where a vanity domain's zone is: the network project, as AppsZone, and
+// VanityZone is where a vanity domain's zone is: the network project, as AppsZoneName, and
 // the name 2-net's dns.tf gives the zone, <prefix>-net-gbl-dns-<the domain with hyphens
 // for its dots>, the name a parked zone of the same domain has (domains.tf), so a domain
 // registered here before it was declared keeps its zone.
@@ -2205,4 +2213,12 @@ func (p *Placement) Write(path string) error {
 type PublicInvokerTag struct {
 	Key   string `json:"key"`
 	Value string `json:"value"`
+}
+
+// ZoneRecord is the apps domain's zone as the creation recorded it: its name in the net
+// project (<prefix>-net-gbl-dns-apps, as AppsZoneName names it) and the name servers Cloud DNS
+// assigned it, as Cloud DNS spells them (with the trailing dot).
+type ZoneRecord struct {
+	Name        string   `json:"name"`
+	NameServers []string `json:"nameServers"`
 }

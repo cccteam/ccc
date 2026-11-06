@@ -28,12 +28,14 @@ type FakeGoogle struct {
 	Numbers        map[string]string
 	Accounts       map[string]bool
 	Buckets        map[string]bool
-	Enabled        map[string][]string
-	Billing        map[string]string
-	Grants         []string
-	Revoked        []string
-	Calls          []string
-	Identities     []string
+	// Zones are the public zones by project|name, each with its name servers.
+	Zones      map[string][]string
+	Enabled    map[string][]string
+	Billing    map[string]string
+	Grants     []string
+	Revoked    []string
+	Calls      []string
+	Identities []string
 	// Refuse names a call (its method name) to answer with the error, for a creation
 	// that stops halfway.
 	Refuse map[string]error
@@ -44,8 +46,35 @@ type FakeGoogle struct {
 func New() *FakeGoogle {
 	return &FakeGoogle{
 		Folders: map[string]string{}, Projects: map[string]bool{}, Numbers: map[string]string{}, Accounts: map[string]bool{},
-		Buckets: map[string]bool{}, Enabled: map[string][]string{}, Billing: map[string]string{}, Refuse: map[string]error{},
+		Buckets: map[string]bool{}, Zones: map[string][]string{}, Enabled: map[string][]string{}, Billing: map[string]string{}, Refuse: map[string]error{},
 	}
+}
+
+// ZoneNameServers are the name servers the stand-in assigns every zone it makes.
+var ZoneNameServers = []string{"ns-cloud-z1.googledomains.com.", "ns-cloud-z2.googledomains.com.", "ns-cloud-z3.googledomains.com.", "ns-cloud-z4.googledomains.com."}
+
+// PublicZone answers the zone's name servers when it exists.
+func (g *FakeGoogle) PublicZone(_ context.Context, project, name string) (nameServers []string, exists bool, err error) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	if err := g.call("PublicZone", project, name); err != nil {
+		return nil, false, err
+	}
+	servers, ok := g.Zones[project+"|"+name]
+
+	return servers, ok, nil
+}
+
+// CreatePublicZone records the zone and assigns it the stand-in's name servers.
+func (g *FakeGoogle) CreatePublicZone(_ context.Context, project, name, dnsName, _ string, _ map[string]string) ([]string, error) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	if err := g.call("CreatePublicZone", project, name, dnsName); err != nil {
+		return nil, err
+	}
+	g.Zones[project+"|"+name] = ZoneNameServers
+
+	return ZoneNameServers, nil
 }
 
 // Open is the seam's opener: it records the identity and answers the stand-in.
@@ -328,6 +357,9 @@ func (g *FakeGoogle) Made() []string {
 	}
 	for email := range g.Accounts {
 		made = append(made, "account "+email)
+	}
+	for key := range g.Zones {
+		made = append(made, "zone "+key)
 	}
 	for name := range g.Buckets {
 		made = append(made, "bucket "+name)

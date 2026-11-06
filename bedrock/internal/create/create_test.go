@@ -39,7 +39,7 @@ const (
 func record(t *testing.T, root *org.Placement) *org.Placement {
 	t.Helper()
 	h := &org.Placement{
-		Prefix: "rgb", AppsDomain: "apps.rgb.example", Spanner: org.Spanner{Config: "nam10"},
+		Prefix: "rgb", AppsDomain: "rgb.impapps.example", Spanner: org.Spanner{Config: "nam10"},
 		Regions:        []org.Region{{Name: "us-central1", Code: "uc1"}, {Name: "us-west3", Code: "uw3"}},
 		TeamGroups:     map[string]string{"tst": "team-tst@imp.example", "stg": "team-stg@imp.example", "prd": "team-prd@imp.example"},
 		ContactDomains: []string{"@imp.example"},
@@ -228,6 +228,7 @@ func TestRun(t *testing.T) {
 		"folder folders/" + orgFolder + "|terraform=" + tfFolder,
 		"folder organizations/123456789012|rgb=" + orgFolder,
 		"project rgb-boot-gbl-core-e5f6 (100000000001, billing 012345-6789AB-CDEF01, 8 APIs)",
+		"zone rgb-net-gbl-core-e5f6|rgb-net-gbl-dns-apps",
 	}
 	if got := f.google.Made(); !slices.Equal(got, wantMade) {
 		t.Errorf("made %v, want %v", got, wantMade)
@@ -322,12 +323,22 @@ func TestRun(t *testing.T) {
 	if _, kept := hosting.Files[tree+":README.md"]; !kept {
 		t.Error("the initial README is gone from the tree")
 	}
+	// The apps zone, made in the net project after 1-org and recorded.
+	if want := "CreatePublicZone(rgb-net-gbl-core-e5f6, rgb-net-gbl-dns-apps, rgb.impapps.example.)"; !slices.Contains(f.google.Calls, want) {
+		t.Errorf("calls lack %q:\n%s", want, strings.Join(f.google.Calls, "\n"))
+	}
+	if result.Placement.AppsZone == nil || result.Placement.AppsZone.Name != "rgb-net-gbl-dns-apps" || !slices.Equal(result.Placement.AppsZone.NameServers, createtest.ZoneNameServers) {
+		t.Errorf("the recorded zone = %+v", result.Placement.AppsZone)
+	}
+	if !strings.Contains(hosting.Files[tree+":placement.json"], `"appsZone"`) || !strings.Contains(hosting.Files[tree+":2-net/dns.tf"], `id = "projects/${local.project_id}/managedZones/rgb-net-gbl-dns-apps"`) {
+		t.Errorf("the push lacks the zone record or 2-net's import of it:\n%s", hosting.Files[tree+":2-net/dns.tf"])
+	}
 	// The marker and the hand-off.
 	var marker create.Marker
 	if err := json.Unmarshal([]byte(f.store.objects["applied/created/rgb"]), &marker); err != nil {
 		t.Fatalf("no marker: %v; objects %v", err, f.store.objects)
 	}
-	if marker.OrganizationFolder != orgFolder || marker.BootProject != "rgb-boot-gbl-core-e5f6" || marker.Repository != owner+"/rgb-infrastructure" || marker.CreatedFrom != rootCommit {
+	if marker.OrganizationFolder != orgFolder || marker.BootProject != "rgb-boot-gbl-core-e5f6" || marker.Repository != owner+"/rgb-infrastructure" || marker.CreatedFrom != rootCommit || marker.AppsZone == nil || marker.AppsZone.Name != "rgb-net-gbl-dns-apps" {
 		t.Errorf("marker = %+v", marker)
 	}
 	if marker.Projects["tst"] != "rgb-tst-gbl-core-e5f6" || marker.ProjectNumbers["tst"] != "100000000104" || len(marker.Projects) != 7 {
@@ -342,6 +353,16 @@ func TestRun(t *testing.T) {
 	handOffTree := f.repo.Trees[f.repo.Refs["refs/heads/create/rgb"].SHA]
 	if !strings.Contains(f.repo.Files[handOffTree+":placement.json"], `"folder": "`+orgFolder+`"`) {
 		t.Errorf("the hand-off's placement.json lacks the folder:\n%s", f.repo.Files[handOffTree+":placement.json"])
+	}
+	var handedOff org.Placement
+	if err := json.Unmarshal([]byte(f.repo.Files[handOffTree+":placement.json"]), &handedOff); err != nil {
+		t.Fatalf("the hand-off's placement.json: %v", err)
+	}
+	if got := handedOff.Domains["impapps.example"].Labels["rgb"]; got.Organization != "rgb" || !slices.Equal(got.NameServers, createtest.ZoneNameServers) {
+		t.Errorf("the hand-off hands the label rgb of impapps.example onward as %+v, want rgb with the zone's name servers", got)
+	}
+	if got := handedOff.Domains["impapps.example"].Labels["a"]; got.Organization != "imp" {
+		t.Errorf("the label a of impapps.example, which was handed onward before, is %+v", got)
 	}
 	created := f.repo.Files[handOffTree+":organizations/rgb/placement.json"]
 	if !strings.Contains(created, `"boot": "100000000001"`) || !strings.Contains(created, `"spn": "rgb-spn-gbl-core-e5f6"`) {
@@ -364,6 +385,7 @@ func TestRun(t *testing.T) {
 		"Pushed the foundation to " + owner + "/rgb-infrastructure at ",
 		"Took the creating identity's grants off the 4 folders and 6 projects 1-org made, folder " + tfFolder + ", project rgb-boot-gbl-core-e5f6 and folder " + orgFolder + ".\n",
 		"Recorded the creation of rgb in gs://imr-root-gbl-state-c3d4/applied/created/rgb.\n",
+		"Made the zone rgb-net-gbl-dns-apps for rgb.impapps.example in rgb-net-gbl-core-e5f6, on " + strings.Join(createtest.ZoneNameServers, ", ") + ".\n",
 		"Opened the hand-off pull request of rgb: https://github.com/" + owner + "/" + rootRepo + "/pull/1.\n",
 	}
 	for _, want := range wantOut {
@@ -399,6 +421,7 @@ func TestRunResumes(t *testing.T) {
 	f.google.Projects["rgb-boot-gbl-core-e5f6"], f.google.Numbers["rgb-boot-gbl-core-e5f6"] = true, "100000000042"
 	f.google.Accounts["rgb-boot-gbl-tofu@rgb-boot-gbl-core-e5f6.iam.gserviceaccount.com"] = true
 	f.google.Buckets["rgb-boot-gbl-state-e5f6"] = true
+	f.google.Zones["rgb-net-gbl-core-e5f6|rgb-net-gbl-dns-apps"] = createtest.ZoneNameServers
 	f.srv.AddRepo(owner, "rgb-infrastructure", &githubtest.Repo{
 		Refs: map[string]github.Object{"refs/heads/master": {Type: "commit", SHA: "init1"}}, Ancestry: map[string][]string{"init1": {"init1"}},
 		Trees: map[string]string{"init1": "treeinit"}, Files: map[string]string{"treeinit:README.md": "# rgb-infrastructure\n"},
@@ -422,6 +445,7 @@ func TestRunResumes(t *testing.T) {
 		"Boot identity rgb-boot-gbl-tofu@rgb-boot-gbl-core-e5f6.iam.gserviceaccount.com exists.\n",
 		"State bucket rgb-boot-gbl-state-e5f6 exists.\n",
 		"Repository " + owner + "/rgb-infrastructure exists.\n",
+		"Zone rgb-net-gbl-dns-apps for rgb.impapps.example exists in rgb-net-gbl-core-e5f6, on " + strings.Join(createtest.ZoneNameServers, ", ") + ".\n",
 		"Pushed the foundation to " + owner + "/rgb-infrastructure at ",
 	}
 	for _, want := range wantOut {

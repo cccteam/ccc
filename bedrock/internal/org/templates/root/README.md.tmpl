@@ -55,7 +55,8 @@ whose wildcard answers; the environment names nest under the application's
 lands in the same hosting organization or another, so a customer's delegation
 is made once and never moves. The same mechanism hands each hosting
 organization its apps domain, a label of a domain here handed to that
-organization's apps zone, in place of a delegation made by hand.
+organization's apps zone by its creation's hand-off, in place of a delegation
+made by hand.
 
 Nothing in an application's runtime path depends on anything but DNS: the
 zones here are rendered infrastructure, written by pull request. The steps, the
@@ -167,6 +168,15 @@ Before it, by hand, where it happens:
    below); and
    Google's Cloud Build GitHub App (`github.com/apps/google-cloud-build`),
    installed on the organization as the Bot Account, for all repositories.
+3. In Google's webmaster verification
+   (https://www.google.com/webmasters/verification/), as a verified owner of
+   each domain in `domains` (the account that verified it for the Workspace or
+   in Search Console): the creating identity `{{.CreatingIdentity}}` added as
+   an owner of the domain. Cloud DNS asks whoever makes a public zone for a
+   name under a domain so verified to be an owner of it or of a parent, and
+   the creation makes each hosting organization's apps zone as this identity;
+   so the step is this one, once per domain, and no hosting organization's
+   net identity is ever made an owner by hand.
 
 The bootstrap looks before each step and makes what is missing, so a run that
 stopped finishes on the next run in the same directory, whose `placement.json`
@@ -539,14 +549,18 @@ grants the new organization's identities their use of the billing account.
    bucket, the first applies of the new organization's two foundation layers,
    `0-bootstrap` and `1-org`, with the projects recorded in its placement, and
    Billing Account User on the billing account for its boot and org identities;
-   then the repository `<prefix>-infrastructure`, private in
+   then the public zone of its apps domain in its net project, made as the
+   creating identity (which owns the domain in Google's webmaster
+   verification, "Before it, by hand") and recorded in its placement
+   (`appsZone`), which its `2-net` adopts; then the repository `<prefix>-infrastructure`, private in
    `{{.GithubOrganization}}`, with the rendered foundation as its first push,
    which its apply trigger runs on, every layer as its own identity; then the
    creating identity's own grants off everything it made, a marker in this
    organization's state bucket (`applied/created/<prefix>`), and the hand-off:
    a pull request here, from the branch `create/<prefix>`, recording the folder
-   in `placement.json` and the placement as created under
-   `organizations/<prefix>/`, branch and pull request as the infrastructure
+   in `placement.json`, the placement as created under
+   `organizations/<prefix>/`, and the label of its apps domain handed onward
+   to its zone (`domains`), branch and pull request as the infrastructure
    app. A creation that stops finishes on the next push,
    since every step looks before it makes; a created organization is left
    alone.
@@ -556,9 +570,10 @@ grants the new organization's identities their use of the billing account.
    organization's to refresh, and `bedrock org check` there lists any grant on
    the folder to a principal outside it. Left to a billing administrator, in
    the new organization: its spend budget (its `0-bootstrap/README.md`, "The
-   spend budget"); its apps domain is a label of a domain here, handed onward
-   at its first registration like every application's name ("Handing a label
-   onward").
+   spend budget"). Its apps domain, a label of a domain here, is handed onward
+   to its zone by the same merge, whose apply writes the NS record set, so the
+   apps domain resolves within the hour; an application's name takes the two
+   pull requests of "Handing a label onward".
 
 The first hosting organization is created the same way as every later one. A
 hosting organization's primary region is this organization's: a connection

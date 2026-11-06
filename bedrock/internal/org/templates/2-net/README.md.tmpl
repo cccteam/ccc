@@ -20,8 +20,12 @@ There is no VPC in this project. See "Cross-project backends" for why.
   declares for its site (its code by default).
 - A Cloud DNS public zone for `apps_domain`, DNSSEC on, with A records for
   the apex and the wildcard pointing at the address, the authorization CNAME
-  copied from the DNS authorization, and whatever `extra_records` lists. The
-  zone carries `prevent_destroy`, as every zone a registration here points at
+  copied from the DNS authorization, and whatever `extra_records` lists. In
+  an organization the root organization created, the zone is the creation's,
+  made as the creating identity (Cloud DNS asks whoever makes a zone to own
+  the domain in Google's webmaster verification, which that identity does
+  once) and adopted here through an `import` block from `placement.json`'s
+  `appsZone`. The zone carries `prevent_destroy`, as every zone a registration here points at
   does, so neither a plan nor a stray destroy can make it again on other name
   servers ("Making a zone again").
 - Per vanity domain (`vanity_domains`, from `placement.json`'s

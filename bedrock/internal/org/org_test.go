@@ -3457,7 +3457,7 @@ func TestAppsZone(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			project, zone := tt.placement.AppsZone()
+			project, zone := tt.placement.AppsZoneName()
 			if project != tt.wantProject || zone != tt.wantZone {
 				t.Errorf("AppsZone() = %q, %q, want %q, %q", project, zone, tt.wantProject, tt.wantZone)
 			}

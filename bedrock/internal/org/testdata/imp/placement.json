@@ -5,7 +5,9 @@
   "directoryCustomerId": "C0a1b2c3d",
   "billingAccount": "012345-6789AB-CDEF01",
   "appsDomain": "apps.imp.example",
-  "vanityDomains": ["harborlights.example"],
+  "vanityDomains": [
+    "harborlights.example"
+  ],
   "githubOrganization": "imp-example",
   "githubBotAccount": "imp-bot",
   "githubReleaseAppId": "5080645",
@@ -50,7 +52,11 @@
   ],
   "applications": [
     "harbor",
-    {"code": "beacon", "repository": "beacon", "adopted": true}
+    {
+      "code": "beacon",
+      "repository": "beacon",
+      "adopted": true
+    }
   ],
   "projects": {
     "boot": "imp-boot-gbl-core-a1b2",
@@ -74,9 +80,27 @@
     "prd": "900000000014"
   },
   "publicInvokerTags": {
-    "tst": {"key": "tagKeys/281000000001", "value": "tagValues/282000000001"},
-    "stg": {"key": "tagKeys/281000000002", "value": "tagValues/282000000002"},
-    "prd": {"key": "tagKeys/281000000003", "value": "tagValues/282000000003"}
+    "tst": {
+      "key": "tagKeys/281000000001",
+      "value": "tagValues/282000000001"
+    },
+    "stg": {
+      "key": "tagKeys/281000000002",
+      "value": "tagValues/282000000002"
+    },
+    "prd": {
+      "key": "tagKeys/281000000003",
+      "value": "tagValues/282000000003"
+    }
+  },
+  "appsZone": {
+    "name": "imp-net-gbl-dns-apps",
+    "nameServers": [
+      "ns-cloud-e1.googledomains.com.",
+      "ns-cloud-e2.googledomains.com.",
+      "ns-cloud-e3.googledomains.com.",
+      "ns-cloud-e4.googledomains.com."
+    ]
   },
   "labels": {
     "bedrock-lab": "true"
