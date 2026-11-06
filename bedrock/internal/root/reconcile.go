@@ -151,7 +151,7 @@ func (e *engine) open(ctx context.Context) error {
 	if e.clients.OrgPolicies == nil {
 		return errors.New("no Org Policy client is wired: the root organization sets the organization policies of its hosting organizations")
 	}
-	if e.policies, err = e.clients.OrgPolicies(ctx); err != nil {
+	if e.policies, err = e.clients.OrgPolicies(ctx, e.d.Project()); err != nil {
 		return err
 	}
 	if e.secrets, err = e.clients.Secrets(ctx); err != nil {

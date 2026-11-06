@@ -14,6 +14,8 @@ import (
 	"strings"
 	"time"
 
+	"google.golang.org/api/option"
+
 	orgpolicy "cloud.google.com/go/orgpolicy/apiv2"
 	"cloud.google.com/go/orgpolicy/apiv2/orgpolicypb"
 	"google.golang.org/protobuf/types/known/structpb"
@@ -1085,8 +1087,8 @@ func wrapf(err error, format string, args ...any) error {
 }
 
 // NewOrgPolicies opens the Org Policy client with the application default credentials.
-func NewOrgPolicies(ctx context.Context) (OrgPolicies, error) {
-	c, err := orgpolicy.NewClient(ctx)
+func NewOrgPolicies(ctx context.Context, quotaProject string) (OrgPolicies, error) {
+	c, err := orgpolicy.NewClient(ctx, option.WithQuotaProject(quotaProject))
 	if err != nil {
 		return nil, errors.Wrap(err, "orgpolicy.NewClient()")
 	}

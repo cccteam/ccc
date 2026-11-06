@@ -224,8 +224,10 @@ type (
 	// GoogleFunc opens the creation seam: folders, projects, identities and buckets.
 	GoogleFunc func(ctx context.Context) (create.Google, error)
 	// OrgPoliciesFunc opens the Org Policy client (the root project's runners hold
-	// Organization Policy Administrator and Viewer at the organization node).
-	OrgPoliciesFunc func(ctx context.Context) (OrgPolicies, error)
+	// Organization Policy Administrator and Viewer at the organization node), billing
+	// its calls to the root project: the API wants a quota project when the caller is a
+	// person's application default credentials (bedrock org check at a terminal).
+	OrgPoliciesFunc func(ctx context.Context, quotaProject string) (OrgPolicies, error)
 )
 
 // Clients are the engine's seams: Google Cloud as the run's own credentials (the

@@ -99,7 +99,7 @@ func New() *Fake {
 // Clients wires the stand-in into every seam of the engine's clients it stands in for.
 func (f *Fake) Clients(c *root.Clients) {
 	c.Google = func(context.Context) (create.Google, error) { return f, nil }
-	c.OrgPolicies = func(context.Context) (root.OrgPolicies, error) { return f, nil }
+	c.OrgPolicies = func(context.Context, string) (root.OrgPolicies, error) { return f, nil }
 	c.Secrets = func(context.Context) (root.Secrets, error) { return f, nil }
 	c.DNS = func(context.Context) (root.DNS, error) { return f, nil }
 	c.Builds = func(context.Context) (root.Builds, error) { return f, nil }
