@@ -63,6 +63,31 @@ func TestOrgPlace(t *testing.T) {
 			wantJournal: "bedrock org place beacon tst: beacon is placed in tst (environments in placement.json), dropping stg, prd.",
 		},
 		{
+			name: "environments whose registration is under way are dropped without a teardown",
+			before: func(p *org.Placement) {
+				p.Registration = map[string]org.RegistrationSteps{"beacon": {"tst": org.RegistrationGrants, "stg": org.RegistrationGrants, "prd": org.RegistrationGrants}}
+				delete(p.Hostnames, "beacon")
+			},
+			args:        []string{"beacon", "tst"},
+			wantOut:     []string{"Placed beacon in tst (environments in", "beacon leaves stg, prd: the pull request's apply deletes its identities"},
+			wantPlaced:  []string{"tst"},
+			wantUnder:   []string{"tst"},
+			wantNoHosts: []string{`"beacon-stg.`, `"beacon.`},
+			wantFiles:   map[string][]string{"2-env/applications.auto.tfvars": {`beacon = ["tst"]`}, "1-org/applications.auto.tfvars": {`beacon = ["tst"]`}},
+			wantAbsent:  map[string][]string{"2-shr/applications.auto.tfvars": {"imp-stg-gbl-beacon-deploy"}},
+			wantJournal: "bedrock org place beacon tst: beacon is placed in tst (environments in placement.json), dropping stg, prd.",
+		},
+		{
+			name: "an environment added while the registration is under way is refused",
+			before: func(p *org.Placement) {
+				p.Applications[1].Environments = []string{"tst"}
+				p.Registration = map[string]org.RegistrationSteps{"beacon": {"tst": org.RegistrationIdentities}}
+				delete(p.Hostnames, "beacon")
+			},
+			args:    []string{"beacon", "tst", "stg"},
+			wantErr: "beacon's registration is at the identities step in tst: finish it (bedrock org register beacon --next) before placing it in more environments",
+		},
+		{
 			name:        "an environment added starts its registration there",
 			before:      func(p *org.Placement) { p.Applications[1].Environments = []string{"tst"} },
 			args:        []string{"beacon", "tst", "stg"},

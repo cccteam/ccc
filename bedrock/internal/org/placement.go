@@ -1744,9 +1744,6 @@ func (p *Placement) Place(code string, environments []string) (added, dropped []
 	if i < 0 {
 		return nil, nil, errors.Newf("application %q is not registered (bedrock org register %s)", code, code)
 	}
-	if under := p.UnderWay(code); len(under) > 0 {
-		return nil, nil, errors.Newf("%s's registration is at the %s step in %s: finish it (bedrock org register %s --next) before placing it elsewhere", p.Repository(code), p.Step(code), strings.Join(under, ", "), code)
-	}
 	if err := validatePlacedEnvironments(code, environments); err != nil {
 		return nil, nil, err
 	}
@@ -1764,9 +1761,14 @@ func (p *Placement) Place(code string, environments []string) (added, dropped []
 	if len(added) == 0 && len(dropped) == 0 {
 		return nil, nil, errors.Newf("%s is placed in %s already", p.Repository(code), strings.Join(current, ", "))
 	}
+	if under := p.UnderWay(code); len(under) > 0 && len(added) > 0 {
+		return nil, nil, errors.Newf("%s's registration is at the %s step in %s: finish it (bedrock org register %s --next) before placing it in more environments", p.Repository(code), p.Step(code), strings.Join(under, ", "), code)
+	}
+	// An environment whose registration is under way has no stack and nothing in service:
+	// it leaves the list as it stands, and the apply deletes what the layers made there.
 	var standing []string
 	for _, env := range dropped {
-		if !slices.Contains(p.OutOfService[code], env) {
+		if p.StepIn(code, env) == "" && !slices.Contains(p.OutOfService[code], env) {
 			standing = append(standing, env)
 		}
 	}
@@ -1780,8 +1782,17 @@ func (p *Placement) Place(code string, environments []string) (added, dropped []
 	p.Applications[i].Environments = placed
 	p.startRegistration(code, added)
 	for _, env := range dropped {
-		p.OutOfService[code] = slices.DeleteFunc(p.OutOfService[code], func(e string) bool { return e == env })
+		if _, out := p.OutOfService[code]; out {
+			p.OutOfService[code] = slices.DeleteFunc(p.OutOfService[code], func(e string) bool { return e == env })
+		}
 		delete(p.Hostnames[code], env)
+		delete(p.Registration[code], env)
+	}
+	if len(p.Registration[code]) == 0 {
+		delete(p.Registration, code)
+		if len(p.Registration) == 0 {
+			p.Registration = nil
+		}
 	}
 	if len(p.OutOfService[code]) == 0 {
 		delete(p.OutOfService, code)

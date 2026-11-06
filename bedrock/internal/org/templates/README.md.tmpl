@@ -253,7 +253,9 @@ environment added goes through the registration's steps there (`register
 --next`), with the application's own placement listing the same environments.
 An environment dropped must be out of service first (`bedrock org teardown
 <app> <env>`, its pull request applied, the stack torn down there), so that
-nothing the layers own is left behind.
+nothing the layers own is left behind; one whose registration is under way
+there (no stack yet) leaves the list as it stands, and the apply deletes what
+the layers made there.
 
 Each layer's `terraform.tfvars` is committed. It holds IDs, not secrets, and
 the values a layer runs with belong in the repository.

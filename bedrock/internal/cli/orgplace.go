@@ -41,10 +41,12 @@ databases the environment adds, and refuses a placement past an instance.
 An environment dropped must be out of service already (bedrock org teardown <code>
 <environment>, its pull request applied, then bedrock teardown from the application's
 checkout there), so that nothing the layers own there is left behind; place refuses while
-the application is in service there. This render then leaves its identities, grants, link,
-triggers and GitHub Environment there for the pull request's apply to delete, and the
-application's own placement lists the shorter prefix. Run from the repository root, or
-name it with --dir.`,
+the application is in service there. An environment whose registration is under way
+there (no stack yet, nothing in service) leaves the list as it stands. This render then
+leaves its identities, grants, link, triggers and GitHub Environment there for the pull
+request's apply to delete, and the application's own placement lists the shorter prefix.
+An environment is added once the registration is complete where the application stands.
+Run from the repository root, or name it with --dir.`,
 		Args: cobra.MinimumNArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return d.placeApplication(cmd, dir, args[0], args[1:])

@@ -316,7 +316,7 @@ func TestPlace(t *testing.T) {
 	if err := p.Validate(); err != nil {
 		t.Fatalf("Validate() after the extension: %v", err)
 	}
-	refused([]string{"tst", "stg", "prd"}, "beacon's registration is at the identities step in stg: finish it (bedrock org register beacon --next) before placing it elsewhere")
+	refused([]string{"tst", "stg", "prd"}, "beacon's registration is at the identities step in stg: finish it (bedrock org register beacon --next) before placing it in more environments")
 	if step, err := p.Advance("beacon"); err != nil || step != RegistrationGrants {
 		t.Fatalf("Advance() = %q, %v, want grants", step, err)
 	}
