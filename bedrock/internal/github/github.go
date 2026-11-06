@@ -459,11 +459,12 @@ func (c *Client) CreateBlob(ctx context.Context, owner, repo string, content []b
 	return out.SHA, nil
 }
 
-// CreateTree makes a tree from the base tree with the entries changed, and returns its
-// SHA.
+// CreateTree makes a tree from the base tree with the entries changed, or from the entries
+// alone when baseTree is empty (the field is left out then: GitHub refuses an empty one as
+// not a tree id, 422), and returns its SHA.
 func (c *Client) CreateTree(ctx context.Context, owner, repo, baseTree string, entries []TreeEntry) (string, error) {
 	in := struct {
-		BaseTree string      `json:"base_tree"`
+		BaseTree string      `json:"base_tree,omitempty"`
 		Tree     []TreeEntry `json:"tree"`
 	}{BaseTree: baseTree, Tree: entries}
 	var out Object
