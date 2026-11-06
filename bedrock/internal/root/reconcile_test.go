@@ -464,7 +464,7 @@ func TestEnginePendingBootIdentityKeepsItsGrant(t *testing.T) {
 	grant := func(member string) {
 		for i, b := range w.fake.SecretPolicies[secret] {
 			if b.Role == role {
-				w.fake.SecretPolicies[secret][i].Members = append(b.Members, member)
+				w.fake.SecretPolicies[secret][i].Members = append(slices.Clone(b.Members), member)
 
 				return
 			}

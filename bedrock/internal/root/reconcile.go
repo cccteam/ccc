@@ -415,8 +415,9 @@ func (e *engine) secretPolicy(ctx context.Context, spec SecretSpec, exists bool)
 // pendingBootIdentities are the boot identities of the hosting organizations recorded to
 // create and not created yet, as members.
 func (e *engine) pendingBootIdentities() []string {
-	var members []string
-	for _, h := range e.p.Pending() {
+	pending := e.p.Pending()
+	members := make([]string, 0, len(pending))
+	for _, h := range pending {
 		members = append(members, h.BootIdentityMember())
 	}
 
