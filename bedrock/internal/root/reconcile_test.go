@@ -440,9 +440,9 @@ func TestEnginePolicies(t *testing.T) {
 
 // TestEngineHostingMembersStay: a hosting organization's grants on the shared secrets
 // are its own, made through the policy administration its creation gave its boot
-// identity: the boot identity of an organization under creation, the identities in a
-// created organization's projects and any Cloud Build service agent stay on the managed
-// roles as they stand, while a stranger's grant goes.
+// identity: the identities in its projects (recorded or not, created or under creation)
+// and any Cloud Build service agent stay on the managed roles as they stand, while a
+// stranger's grant goes.
 func TestEngineHostingMembersStay(t *testing.T) {
 	t.Parallel()
 
@@ -472,14 +472,18 @@ func TestEngineHostingMembersStay(t *testing.T) {
 		}
 		w.fake.SecretPolicies[secret] = append(w.fake.SecretPolicies[secret], org.Binding{Role: role, Members: []string{member}})
 	}
+	// rgb's environments' projects are not in its record yet: its 1-org granted them
+	// before the creation records the projects.
 	theirs := []string{
 		rgb.BootIdentityMember(),
+		"serviceAccount:rgb-tst-gbl-tofu@rgb-tst-gbl-core-9c9c.iam.gserviceaccount.com",
 		"serviceAccount:imp-org-gbl-applier@imp-boot-gbl-core-a1b2.iam.gserviceaccount.com",
 		"serviceAccount:imp-tst-gbl-deploy@imp-tst-gbl-core-1a2b.iam.gserviceaccount.com",
 		"serviceAccount:service-100000000001@gcp-sa-cloudbuild.iam.gserviceaccount.com",
 	}
 	grant(policyAdmin, theirs[0])
-	for _, m := range theirs[1:] {
+	grant(policyAdmin, theirs[1])
+	for _, m := range theirs[2:] {
 		grant("roles/secretmanager.secretAccessor", m)
 	}
 	report, out := w.run(t, root.Check, false)

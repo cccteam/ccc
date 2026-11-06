@@ -400,14 +400,10 @@ func (e *engine) secretPolicy(ctx context.Context, spec SecretSpec, exists bool)
 	}
 	// On the managed roles the root organization owns its own members alone. A hosting
 	// organization's layers grant their identities and their Cloud Build service agent
-	// reads of the keys and the token through the policy administration the creation
-	// gave its boot identity (0-bootstrap, 1-org, 2-env); those members are theirs to
-	// hold, and stay as they stand.
-	theirs, err := e.hostingMembers()
-	if err != nil {
-		return err
-	}
-	want = keepTheirs(want, current, managed, theirs)
+	// the policy administration and reads of the keys and the token, through the policy
+	// administration the creation gave its boot identity (0-bootstrap, 1-org, 2-env);
+	// those members are theirs to hold, and stay as they stand.
+	want = keepTheirs(want, current, managed, e.hostingMembers())
 	sort.Slice(want, func(i, j int) bool { return want[i].Role < want[j].Role })
 	if diff := cmp.Diff(current, want, cmp.Transformer("sorted", sortedBindings)); diff == "" {
 		return nil
@@ -419,24 +415,15 @@ func (e *engine) secretPolicy(ctx context.Context, spec SecretSpec, exists bool)
 }
 
 // hostingMembers answers whether a member of a shared secret's policy is a hosting
-// organization's: a service account in one of its projects (the boot project of each
-// organization recorded, created or not, and every project in a created organization's
-// record), or any Cloud Build service agent, which only an organization's connection
-// reads the token through.
-func (e *engine) hostingMembers() (func(member string) bool, error) {
-	projects := map[string]bool{}
+// organization's: a service account in one of its projects, which bedrock names after
+// the organization's prefix (<prefix>-<key>-gbl-core-<suffix>; the organization's record
+// lists only the projects recorded so far, and its 1-org grants its environments'
+// identities before the creation records their projects), or any Cloud Build service
+// agent, which only an organization's connection reads the token through.
+func (e *engine) hostingMembers() func(member string) bool {
+	prefixes := make([]string, 0, len(e.p.HostingOrganizations))
 	for _, record := range e.p.HostingOrganizations {
-		projects[record.BootProject] = true
-		h, ok, err := e.hostingRecord(record)
-		if err != nil {
-			return nil, err
-		}
-		if !ok {
-			continue
-		}
-		for _, id := range h.Projects {
-			projects[id] = true
-		}
+		prefixes = append(prefixes, record.Prefix+"-")
 	}
 
 	return func(member string) bool {
@@ -450,8 +437,8 @@ func (e *engine) hostingMembers() (func(member string) bool, error) {
 		_, domain, ok := strings.Cut(account, "@")
 		project, isAccount := strings.CutSuffix(domain, ".iam.gserviceaccount.com")
 
-		return ok && isAccount && projects[project]
-	}, nil
+		return ok && isAccount && slices.ContainsFunc(prefixes, func(prefix string) bool { return strings.HasPrefix(project, prefix) })
+	}
 }
 
 // keepTheirs adds to each managed role's binding in want the members of current the
