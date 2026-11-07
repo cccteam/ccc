@@ -596,6 +596,9 @@ func (e *engine) grants(ctx context.Context) error {
 	if err := e.operatorGrants(ctx); err != nil {
 		return err
 	}
+	if err := e.transferAgent(ctx); err != nil {
+		return err
+	}
 	folder, err := e.folder(ctx)
 	if err != nil {
 		return err
@@ -624,6 +627,34 @@ func (e *engine) grants(ctx context.Context) error {
 	}
 
 	return e.outerGrants(ctx)
+}
+
+// transferAgent makes the BigQuery Data Transfer Service's agent in the root project and
+// grants it its role (Desired.TransferAgentGrant) when the project's policy does not hold
+// it: one change, since an agent that exists is answered as it is. The policy is the
+// compare, which the plan trigger reads; the agent's existence alone no runner can read,
+// the agent living in a project of Google's.
+func (e *engine) transferAgent(ctx context.Context) error {
+	g := e.d.TransferAgentGrant()
+	bindings, err := e.iam.ProjectPolicy(ctx, g.Resource)
+	if err != nil {
+		return err
+	}
+	if holds(bindings, g.Role, g.Member) {
+		return nil
+	}
+
+	return e.change(ctx, sectionGrants, fmt.Sprintf("makes the BigQuery Data Transfer Service's agent in project %s and grants it %s, ahead of the pricing export's console step", g.Resource, g.Role), func(ctx context.Context) error {
+		email, err := e.google.ServiceAgent(ctx, g.Resource, TransferService)
+		if err != nil {
+			return err
+		}
+		if member(email) != g.Member {
+			return errors.Newf("the agent Service Usage answered, %s, is not the one the project's number names, %s", email, g.Member)
+		}
+
+		return e.google.GrantProject(ctx, g.Resource, g.Role, g.Member)
+	})
 }
 
 // operatorGrants keep the break-glass account's roles on the root project
