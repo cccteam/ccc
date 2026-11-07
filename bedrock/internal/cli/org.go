@@ -1630,7 +1630,10 @@ while placement.json records a hosting organization as created (each is destroye
 its own repository, and its entry taken out); then the creating identity's grants come off the
 organization node and the billing account, the root project is deleted, and with it the
 secrets, the zones, the connection, the triggers, the identities and the state bucket, and the
-folder is deleted. The repository stays on GitHub with its code and pull requests, the three
+folder is deleted; the plan trigger's check leaves the repository's ruleset, since the trigger
+is gone, so the journal line's pull request merges on the review alone until a bootstrap again
+requires it (GITHUB_TOKEN, or gh's token, for that one change). The repository stays on GitHub
+with its code and pull requests, the three
 GitHub Apps stay installed, and a bootstrap again brings them with their keys or makes new
 ones.
 
@@ -1699,7 +1702,7 @@ func (d deps) destroyOrg(cmd *cobra.Command, dir string, yes bool) error {
 		if clients == nil {
 			return errors.New("no root organization clients are wired")
 		}
-		if err := rootorg.Destroy(cmd.Context(), clients, &rootorg.DestroyRequest{Placement: p}, out); err != nil {
+		if err := rootorg.Destroy(cmd.Context(), clients, &rootorg.DestroyRequest{Placement: p, GithubToken: d.githubToken}, out); err != nil {
 			return err
 		}
 	} else {

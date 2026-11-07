@@ -691,3 +691,57 @@ func TestEngineDeclaredRecords(t *testing.T) {
 		t.Errorf("changes after the apply: %v", got)
 	}
 }
+
+// TestDestroyDropsPlanCheck: the root's destroy takes the plan trigger's check out of the
+// repository's ruleset, so the journal line's pull request merges on the review alone;
+// run again, it finds the project gone and the check out already.
+func TestDestroyDropsPlanCheck(t *testing.T) {
+	t.Parallel()
+
+	w := newWorld(t)
+	if _, out := w.run(t, root.Apply, true); strings.Contains(out, "finding") {
+		t.Fatalf("the first apply:\n%s", out)
+	}
+	ctx := context.Background()
+	gh := github.New(w.srv.URL, "test-token")
+	rules := func() []string {
+		listed, err := gh.Rulesets(ctx, w.p.GithubOrganization, w.p.SourceRepo)
+		if err != nil {
+			t.Fatal(err)
+		}
+		rs, err := gh.Ruleset(ctx, w.p.GithubOrganization, w.p.SourceRepo, listed[0].ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var types []string
+		for _, r := range rs.Rules {
+			types = append(types, r.Type)
+		}
+
+		return types
+	}
+	if !slices.Contains(rules(), "required_status_checks") {
+		t.Fatalf("the ruleset after the apply requires no check: %v", rules())
+	}
+	token := func(context.Context) (string, error) { return "test-token", nil }
+	w.p.HostingOrganizations = nil // the fixture's hosting organization, destroyed first in its own repository
+	var buf bytes.Buffer
+	if err := root.Destroy(ctx, w.clients, &root.DestroyRequest{Placement: w.p, GithubToken: token}, &buf); err != nil {
+		t.Fatalf("Destroy() = %v\n%s", err, buf.String())
+	}
+	if want := "Took the plan trigger's check out of the ruleset \"default branch\" of " + w.p.GithubOrganization + "/" + w.p.SourceRepo; !strings.Contains(buf.String(), want) {
+		t.Errorf("Destroy() printed:\n%s\nwant %q", buf.String(), want)
+	}
+	if got := rules(); slices.Contains(got, "required_status_checks") || !slices.Contains(got, "pull_request") {
+		t.Errorf("the ruleset after the destroy has the rules %v, want the pull-request rule without the required check", got)
+	}
+	buf.Reset()
+	if err := root.Destroy(ctx, w.clients, &root.DestroyRequest{Placement: w.p, GithubToken: token}, &buf); err != nil {
+		t.Fatalf("Destroy() again = %v\n%s", err, buf.String())
+	}
+	for _, want := range []string{"is gone already", "requires no check already"} {
+		if !strings.Contains(buf.String(), want) {
+			t.Errorf("Destroy() again printed:\n%s\nwant %q", buf.String(), want)
+		}
+	}
+}

@@ -12,16 +12,21 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"slices"
 	"strings"
 
 	"github.com/go-playground/errors/v5"
 
+	"github.com/cccteam/ccc/bedrock/internal/github"
 	"github.com/cccteam/ccc/bedrock/internal/org"
 )
 
-// DestroyRequest is one destroy: the placement; the folder is found by its name.
+// DestroyRequest is one destroy: the placement (the folder is found by its name), and
+// the GitHub token the repository's ruleset is brought to the destroyed state with (the
+// person's, since the Bot Account's goes with the project); nil leaves the ruleset alone.
 type DestroyRequest struct {
-	Placement *org.Placement
+	Placement   *org.Placement
+	GithubToken func(context.Context) (string, error)
 }
 
 // CanDestroy is why the root organization cannot be destroyed yet, or nil: a hosting
@@ -95,6 +100,50 @@ func Destroy(ctx context.Context, clients *Clients, req *DestroyRequest, out io.
 		}
 		fmt.Fprintf(out, "Deleted the folder %s (%s).\n", p.Prefix, folder)
 	}
+
+	return dropPlanCheck(ctx, clients, req, out)
+}
+
+// dropPlanCheck takes the plan trigger's check out of the repository's default-branch
+// ruleset, since the trigger is gone with the project: the journal line's pull request
+// then merges on the review alone, until a bootstrap again requires the check. It looks
+// before it changes, so a destroy run again finds nothing to do.
+func dropPlanCheck(ctx context.Context, clients *Clients, req *DestroyRequest, out io.Writer) error {
+	if req.GithubToken == nil || clients.GitHub == nil {
+		return nil
+	}
+	p := req.Placement
+	owner, repo := p.GithubOrganization, p.SourceRepo
+	token, err := req.GithubToken(ctx)
+	if err != nil {
+		return errors.Wrapf(err, "the ruleset of %s/%s still requires the plan trigger's check, which is gone with the project; taking it out needs a GitHub token (GITHUB_TOKEN, or gh's)", owner, repo)
+	}
+	gh := clients.GitHub(token)
+	listed, err := gh.Rulesets(ctx, owner, repo)
+	if err != nil {
+		return errors.Wrapf(err, "listing the rulesets of %s/%s", owner, repo)
+	}
+	i := slices.IndexFunc(listed, func(rs github.Ruleset) bool { return rs.Name == rulesetName })
+	if i < 0 {
+		fmt.Fprintf(out, "The repository %s/%s has no ruleset %q: no check to take out.\n", owner, repo, rulesetName)
+
+		return nil
+	}
+	rs, err := gh.Ruleset(ctx, owner, repo, listed[i].ID)
+	if err != nil {
+		return errors.Wrapf(err, "reading the ruleset %s of %s/%s", rulesetName, owner, repo)
+	}
+	j := slices.IndexFunc(rs.Rules, func(r github.Rule) bool { return r.Type == ruleRequiredChecks })
+	if j < 0 {
+		fmt.Fprintf(out, "The ruleset %q of %s/%s requires no check already: the journal line's pull request merges on the review alone.\n", rulesetName, owner, repo)
+
+		return nil
+	}
+	rs.Rules = slices.Delete(rs.Rules, j, j+1)
+	if err := gh.UpdateRuleset(ctx, owner, repo, rs.ID, rs); err != nil {
+		return errors.Wrapf(err, "taking the plan trigger's check out of the ruleset %s of %s/%s", rulesetName, owner, repo)
+	}
+	fmt.Fprintf(out, "Took the plan trigger's check out of the ruleset %q of %s/%s: the trigger is gone with the project, and the journal line's pull request merges on the review alone until a bootstrap again requires the check.\n", rulesetName, owner, repo)
 
 	return nil
 }
