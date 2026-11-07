@@ -134,6 +134,25 @@ func NewGoogleAs(ctx context.Context, identity string) (Google, error) {
 // NewGoogle opens the Google clients with the process's default credentials, or with the
 // options given (a token source); the root organization's engine builds on it.
 func NewGoogle(ctx context.Context, opts ...option.ClientOption) (Google, error) {
+	return newGoogle(ctx, opts, opts)
+}
+
+// NewGoogleBilledTo opens the Google clients with the process's default credentials,
+// billing their calls' quota to the project: a person's application default credentials
+// (the break-glass account's at a terminal) name no project of their own, and the Cloud
+// Billing API among others wants one. The storage client alone takes no quota project:
+// it appends an HTTP client of its own to the options, which Google's transport refuses
+// beside a quota project, and Cloud Storage asks a person's credentials for none.
+func NewGoogleBilledTo(ctx context.Context, quotaProject string) (Google, error) {
+	if quotaProject == "" {
+		return NewGoogle(ctx)
+	}
+
+	return newGoogle(ctx, []option.ClientOption{option.WithQuotaProject(quotaProject)}, nil)
+}
+
+// newGoogle opens the clients, the storage client with its own options.
+func newGoogle(ctx context.Context, opts, storageOpts []option.ClientOption) (Google, error) {
 	g := &google{opts: opts, regional: map[string]*secretmanager.Client{}}
 	var err error
 	if g.folders, err = resourcemanager.NewFoldersClient(ctx, opts...); err != nil {
@@ -151,7 +170,7 @@ func NewGoogle(ctx context.Context, opts ...option.ClientOption) (Google, error)
 	if g.services, err = serviceusage.NewService(ctx, opts...); err != nil {
 		return nil, errors.Wrap(err, "serviceusage.NewService()")
 	}
-	if g.storage, err = storage.NewClient(ctx, opts...); err != nil {
+	if g.storage, err = storage.NewClient(ctx, storageOpts...); err != nil {
 		return nil, errors.Wrap(err, "storage.NewClient()")
 	}
 	if g.secrets, err = secretmanager.NewClient(ctx, opts...); err != nil {
