@@ -27,15 +27,19 @@ locals {
   # app-tst.domain, app-pr<N>.domain.
   wildcard = "*.${var.apps_domain}"
 
-  # The vanity domains (var.vanity_domains), each served like the apps domain by a
-  # zone and a certificate of its own (dns.tf, certificate-manager.tf), and their
-  # address records, name to domain: the apex and the wildcard of each, at the
-  # load balancer, so a hostname an application declares on one (the domain
-  # itself, console.<domain>) needs no DNS change.
+  # The vanity domains (var.vanity_domains), each with a certificate of its own
+  # (certificate-manager.tf); the ones delegated here (vanity_zones: every vanity
+  # domain but the ones kept at the customer's DNS provider, var.customer_dns_domains)
+  # with a zone of their own too (dns.tf), and their address records, name to
+  # domain: the apex and the wildcard of each, at the load balancer, so a hostname
+  # an application declares on one (the domain itself, console.<domain>) needs no
+  # DNS change. A kept domain's records are the customer's, added at their provider
+  # from what bedrock domain check prints.
   vanity_domains = toset(var.vanity_domains)
+  vanity_zones   = setsubtract(local.vanity_domains, toset(var.customer_dns_domains))
   vanity_records = merge(
-    { for d in var.vanity_domains : d => d },
-    { for d in var.vanity_domains : "*.${d}" => d },
+    { for d in local.vanity_zones : d => d },
+    { for d in local.vanity_zones : "*.${d}" => d },
   )
 
   # One path matcher per host in the URL map, named after the host: dots and

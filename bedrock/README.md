@@ -2247,22 +2247,31 @@ so:
   such as `apps.example.com`), and the client's DNS provider gets one NS record set for
   the label; everything under it is then the network layer's.
 
-Application hostnames directly on a domain whose zone stays elsewhere are refused: every
-application and environment would need its own records at that domain's DNS provider.
-Pointing a label at the load balancer with static records, instead of delegating it, is
-not supported.
+The apps domain itself is never served by records at a provider elsewhere: its
+pull-request environments need the wildcard, so it is delegated, whole or as a label. A
+customer's own domain may be (a vanity domain kept at the customer's DNS provider, below):
+named records, one per hostname, never a wildcard.
 
 A production application often serves on a domain of its own, the client's brand domain,
 beside its hostname under the apps domain. Such a domain is a vanity domain: the
-organization's placement lists it (`vanityDomains`, bare lowercase domains, none the apps
-domain nor under or above it or
-one another; at most 38 characters, so the names 2-net derives fit), and it is delegated
-whole to the network project, the apex-delegation shape above applied to the application's
-domain, with the same hand step at the registrar, once. 2-net serves each with a zone of
-its own (the apex and the wildcard at the load balancer's address, the certificate's
-authorization record), a DNS authorization, a managed certificate for the domain and one
-label below it, and two entries in the one certificate map; the host rules come from the
-organization's record of what the stack serves, as for any hostname. The application
+organization's placement declares it (`vanityDomains`, a map keyed by the domain: bare
+lowercase domains, none the apps domain nor under or above it or one another; at most 38
+characters, so the names 2-net derives fit). A customer's domain reaches the application
+in one of three ways, the customer's choice, which the entry says: the apex delegated
+(`"<domain>": {}`), when the domain carries nothing else, the apex-delegation shape above
+applied to the application's domain, with the same hand step at the registrar, once; a
+label delegated (`"app.<domain>": {}`), one NS record set at the customer's DNS provider;
+or the domain kept at the customer's DNS provider (`"<domain>": {"dns": "customer"}`),
+which stays authoritative for it, its mail and every other record untouched, and carries
+the records bedrock prints, an A record per hostname the applications declare on the domain
+at the load balancer's address and the certificate's authorization CNAME, named records,
+never a wildcard, which is what makes the apex available to a customer with mail on the
+domain. 2-net serves a delegated vanity domain with a zone of its own (the apex and the
+wildcard at the load balancer's address, the certificate's authorization record), renders
+no zone and no record for a kept one, and holds for each a DNS authorization, a managed
+certificate for the domain and one label below it, and two entries in the one certificate
+map; the host rules come from the organization's record of what the stack serves, as for
+any hostname. The application
 declares the hostnames it serves on the domain in its own placement, per site and
 environment (`hostnames.<site>.vanity`, The application's placement: the domain itself for
 one site, a label of it such as `console.<domain>` for the others), in practice in
@@ -2272,21 +2281,29 @@ environments stay on the apps domain, where the wildcard certificate is. The
 organization records the vanity hostnames with the others
 (`bedrock org register <app> --next`, `bedrock org hostnames <app>`) and refuses one that
 is neither one label under the apps domain nor a declared vanity domain or one label
-under it. A vanity domain may also be bought through Cloud Domains in 2-net, as the apps
-domain may (`bedrock domain add`): the registration then points at the domain's zone, and
-a domain bought before it was declared keeps the zone it had while parked, moved under
-the same name. A domain that carries other DNS (mail, a website at the apex that is not
-the load balancer's) is never a vanity domain: `domain check` refuses it, as it refuses
-such an apps domain, and names a label of it (`app.<domain>`) to declare as the vanity
-domain instead, delegated at the client's DNS provider with one NS record set, the
-application's hostnames then on that label.
+under it. A delegated vanity domain may also be bought through Cloud Domains in 2-net, as
+the apps domain may (`bedrock domain add`): the registration then points at the domain's
+zone, and a domain bought before it was declared keeps the zone it had while parked, moved
+under the same name; a kept domain is never registered there. A domain that carries other
+DNS (mail, a website at the apex that is not the load balancer's) is never delegated whole:
+`domain check` refuses it, as it refuses such an apps domain, and names the two ways out, a
+label of it (`app.<domain>`) declared as the vanity domain instead, or the domain kept
+where it is.
 
 `domain check` runs from the infrastructure repository's root (or `--dir`) once 2-net is
 applied. It reads each domain's zone in the network project (`projects.net` in
 `placement.json`) through the Cloud DNS API with the run's Google credentials (`gcloud
 auth application-default login`, reading the project's zones), and resolves the domain as
-the world sees it: the apps domain first, then each vanity domain the same way, each
-report after a blank line, and it exits 1 when any domain is missing something. When the
+the world sees it: the apps domain first, then each vanity domain, a delegated one the
+same way, each report after a blank line, and it exits 1 when any domain is missing
+something. A vanity domain kept at the customer's DNS provider has no zone to read: the
+check takes the load balancer's address from the apps zone and the domain's authorization
+record from Certificate Manager (`roles/certificatemanager.viewer`), resolves each hostname
+the organization records on the domain and the authorization's name, passes when every one
+answers our value, and otherwise prints the records to add at the provider as its form
+takes them (`@ A 203.0.113.10`, `www A 203.0.113.10`, `_acme-challenge CNAME ...`), with
+the note that a CAA record set at the domain must admit `pki.goog`; every other record of
+the domain is the customer's and is not read. When a delegated
 domain answers the zone's name servers, it passes. Otherwise it
 prints the step and the place, each record on its own line as it is pasted: for a domain
 2-net registers and whose registration is not active yet, the registrant's verification
@@ -2307,8 +2324,9 @@ domain, the type, and the value without the trailing dot a zone file writes
 character), as is the authorization record when it is to be added at a provider
 (`_acme-challenge.apps CNAME ...`); a record the zone itself holds is shown as the
 zone-file line it is. An apex that is not delegated and answers records that are not
-the zone's is refused, with a label of it named instead: as the apps domain for the apps
-domain, declared as the vanity domain in its place for a vanity domain. The check also
+the zone's is refused, with the way out named: a label of it as the apps domain for the
+apps domain; for a vanity domain, a label of it declared in its place, or the domain kept
+at its provider. The check also
 resolves the record that proves the domain to Certificate Manager and says when the
 certificate is still waiting on it. It exits 1 when anything is missing or refused.
 

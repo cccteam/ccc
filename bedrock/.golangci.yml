@@ -116,6 +116,9 @@ linters:
             # lands in, with its tables, through BigQuery's.
             - google.golang.org/api/billingbudgets
             - google.golang.org/api/bigquery
+            # domain check reads a kept vanity domain's authorization record, which no
+            # zone here holds, through Certificate Manager's REST client.
+            - google.golang.org/api/certificatemanager
             # org check lists the API keys of the environment projects through the API
             # Keys REST client, naming each key that carries no API restriction.
             - google.golang.org/api/apikeys

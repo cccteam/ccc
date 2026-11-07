@@ -31,10 +31,11 @@ There is no VPC in this project. See "Cross-project backends" for why.
   servers ("Making a zone again").
 - Per vanity domain (`vanity_domains`, from `placement.json`'s
   `vanityDomains`{{if .VanityDomains}}: {{.VanityDomainsProse}}{{end}}): the same, a DNS authorization, a managed
-  certificate for the domain and `*.<domain>`, two entries in the one map, and
-  a public zone with the apex and the wildcard at the address and the
-  authorization CNAME, named as a parked zone of the domain is ("Vanity
-  domains").
+  certificate for the domain and `*.<domain>`, two entries in the one map, and,
+  for a domain delegated here, a public zone with the apex and the wildcard at
+  the address and the authorization CNAME, named as a parked zone of the domain
+  is; a domain kept at the customer's DNS provider (`dns: customer`) gets no
+  zone, and the customer adds those records there ("Vanity domains").
 - The load balancer: an HTTPS URL map whose host rules come from `hosts`, an
   HTTP URL map that only redirects to HTTPS, the two target proxies (the HTTPS
   one holds the certificate map and the SSL policy), and the two
@@ -238,14 +239,36 @@ describes.
 
 An application in production often serves on a domain of its own, the
 client's brand domain, rather than under the apps domain. Such a domain is a
-vanity domain: declared in `placement.json` (`vanityDomains`) and delegated
-whole to this project, the apex-delegation shape above applied to the
-application's domain. This layer serves it as it serves the apps domain, with
-a zone of its own (the apex and the wildcard at the address, the
-authorization CNAME), a DNS authorization, a managed certificate for the
-domain and one label below it, and the certificate map's two entries; the
-hostnames on it come through `hosts` from the organization's record, like
-every other. The application declares them in its own placement, per site and
+vanity domain, declared in `placement.json` (`vanityDomains`, keyed by the
+domain). A customer's domain reaches an application here in one of three
+ways, the customer's choice, and the declaration says which:
+
+1. **The apex, delegated** (`"<domain>": {}`), when the domain carries nothing
+   else: the apex-delegation shape above, applied to the application's
+   domain. This layer serves it as it serves the apps domain, with a zone of
+   its own (the apex and the wildcard at the address, the authorization
+   CNAME). `bedrock domain check` verifies the delegation, and a lookup of the
+   apex decides: a domain that carries other DNS (mail, a website) is refused,
+   since it is never delegated whole, and the check names the two other ways.
+2. **A label, delegated** (`"app.<domain>": {}`): one NS record set at the
+   customer's DNS provider, as the third step above, and everything beneath
+   the label is served here, the application's hostnames on it.
+3. **The domain, kept** (`"<domain>": {"dns": "customer"}`): the customer's
+   DNS provider stays authoritative for the domain, its mail and every other
+   record untouched, and the customer adds the records bedrock prints: one A
+   record per hostname the applications declare on the domain (the apex, a
+   label), at the load balancer's address, and the certificate's
+   authorization CNAME. Named records, never a wildcard, so the zone stays
+   theirs. This layer renders no zone and no record for such a domain, and
+   `bedrock domain check` verifies the records in the world's DNS instead of
+   a delegation, ignoring every other record of the domain. This is what
+   makes the apex available to a customer with mail on the domain.
+
+Whichever the shape, this layer holds a DNS authorization, a managed
+certificate for the domain and one label below it, and the certificate map's
+two entries, and the hostnames on the domain come through `hosts` from the
+organization's record, like every other. The application declares them in
+its own placement, the same way for every shape, per site and
 environment (`hostnames.<site>.vanity`): the domain itself for one site, a
 label of it (`console.<domain>`) for the others of a multi-site application.
 The first declared is the site's canonical hostname in that environment; the
@@ -256,20 +279,29 @@ vanity hostnames with the others (`bedrock org register <app> --next`,
 `bedrock org hostnames <app>`) and refuses one under no domain
 `vanityDomains` declares.
 
-The steps by hand are the apps domain's, for each vanity domain: a domain
-registered elsewhere is pointed at its zone's name servers at the registrar
-where it is registered (the second step above), once; a domain bought
-through `bedrock domain add` is registered here and pointed at its zone by
-the apply, with the registrant's mailbox step. `bedrock domain check` checks
-each vanity domain after the apps domain, the same way, and prints the step
-that is missing with the zone's name servers. A domain that carries other DNS
-(mail, a website at the apex that is not the load balancer's) is refused
-there, as the apps domain would be: such a domain is never delegated whole,
-and the check names a label of it to declare as the vanity domain instead
-(`app.<domain>`, delegated at the client's DNS provider with one NS record
-set, the third step above), the application's hostnames then on that label.
-The `vanity_domains` output carries each zone's name servers and
-authorization record.
+The steps by hand for a delegated vanity domain are the apps domain's: a
+domain registered elsewhere is pointed at its zone's name servers at the
+registrar where it is registered (the second step above), once; a domain
+bought through `bedrock domain add` is registered here and pointed at its
+zone by the apply, with the registrant's mailbox step. `bedrock domain check`
+checks each vanity domain after the apps domain and prints the step that is
+missing with the zone's name servers. For a kept vanity domain the step is at
+the DNS provider that serves it, once, and again when a hostname is declared
+on the domain later (one more A record) or the application moves to another
+hosting organization (another address, another authorization): the records
+below, which `bedrock domain check` prints paste-ready with their values, as
+the provider's form takes them (the host relative to the domain, the type,
+the value), in place of any record of the same host and type. A CAA record
+set at the domain, if it has one, must admit `pki.goog`, or the certificate
+is never issued. The `vanity_domains` output carries each domain's shape, its
+zone's name servers when it has one, and its authorization record.
+{{- range .KeptVanityDomains}}
+
+`{{.}}`, kept at its DNS provider:
+{{- range $.KeptVanityRecords .}}
+- `{{.}}`
+{{- end}}
+{{- end}}
 
 A vanity domain delegated whole often needs a few records of its own beside
 the load balancer's: the null SPF (`v=spf1 -all`) and DMARC reject policy a
@@ -405,7 +437,8 @@ tofu apply
 | `hosts` | Hostname to backend service URI, one entry per served host; an environment an application is out of service in (`bedrock org teardown <app>`) is left out. | `map(string)` | `{}` | no |
 | `serving` | Whether the listeners stand and hosts route; `bedrock org teardown` renders it false. | `bool` | `true` | no |
 | `ssl_policy_profile` | Cipher profile of the SSL policy. | `string` | `"MODERN"` | no |
-| `vanity_domains` | Domains delegated whole beside the apps domain, each with a zone and a certificate of its own; rendered from `placement.json`. | `list(string)` | `{{.VanityDomainsList}}` | no |
+| `vanity_domains` | The vanity domains beside the apps domain, each with a certificate of its own, and a zone when delegated here; rendered from `placement.json`. | `list(string)` | `{{.VanityDomainsList}}` | no |
+| `customer_dns_domains` | The vanity domains kept at the customer's DNS provider (`dns: customer`), with no zone here; rendered from `placement.json`. | `list(string)` | `{{.CustomerDNSDomainsList}}` | no |
 | `vanity_extra_records` | Further records in a vanity domain's zone, keyed by the domain (a null SPF, a DMARC policy, verification, CAA; never a mail-exchanger record). | `map(list(object))` | `{}` | no |
 
 Project ID and number, the layer identity, the boot project, and the prefix
@@ -430,4 +463,4 @@ Read by the environment and application layers through
 | `project_id` | Shared network project. |
 | `shared_vpc_id` | Always `null`; no VPC is created. |
 | `url_map_id`, `url_map_name` | The HTTPS URL map. |
-| `vanity_domains` | Per vanity domain: `dns_zone_name`, `dns_zone_name_servers` and `dns_authorization_record`. |
+| `vanity_domains` | Per vanity domain: `customer_dns`, `dns_zone_name` and `dns_zone_name_servers` (null for a kept domain) and `dns_authorization_record`. |

@@ -138,7 +138,7 @@ func TestOrgHostnames(t *testing.T) {
 				store.objects["gs://imp-boot-gbl-state-a1b2/3-app/harbor/prd/default.tfstate"] = string(data)
 			},
 			args:    []string{"harbor"},
-			wantErr: `hostnames.harbor.prd "lighthouse.example" is under neither the apps domain apps.imp.example nor a declared vanity domain (harborlights.example) as the domain itself or one label under it: declare the domain in vanityDomains, or serve the site under a label of a declared one`,
+			wantErr: `hostnames.harbor.prd "lighthouse.example" is under neither the apps domain apps.imp.example nor a declared vanity domain (beacon.example, harborlights.example) as the domain itself or one label under it: declare the domain in vanityDomains, or serve the site under a label of a declared one`,
 		},
 		{
 			name: "a hostname another application serves is refused",

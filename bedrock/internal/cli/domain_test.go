@@ -100,7 +100,10 @@ func checkRepo(t *testing.T, recorded, zoneReplacement bool, vanity []string) st
 		t.Fatal(err)
 	}
 	p.AppsDomain = checkDomain
-	p.VanityDomains = vanity
+	p.VanityDomains = org.VanityDomains{}
+	for _, d := range vanity {
+		p.VanityDomains[d] = org.VanityDomain{}
+	}
 	p.ZoneReplacement = zoneReplacement
 	if !recorded {
 		p.Projects = nil

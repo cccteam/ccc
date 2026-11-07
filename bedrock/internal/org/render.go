@@ -740,19 +740,29 @@ func (v *view) ContactDomainsProse() string {
 	return noun + prose(backticked(domains))
 }
 
-// VanityDomainsList is the vanity domains as an HCL list, empty when none is declared.
+// VanityDomainsList is the vanity domains as an HCL list, empty when none is declared;
+// CustomerDNSDomainsList the ones kept at the customer's DNS provider, for which 2-net
+// renders no zone.
 func (v *view) VanityDomainsList() string {
-	if len(v.VanityDomains) == 0 {
+	return domainList(v.VanityDomainNames())
+}
+
+func (v *view) CustomerDNSDomainsList() string {
+	return domainList(v.KeptVanityDomains())
+}
+
+func domainList(domains []string) string {
+	if len(domains) == 0 {
 		return emptyHCLList
 	}
 
-	return hclList(v.VanityDomains)
+	return hclList(domains)
 }
 
 // VanityDomainsProse names the vanity domains for a README, each in backticks, joined
 // with "and"; empty when none is declared.
 func (v *view) VanityDomainsProse() string {
-	return prose(backticked(v.VanityDomains))
+	return prose(backticked(v.VanityDomainNames()))
 }
 
 // ExtraLabels reports whether the placement adds labels of its own.

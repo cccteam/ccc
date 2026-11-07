@@ -230,7 +230,7 @@ shared layers, 2-env per environment and the applications' registrations go thro
 person applies by hand for recovery alone, as the break-glass account with the Folder Admin
 the creation gave it (0-bootstrap/README.md, "Recovery, by hand"). bedrock org check lists
 any grant on the organization's folder to a principal outside the organization.
-After the first apply of 2-net: bedrock domain check prints what the apps domain, and each vanity domain, still needs, and where.
+After the first apply of 2-net: bedrock domain check prints what the apps domain, and each vanity domain, still needs, and where (for a vanity domain kept at its DNS provider, the records to add there).
 `, p.RootOrganization(), p.OrganizationDomain, p.GithubOrganization, p.GithubBotAccount, p.RootProject(), p.Prefix, p.Prefix,
 		p.OrganizationID, p.Prefix, p.Prefix, p.BreakGlassAccount, p.Prefix, p.GithubOrganization, p.SourceRepo,
 		p.PlanTriggerName(), p.ApplyTriggerName())
@@ -1006,8 +1006,10 @@ The pull request now carries 2-net/applications.auto.tfvars and 1-org/applicatio
 the hostnames, onto the backends the stack created, and the stack's check trigger as a
 required check of the repository, which the first apply made. After its merge and apply:
 bedrock domain check, which passes when the apps domain and each vanity domain resolve to
-their zones. A label or a vanity hostname the application changes later in its placement
-(hostnames) is recorded again with bedrock org hostnames <app>.
+their zones, or, for a vanity domain kept at its DNS provider, when the records it prints
+are there (an A record per hostname on the domain, the authorization CNAME). A label or a
+vanity hostname the application changes later in its placement (hostnames) is recorded
+again with bedrock org hostnames <app>, and a kept domain's records with it.
 `)
 
 	return nil
@@ -1429,7 +1431,7 @@ every rendered file:
      hostnames (2-net), onto the backends the stack created, and the stack's check trigger
      as a required check of the repository (1-org), which the first apply made; until then
      the repository's pull requests merge on the CI jobs alone.
-  5. After 2-net's apply: bedrock domain check, which passes when the apps domain and each vanity domain resolve to their zones.
+  5. After 2-net's apply: bedrock domain check, which passes when the apps domain and each vanity domain resolve to their zones, or, for a vanity domain kept at its DNS provider, when the records it prints are there.
 `, p.GithubDefaultBranch, app, repository, strings.Join(p.PlacedEnvironments(app), ", "))
 }
 

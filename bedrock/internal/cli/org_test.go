@@ -752,7 +752,7 @@ func TestOrgCommands(t *testing.T) {
 				"From then on the two Cloud Build triggers in the boot project (imp-boot-uc1-layers-plan and imp-boot-uc1-layers-apply)\napply every layer: a pull request plans the layers it touches as their plan identities and\nposts the plans on it",
 				"bedrock org check lists\nany grant on the organization's folder to a principal outside the organization.",
 				"Pinned bedrock " + headVersion + " in ",
-				"\nAfter the first apply of 2-net: bedrock domain check prints what the apps domain, and each vanity domain, still needs, and where.\n",
+				"\nAfter the first apply of 2-net: bedrock domain check prints what the apps domain, and each vanity domain, still needs, and where (for a vanity domain kept at its DNS provider, the records to add there).\n",
 			},
 		},
 		{
@@ -816,7 +816,7 @@ func TestOrgCommands(t *testing.T) {
 				"1. This render, quill-service at its identities: its repository", "the same apply then runs 2-env\n     once more, each environment in order",
 				"2. bedrock org register quill --next, then the pull request it renders: the public-invoker\n     tag (1-org), the registry grants (2-shr) and the database admins (2-spn)",
 				"4. bedrock org register quill --next once more, then the pull request it renders: the\n     hostnames (2-net)",
-				"\n  5. After 2-net's apply: bedrock domain check, which passes when the apps domain and each vanity domain resolve to their zones.\n",
+				"\n  5. After 2-net's apply: bedrock domain check, which passes when the apps domain and each vanity domain resolve to their zones, or, for a vanity domain kept at its DNS provider, when the records it prints are there.\n",
 			},
 		},
 		{

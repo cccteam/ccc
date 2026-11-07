@@ -41,10 +41,11 @@ func newDomainCheck(d deps) *cobra.Command {
 apex and wildcard addresses, and the record that proves the domain to Certificate Manager)
 through the Cloud DNS API, resolves the domain's delegation as the world sees it, and says
 what is in place and what is missing, naming where to act: the apps domain first, then each
-vanity domain (a client's own domain an application serves on, delegated whole to a zone of
-its own), checked the same way. It runs from the infrastructure repository's root, or names
-it with --dir, and reads the organization's placement (appsDomain, vanityDomains, and
-projects.net, which 1-org's project_ids fill in).
+vanity domain (a client's own domain an application serves on), a delegated one checked the
+same way, a kept one (dns customer in vanityDomains) by its records instead. It runs from the
+infrastructure repository's root, or names it with --dir, and reads the organization's
+placement (appsDomain, vanityDomains, hostnames, and projects.net, which 1-org's project_ids
+fill in).
 
 The shape of the domain is found, not configured. When the domain answers the zone's name
 servers it is delegated, whether 2-net registered it or a registrar elsewhere points at the
@@ -58,10 +59,18 @@ that can be registered (example.com) gets the registrar step, with the zone's na
 to set there; a label of a domain served elsewhere (apps.example.com) gets the NS records to
 add at the DNS provider that serves that domain. A registrable domain that is not delegated
 and already answers records that are not the zone's (a website, mail) is refused: such a
-domain is never delegated whole, and the check names a label of it to use instead: as the
-apps domain for the apps domain, declared as the vanity domain in its place for a vanity
-domain. The check also resolves the authorization record and says when the certificate is
-still waiting on it. Every record is printed on its own line, as it is pasted. While
+domain is never delegated whole, and the check names the way out: a label of it as the apps
+domain for the apps domain; for a vanity domain, a label of it declared in its place, or the
+domain kept at its provider. A vanity domain kept at the customer's DNS provider has no zone
+here: the check reads the load balancer's address from the apps zone and the domain's
+authorization record from Certificate Manager, resolves each hostname recorded on the domain
+(hostnames in placement.json) and the authorization's name in the world's DNS, passes when
+every one answers our value, and otherwise prints the records to add at the provider, an A
+record per hostname and the authorization CNAME, as the provider's form takes them, with the
+note that a CAA record set at the domain must admit pki.goog; every other record of the
+domain is the customer's and is not read. The check also resolves the authorization record
+and says when the certificate is still waiting on it. Every record is printed on its own
+line, as it is pasted. While
 zoneReplacement is set in placement.json (2-net's zones rendered without prevent_destroy,
 for making a zone again), a check that passes on every domain says the value can be cleared
 now, and bedrock org render written.
@@ -78,50 +87,57 @@ its), or what it answers instead. It reads projects.boot. Every domain and every
 passing is the check passing.
 
 The zones are read with the run's Google credentials (gcloud auth application-default login),
-which need to read the network project's zones (roles/dns.reader). It exits 1 when anything
+which need to read the network project's zones (roles/dns.reader) and, for a kept vanity
+domain, its DNS authorizations (roles/certificatemanager.viewer). It exits 1 when anything
 is missing or refused on any domain.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			p, err := orgPlacement(dir, placement)
-			if err != nil {
-				return err
-			}
-			requests, err := checkRequests(p, dir)
-			if err != nil {
-				return err
-			}
-			out := cmd.OutOrStdout()
-			if len(requests) == 0 {
-				fmt.Fprintln(out, "placement.json names no domain (domains): nothing to check until one is delegated to this organization.")
-
-				return nil
-			}
-			passed := true
-			for i, req := range requests {
-				r, err := domain.Check(cmd.Context(), d.lookups, req)
-				if err != nil {
-					return err
-				}
-				if i > 0 {
-					fmt.Fprintln(out)
-				}
-				r.Write(out)
-				passed = passed && r.Passed()
-			}
-			if p.ZoneReplacement && passed {
-				fmt.Fprintln(out, zoneReplacementCleared)
-			}
-			if !passed {
-				return exitError{code: 1}
-			}
-
-			return nil
+			return d.domainCheck(cmd, dir, placement)
 		},
 	}
 	cmd.Flags().StringVar(&dir, "dir", ".", "the repository root")
 	cmd.Flags().StringVar(&placement, "placement", "", "placement file (default: placement.json in the repository root)")
 
 	return cmd
+}
+
+// domainCheck runs the check over every domain of the placement and prints each report,
+// exiting 1 when any domain is missing something.
+func (d deps) domainCheck(cmd *cobra.Command, dir, placement string) error {
+	p, err := orgPlacement(dir, placement)
+	if err != nil {
+		return err
+	}
+	requests, err := checkRequests(p, dir)
+	if err != nil {
+		return err
+	}
+	out := cmd.OutOrStdout()
+	if len(requests) == 0 {
+		fmt.Fprintln(out, "placement.json names no domain (domains): nothing to check until one is delegated to this organization.")
+
+		return nil
+	}
+	passed := true
+	for i := range requests {
+		r, err := domain.Check(cmd.Context(), d.lookups, requests[i])
+		if err != nil {
+			return err
+		}
+		if i > 0 {
+			fmt.Fprintln(out)
+		}
+		r.Write(out)
+		passed = passed && r.Passed()
+	}
+	if p.ZoneReplacement && passed {
+		fmt.Fprintln(out, zoneReplacementCleared)
+	}
+	if !passed {
+		return exitError{code: 1}
+	}
+
+	return nil
 }
 
 // checkRequests is what domain check checks, by the organization's kind: the apps domain
@@ -151,9 +167,16 @@ func checkRequests(p *org.Placement, dir string) ([]domain.CheckRequest, error) 
 		return nil, errors.New("placement.json records no network project (projects.net): record 1-org's project_ids in placement.json (projects), then check again")
 	}
 	requests := []domain.CheckRequest{{Domain: p.AppsDomain, Project: project, Zone: zone, Dir: dir}}
-	for _, vanity := range p.VanityDomains {
-		_, zone := p.VanityZone(vanity)
-		requests = append(requests, domain.CheckRequest{Domain: vanity, Project: project, Zone: zone, Dir: dir, Vanity: true})
+	for _, vanity := range p.VanityDomainNames() {
+		req := domain.CheckRequest{Domain: vanity, Project: project, Dir: dir, Vanity: true}
+		if p.VanityKept(vanity) {
+			// No zone here: the apps zone carries the address, Certificate Manager the
+			// authorization, and the provider the records for the hostnames recorded.
+			req.CustomerDNS, req.Zone, req.Hostnames, req.Authorization = true, zone, p.VanityHostnames(vanity), p.VanityAuthorizationName(vanity)
+		} else {
+			_, req.Zone = p.VanityZone(vanity)
+		}
+		requests = append(requests, req)
 	}
 
 	return requests, nil

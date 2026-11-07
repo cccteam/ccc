@@ -78,11 +78,12 @@ output "url_map_name" {
 }
 
 output "vanity_domains" {
-  description = "Each vanity domain (var.vanity_domains): its zone's name and name servers, which the domain's registrar is pointed at (bedrock domain check prints the step), and the authorization CNAME its certificate waits on, already in the zone."
+  description = "Each vanity domain (var.vanity_domains): whether its DNS is kept at the customer's provider (customer_dns), its zone's name and name servers when it is delegated here (null when kept), which the domain's registrar is pointed at (bedrock domain check prints the step), and the authorization CNAME its certificate waits on: in the zone when delegated here, added at the customer's provider when kept, with an A record per hostname at the address (bedrock domain check prints them)."
   value = {
     for d in var.vanity_domains : d => {
-      dns_zone_name            = google_dns_managed_zone.vanity[d].name
-      dns_zone_name_servers    = google_dns_managed_zone.vanity[d].name_servers
+      customer_dns             = contains(var.customer_dns_domains, d)
+      dns_zone_name            = contains(local.vanity_zones, d) ? google_dns_managed_zone.vanity[d].name : null
+      dns_zone_name_servers    = contains(local.vanity_zones, d) ? google_dns_managed_zone.vanity[d].name_servers : null
       dns_authorization_record = google_certificate_manager_dns_authorization.vanity[d].dns_resource_record[0]
     }
   }

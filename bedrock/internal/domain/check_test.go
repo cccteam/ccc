@@ -3,6 +3,7 @@ package domain
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"net"
 	"slices"
 	"strings"
@@ -258,8 +259,9 @@ func TestCheck(t *testing.T) {
 				"harborlights.example does not answer the zone's name servers (it answers ns1.example.net., ns2.example.net.), and it answers records that are not the zone's:",
 				"A 192.0.2.80",
 				"MX 10 mail.example.net.",
-				"Refused: a domain that carries other DNS (a website, mail) is never delegated whole, and a site's hostnames directly on it would each need their own records at its DNS provider.",
+				"Refused: a domain that carries other DNS (a website, mail) is never delegated whole. Two ways out, the customer's choice:",
 				"Declare a label of it as the vanity domain instead, such as app.harborlights.example: set it in place of harborlights.example in vanityDomains in placement.json and put the site's hostnames on it in the application's placement (hostnames.<site>.vanity), run bedrock org render, apply 2-net, and run bedrock domain check again for the NS records to add at the DNS provider that serves harborlights.example.",
+				`Or keep harborlights.example where it is: set its entry in vanityDomains to {"dns": "customer"}, run bedrock org render, apply 2-net, and run bedrock domain check again for the records to add at the DNS provider that serves it, an A record per hostname declared on it and the certificate's authorization CNAME; its mail and every other record stay as they are.`,
 			},
 			wantAbsent: []string{"appsDomain", "apps_domain"},
 		},
@@ -718,6 +720,152 @@ func TestFormLine(t *testing.T) {
 
 			if got := tt.record.FormLine(tt.domain); got != tt.want {
 				t.Errorf("FormLine() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+// fakeAuthorizations holds one DNS authorization, or none.
+type fakeAuthorizations struct {
+	name   string
+	record *Record
+}
+
+func (f *fakeAuthorizations) DNSAuthorization(_ context.Context, project, name string) (*Record, error) {
+	if f.record == nil || project != checkProject || name != f.name {
+		return nil, nil
+	}
+
+	return f.record, nil
+}
+
+func (*fakeAuthorizations) Close() error {
+	return nil
+}
+
+// TestCheckKept: a vanity domain kept at the customer's DNS provider is checked by its
+// records, not a delegation: the load balancer's address from the apps zone, the
+// authorization record from Certificate Manager, each hostname declared on the domain and
+// the authorization's name resolved in the world's DNS; the records missing or differing
+// are printed as the provider's form takes them, the domain's own mail is not read, and a
+// domain whose authorization 2-net has not made stops the check.
+func TestCheckKept(t *testing.T) {
+	t.Parallel()
+
+	const (
+		kept   = "beacon.example"
+		auth   = "ex-net-gbl-dnsauth-beacon-example"
+		header = "beacon.example is kept at its DNS provider (vanityDomains: dns customer), and no zone here serves it: its hostnames point at the load balancer (203.0.113.10) by records added there."
+		caa    = `At the DNS provider that serves beacon.example: add the %d record(s) below, as its form takes them (host, type, value: the host relative to beacon.example, @ for the domain itself, the value without the trailing dot a zone file writes), in place of any record of the same host and type. Every other record of beacon.example (its mail, its website elsewhere) stays as it is. A CAA record set at beacon.example, if it has one, must admit pki.goog (0 issue "pki.goog"), or the certificate is never issued.`
+	)
+	authorization := &Record{Name: authName(kept), Type: "CNAME", Data: []string{authData}}
+	repo := t.TempDir()
+	tests := []struct {
+		name          string
+		hostnames     []string
+		resolver      *fakeResolver
+		authorization *fakeAuthorizations
+		wantPassed    bool
+		wantLines     []string
+		wantErr       string
+	}{
+		{
+			name:      "every record in place, the domain's mail beside: passes",
+			hostnames: []string{kept, "www." + kept},
+			resolver: &fakeResolver{
+				hosts: map[string][]string{kept: {lbAddress, "2001:db8::10"}, "www." + kept: {lbAddress}},
+				mx:    map[string][]*net.MX{kept: {{Host: "mail.example.net.", Pref: 10}}},
+				cname: map[string]string{authName(kept): authData},
+			},
+			authorization: &fakeAuthorizations{name: auth, record: authorization},
+			wantPassed:    true,
+			wantLines: []string{
+				header,
+				"beacon.example answers the load balancer's address.",
+				"www.beacon.example answers the load balancer's address.",
+				"The authorization record resolves: the certificate for beacon.example and *.beacon.example is not waiting on it.",
+			},
+		},
+		{
+			name:      "the apex record missing and a label pointing elsewhere: both printed",
+			hostnames: []string{kept, "www." + kept},
+			resolver: &fakeResolver{
+				hosts: map[string][]string{"www." + kept: {"192.0.2.80"}},
+				cname: map[string]string{authName(kept): authData},
+			},
+			authorization: &fakeAuthorizations{name: auth, record: authorization},
+			wantLines: []string{
+				header,
+				"beacon.example answers no address.",
+				"www.beacon.example answers 192.0.2.80, not the load balancer's address alone.",
+				"The authorization record resolves: the certificate for beacon.example and *.beacon.example is not waiting on it.",
+				fmt.Sprintf(caa, 2),
+				"@ A 203.0.113.10",
+				"www A 203.0.113.10",
+			},
+		},
+		{
+			name:      "the authorization record missing: the certificate waits, the record printed",
+			hostnames: []string{kept},
+			resolver: &fakeResolver{
+				hosts: map[string][]string{kept: {lbAddress}},
+			},
+			authorization: &fakeAuthorizations{name: auth, record: authorization},
+			wantLines: []string{
+				header,
+				"beacon.example answers the load balancer's address.",
+				"The certificate for beacon.example and *.beacon.example is still waiting on the authorization record below: it does not resolve yet (a record just added can take up to 48 hours to be seen everywhere).",
+				fmt.Sprintf(caa, 1),
+				authForm(""),
+			},
+		},
+		{
+			name:          "no hostname declared yet: the authorization record alone",
+			resolver:      &fakeResolver{},
+			authorization: &fakeAuthorizations{name: auth, record: authorization},
+			wantLines: []string{
+				header,
+				"No application declares a hostname on beacon.example yet (hostnames.<site>.vanity in an application's placement, recorded by bedrock org register --next or bedrock org hostnames): a hostname declared later adds one A record here, which this check prints then.",
+				"The certificate for beacon.example and *.beacon.example is still waiting on the authorization record below: it does not resolve yet (a record just added can take up to 48 hours to be seen everywhere).",
+				fmt.Sprintf(caa, 1),
+				authForm(""),
+			},
+		},
+		{
+			name:          "an authorization 2-net has not made stops the check",
+			hostnames:     []string{kept},
+			resolver:      &fakeResolver{},
+			authorization: &fakeAuthorizations{},
+			wantErr:       "no DNS authorization ex-net-gbl-dnsauth-beacon-example in ex-net-gbl-core-1a2b: the apply of 2-net makes it for the vanity domain beacon.example (vanityDomains in placement.json, bedrock org render); apply 2-net, then check again",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			lookups := &Lookups{
+				OpenZones:          func(context.Context) (ZoneReader, error) { return zoneFor("apps.example.com"), nil },
+				OpenAuthorizations: func(context.Context) (AuthorizationReader, error) { return tt.authorization, nil },
+				Resolver:           tt.resolver,
+			}
+			r, err := Check(context.Background(), lookups, CheckRequest{Domain: kept, Project: checkProject, Zone: checkZone, Dir: repo, Vanity: true, CustomerDNS: true, Hostnames: tt.hostnames, Authorization: auth})
+			if tt.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+					t.Fatalf("Check() error = %v, wantErr %q", err, tt.wantErr)
+				}
+
+				return
+			}
+			if err != nil {
+				t.Fatalf("Check() error = %v", err)
+			}
+			if r.Passed() != tt.wantPassed {
+				t.Errorf("Passed() = %v, want %v", r.Passed(), tt.wantPassed)
+			}
+			var out bytes.Buffer
+			r.Write(&out)
+			if got, want := strings.Split(strings.TrimSuffix(out.String(), "\n"), "\n"), tt.wantLines; !slices.Equal(got, want) {
+				t.Errorf("Write() =\n%s\nwant:\n%s", strings.Join(got, "\n"), strings.Join(want, "\n"))
 			}
 		})
 	}
