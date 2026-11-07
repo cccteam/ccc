@@ -53,6 +53,12 @@ type Request struct {
 	// and pull request), or a person's.
 	Token  string
 	Commit string
+	// Seeded runs once the seed stands and before the first applies, with the
+	// organization's folder: the root organization's apply sets the folder's organization
+	// policy there (the applier holds Organization Policy Administrator; the creating
+	// identity does not), so 1-org's first apply makes no project with a default network.
+	// nil when nothing is to run.
+	Seeded func(ctx context.Context, organizationFolder string) error
 }
 
 // Marker is what the creation leaves in the root organization's state bucket once the
@@ -274,6 +280,11 @@ func (f *creation) create(ctx context.Context) (*Result, error) {
 		return nil, err
 	}
 	h.ProjectNumbers = map[string]string{bootKey: number}
+	if f.req.Seeded != nil {
+		if err := f.req.Seeded(ctx, seed.OrganizationFolder); err != nil {
+			return nil, errors.Wrapf(err, "after the seed of %s, before its first applies", h.Prefix)
+		}
+	}
 
 	return f.establish(ctx, g, h, seed, number)
 }

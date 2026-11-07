@@ -99,14 +99,17 @@ type engine struct {
 	report  *Report
 	google  create.Google
 	// policies is the Org Policy client; created are the hosting organizations this run
-	// created, by prefix, with their placements as recorded, for the policies section.
-	policies OrgPolicies
-	created  map[string]*org.Placement
-	secrets  Secrets
-	dns      DNS
-	builds   Builds
-	iam      IAM
-	gh       *github.Client
+	// created, by prefix, with their placements as recorded, for the policies section,
+	// and createdFolders their own folders, which the section compares before the
+	// hand-off records them.
+	policies       OrgPolicies
+	created        map[string]*org.Placement
+	createdFolders map[string]string
+	secrets        Secrets
+	dns            DNS
+	builds         Builds
+	iam            IAM
+	gh             *github.Client
 }
 
 // Run runs the engine in the request's mode and answers the report. In Apply mode a
@@ -1272,7 +1275,10 @@ func (e *engine) creations(ctx context.Context) error {
 	}
 	for _, record := range pending {
 		fmt.Fprintf(e.out, "%s: creates the hosting organization %s\n", sectionCreations, record.Prefix)
-		res, err := create.Run(ctx, e.clients.Create, &create.Request{Root: e.p, RootDir: e.req.Dir, Record: record, Token: e.req.GitHubToken, Commit: e.req.Commit}, e.out)
+		seeded := func(ctx context.Context, folder string) error {
+			return e.setPolicies(ctx, record.Prefix, OrganizationFolderPolicies(folder))
+		}
+		res, err := create.Run(ctx, e.clients.Create, &create.Request{Root: e.p, RootDir: e.req.Dir, Record: record, Token: e.req.GitHubToken, Commit: e.req.Commit, Seeded: seeded}, e.out)
 		if err != nil {
 			return errors.Wrapf(err, "the creation of %s", record.Prefix)
 		}
@@ -1281,8 +1287,10 @@ func (e *engine) creations(ctx context.Context) error {
 		e.report.Created = append(e.report.Created, Creation{Prefix: record.Prefix, PullRequest: res.PullRequest, Already: res.Already})
 		if e.created == nil {
 			e.created = map[string]*org.Placement{}
+			e.createdFolders = map[string]string{}
 		}
 		e.created[record.Prefix] = res.Placement
+		e.createdFolders[record.Prefix] = res.Marker.OrganizationFolder
 	}
 
 	return nil

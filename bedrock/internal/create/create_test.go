@@ -715,6 +715,54 @@ func TestRunFirstApplyAgainAfterRace(t *testing.T) {
 	}
 }
 
+// TestRunSeededBeforeFirstApply: the request's Seeded hook runs once the seed stands,
+// with the organization's folder, and before any first apply, so the root organization's
+// apply can set the folder's organization policy that 1-org's first apply runs under.
+func TestRunSeededBeforeFirstApply(t *testing.T) {
+	t.Parallel()
+
+	f := newFlow(t)
+	dir, root := checkout(t)
+	req := request(root, dir)
+	var seededWith string
+	var appliesBefore int
+	req.Seeded = func(_ context.Context, organizationFolder string) error {
+		seededWith = organizationFolder
+		for _, c := range f.runner.ran {
+			if c.Args[0] == "apply" {
+				appliesBefore++
+			}
+		}
+
+		return nil
+	}
+	var out bytes.Buffer
+	if _, err := create.Run(t.Context(), f.clients(), req, &out); err != nil {
+		t.Fatalf("Run() error = %v; output:\n%s", err, out.String())
+	}
+	if want := f.google.Folders["organizations/123456789012|rgb"]; seededWith == "" || seededWith != want {
+		t.Errorf("Seeded ran with folder %q, want the organization's folder %q", seededWith, want)
+	}
+	if appliesBefore != 0 {
+		t.Errorf("%d apply(ies) ran before Seeded, want none", appliesBefore)
+	}
+
+	// A hook that fails stops the creation before its first applies.
+	g := newFlow(t)
+	dir, root = checkout(t)
+	req = request(root, dir)
+	req.Seeded = func(context.Context, string) error { return errors.New("the policy is refused") }
+	out.Reset()
+	if _, err := create.Run(t.Context(), g.clients(), req, &out); err == nil || !strings.Contains(err.Error(), "after the seed of rgb, before its first applies") || !strings.Contains(err.Error(), "the policy is refused") {
+		t.Errorf("Run() error = %v, want the hook's refusal", err)
+	}
+	for _, c := range g.runner.ran {
+		if c.Args[0] == "apply" {
+			t.Errorf("an apply ran after the hook refused: %v", c.Args)
+		}
+	}
+}
+
 // TestRunUntaintsProjects: the state of 1-org holds a project made and then errored on
 // (tainted); the creation takes the taint off before the apply, so the apply goes on
 // with the project instead of replacing it.

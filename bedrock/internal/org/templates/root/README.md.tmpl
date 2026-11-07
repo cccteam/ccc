@@ -343,6 +343,16 @@ ids (`folders`) and each environment project's public-invoker tag
 project and the layer identities in it are never locked out by a constraint
 they depend on.
 
+One constraint is the exception, set on the organization's folder itself, by
+the creation right after the seed and before `1-org`'s first apply, so every
+folder beneath inherits it, the `terraform` folder included:
+`compute.skipDefaultNetworkCreation`. With it no project of the organization
+is ever made with a default network, so the project factory's deletion of it,
+the step Google's own race refused in the lab (an API enabled moments ago not
+yet seen by every service), has nothing to do. It can lock nothing out, which
+is why it alone reaches the `terraform` folder; the apply compares it on the
+organization's folder on every run after, as it compares the rest.
+
 On every one of the four folders, the tf-gcp-setup baseline trimmed to
 constraints that cost nothing operationally, each closing a door nothing here
 uses or pinning a decision already made:
@@ -614,7 +624,9 @@ grants the new organization's identities their use of the billing account.
    the boot project with its billing link and its APIs, the boot identity with
    its roles on the folder and on the boot project, the break-glass account's
    Folder Admin on the folder, the state bucket, and the boot identity's policy
-   administration of the four shared secrets here; then, against the new
+   administration of the four shared secrets here; then, as the applier, the
+   one organization policy on the new folder by which no project is made with
+   a default network ("The organization-policy baseline"); then, against the new
    bucket, the first applies of the new organization's two foundation layers,
    `0-bootstrap` and `1-org`, with the projects recorded in its placement, and
    Billing Account User on the billing account for its boot and org identities;

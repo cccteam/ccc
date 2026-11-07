@@ -373,6 +373,7 @@ func TestEnginePolicies(t *testing.T) {
 	report, _ := w.run(t, root.Check, false)
 	got := whats(report)
 	containsAll(t, got,
+		"organization policies: sets compute.skipDefaultNetworkCreation on folder organization (123456789012345) of imp",
 		"organization policies: sets iam.managed.disableServiceAccountKeyCreation on folder shared (900000000011) of imp",
 		"organization policies: sets cloudbuild.allowedIntegrations on folder prd (900000000014) of imp",
 		"organization policies: sets iam.allowedPolicyMemberDomains on folder tst (900000000012) of imp",
@@ -384,8 +385,8 @@ func TestEnginePolicies(t *testing.T) {
 			policies++
 		}
 	}
-	if want := 4*len(root.Baseline) + 3 + 4; policies != want {
-		t.Errorf("%d policies to set, want %d (the baseline on four folders, member domains on three, contact domains on four)", policies, want)
+	if want := len(root.OrganizationFolderBaseline) + 4*len(root.Baseline) + 3 + 4; policies != want {
+		t.Errorf("%d policies to set, want %d (the organization folder's own, the baseline on four folders, member domains on three, contact domains on four)", policies, want)
 	}
 	if slices.ContainsFunc(got, func(s string) bool { return strings.Contains(s, "iam.allowedPolicyMemberDomains on folder shared") }) {
 		t.Errorf("domain-restricted sharing on the shared folder: %v", got)
@@ -397,6 +398,10 @@ func TestEnginePolicies(t *testing.T) {
 	member := w.fake.OrgPolicies["folders/900000000012/policies/iam.allowedPolicyMemberDomains"]
 	if member == nil || len(member.Rules) != 2 || !member.Rules[0].AllowAll || member.Rules[0].Condition == nil || member.Rules[0].Condition.Expression != "resource.matchTagId('tagKeys/281000000001', 'tagValues/282000000001')" || !slices.Equal(member.Rules[1].AllowedValues, []string{"C0a1b2c3d"}) {
 		t.Errorf("domain-restricted sharing on tst = %+v", member)
+	}
+	network := w.fake.OrgPolicies["folders/123456789012345/policies/compute.skipDefaultNetworkCreation"]
+	if network == nil || len(network.Rules) != 1 || network.Rules[0].Enforce == nil || !*network.Rules[0].Enforce {
+		t.Errorf("the network constraint on the organization's folder = %+v", network)
 	}
 	contacts := w.fake.OrgPolicies["folders/900000000011/policies/essentialcontacts.managed.allowedContactDomains"]
 	if contacts == nil || len(contacts.Rules) != 1 || contacts.Rules[0].Enforce == nil || !*contacts.Rules[0].Enforce || contacts.Rules[0].Parameters != `{"allowedDomains":["@imp.example"]}` {
