@@ -1806,7 +1806,7 @@ func projectContentsOf(key string) string {
 // destroyJournalLine is the line the destroy adds to the journal.
 func destroyJournalLine(p *org.Placement, keepNet bool, now time.Time) string {
 	if p.IsRoot() {
-		return fmt.Sprintf("- %s: bedrock org destroy deleted the root organization's root project (%s) and folder, with its zones: Google holds the project for 30 days, its id never returns. The GitHub repository and the apps stay.\n", now.Format("2006-01-02 15:04Z"), p.RootProject())
+		return fmt.Sprintf("- %s: bedrock org destroy deleted the root organization's root project (%s) and folder, its zones deleted ahead of it (their name servers free at once): Google holds the project for 30 days, its id never returns. The GitHub repository and the apps stay.\n", now.Format("2006-01-02 15:04Z"), p.RootProject())
 	}
 	var ids []string
 	for _, key := range destroyedProjectKeys(p) {

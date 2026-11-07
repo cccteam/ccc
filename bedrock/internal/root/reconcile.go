@@ -157,7 +157,7 @@ func Run(ctx context.Context, clients *Clients, req *Request, out io.Writer) (*R
 
 func (e *engine) open(ctx context.Context) error {
 	var err error
-	if e.google, err = e.clients.Google(ctx); err != nil {
+	if e.google, err = e.clients.Google(ctx, e.p.Projects[org.RootProjectKey]); err != nil {
 		return err
 	}
 	if e.clients.OrgPolicies == nil {
@@ -593,7 +593,7 @@ func (e *engine) grants(ctx context.Context) error {
 	if err := e.memberRoles(ctx, "project "+e.d.Project(), e.d.ProjectRoles(), e.iam.ProjectPolicy, e.d.Project(), e.google.GrantProject, e.google.RevokeProject); err != nil {
 		return err
 	}
-	if err := e.exportOperatorGrant(ctx); err != nil {
+	if err := e.operatorGrants(ctx); err != nil {
 		return err
 	}
 	folder, err := e.folder(ctx)
@@ -626,23 +626,36 @@ func (e *engine) grants(ctx context.Context) error {
 	return e.outerGrants(ctx)
 }
 
-// exportOperatorGrant keeps the break-glass account's BigQuery Admin on the root project
-// (Desired.ExportOperatorGrant), with which it points the billing export at the dataset;
-// the account's other roles on the project are not this run's to touch, so the grant is
+// operatorGrants keep the break-glass account's roles on the root project
+// (Desired.OperatorGrants): BigQuery Admin, with which it points the billing export at
+// the dataset, and Service Usage Consumer, for the quota of its checks at a terminal.
+// The account's other roles on the project are not this run's to touch, so each grant is
 // made when missing and nothing is taken off.
-func (e *engine) exportOperatorGrant(ctx context.Context) error {
-	g := e.d.ExportOperatorGrant()
-	bindings, err := e.iam.ProjectPolicy(ctx, g.Resource)
+func (e *engine) operatorGrants(ctx context.Context) error {
+	grants := e.d.OperatorGrants()
+	if len(grants) == 0 {
+		return nil
+	}
+	bindings, err := e.iam.ProjectPolicy(ctx, grants[0].Resource)
 	if err != nil {
 		return err
 	}
-	if holds(bindings, g.Role, g.Member) {
-		return nil
+	for _, g := range grants {
+		if holds(bindings, g.Role, g.Member) {
+			continue
+		}
+		why := "for pointing the billing export at its dataset"
+		if g.Role == org.ServiceUsageConsumerRole {
+			why = "for the quota its checks at a terminal bill to the project"
+		}
+		if err := e.change(ctx, sectionGrants, fmt.Sprintf("grants %s %s on project %s, %s", g.Member, g.Role, g.Resource, why), func(ctx context.Context) error {
+			return e.google.GrantProject(ctx, g.Resource, g.Role, g.Member)
+		}); err != nil {
+			return err
+		}
 	}
 
-	return e.change(ctx, sectionGrants, fmt.Sprintf("grants %s %s on project %s, for pointing the billing export at its dataset", g.Member, g.Role, g.Resource), func(ctx context.Context) error {
-		return e.google.GrantProject(ctx, g.Resource, g.Role, g.Member)
-	})
+	return nil
 }
 
 // outerGrants are the grants above the root project: the creating identity's at the

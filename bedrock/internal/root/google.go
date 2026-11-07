@@ -78,6 +78,9 @@ type DNS interface {
 	Zones(ctx context.Context, project string) ([]Zone, error)
 	// CreateZone makes the zone, public, with DNSSEC on when the zone says so.
 	CreateZone(ctx context.Context, project string, zone Zone) error
+	// DeleteZone deletes the zone, its record sets other than the apex NS and SOA gone
+	// already, so its name servers are free for a zone of the name at once.
+	DeleteZone(ctx context.Context, project, zone string) error
 	// RecordSets lists the zone's record sets.
 	RecordSets(ctx context.Context, project, zone string) ([]RecordSet, error)
 	// ChangeRecordSets applies one change: the deletions, then the additions.
@@ -275,8 +278,11 @@ type (
 	IAMFunc func(ctx context.Context) (IAM, error)
 	// LocksFunc opens the state bucket's lock.
 	LocksFunc func(ctx context.Context) (Locks, error)
-	// GoogleFunc opens the creation seam: folders, projects, identities and buckets.
-	GoogleFunc func(ctx context.Context) (create.Google, error)
+	// GoogleFunc opens the creation seam: folders, projects, identities and buckets,
+	// billing its calls' quota to the project named when the caller is a person (the
+	// Cloud Billing API wants one); empty before the root project exists, and on a
+	// destroy, whose project goes mid-run.
+	GoogleFunc func(ctx context.Context, quotaProject string) (create.Google, error)
 	// OrgPoliciesFunc opens the Org Policy client (the root project's runners hold
 	// Organization Policy Administrator and Viewer at the organization node), billing
 	// its calls to the root project: the API wants a quota project when the caller is a

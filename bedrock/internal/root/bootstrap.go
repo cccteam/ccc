@@ -99,7 +99,9 @@ func Bootstrap(ctx context.Context, clients *Clients, req *BootstrapRequest, out
 	if err != nil {
 		return nil, err
 	}
-	if b.google, err = clients.Google(ctx); err != nil {
+	// Before the root project exists there is no project to bill the quota to; the
+	// engine's run inside the bootstrap opens its own seam, billed to the project.
+	if b.google, err = clients.Google(ctx, ""); err != nil {
 		return nil, err
 	}
 	defer b.google.Close()

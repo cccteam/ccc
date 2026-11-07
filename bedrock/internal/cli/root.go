@@ -12,6 +12,7 @@ import (
 
 	"github.com/go-playground/errors/v5"
 	"github.com/spf13/cobra"
+	"google.golang.org/api/option"
 
 	"github.com/cccteam/ccc/bedrock/internal/create"
 	"github.com/cccteam/ccc/bedrock/internal/deploy"
@@ -154,8 +155,12 @@ func newRoot() *cobra.Command {
 // Credentials: the break-glass account's at a terminal, a runner identity's in a trigger.
 func rootClients() *rootorg.Clients {
 	return &rootorg.Clients{
-		Google: func(ctx context.Context) (create.Google, error) {
-			return create.NewGoogle(ctx)
+		Google: func(ctx context.Context, quotaProject string) (create.Google, error) {
+			if quotaProject == "" {
+				return create.NewGoogle(ctx)
+			}
+
+			return create.NewGoogle(ctx, option.WithQuotaProject(quotaProject))
 		},
 		OrgPolicies: rootorg.NewOrgPolicies,
 		Secrets:     rootorg.NewSecrets, DNS: rootorg.NewDNS, DNSAs: rootorg.NewDNSAs, Verifier: rootorg.NewVerifierAs, Builds: rootorg.NewBuilds, IAM: rootorg.NewIAM, Locks: rootorg.NewLocks,

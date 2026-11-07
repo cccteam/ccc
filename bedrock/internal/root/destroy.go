@@ -53,7 +53,7 @@ func Destroy(ctx context.Context, clients *Clients, req *DestroyRequest, out io.
 	if err := CanDestroy(p); err != nil {
 		return err
 	}
-	google, err := clients.Google(ctx)
+	google, err := clients.Google(ctx, "") // the project goes mid-run, so no quota project
 	if err != nil {
 		return err
 	}
@@ -82,10 +82,13 @@ func Destroy(ctx context.Context, clients *Clients, req *DestroyRequest, out io.
 			return err
 		}
 		if exists {
+			if err := deleteZones(ctx, clients, project, out); err != nil {
+				return err
+			}
 			if err := iam.DeleteProject(ctx, project); err != nil {
 				return err
 			}
-			fmt.Fprintf(out, "Deleted the project %s, with the secrets, the zones, the connection, the triggers, the identities and the state bucket: Google holds it for 30 days, and its id never returns.\n", project)
+			fmt.Fprintf(out, "Deleted the project %s, with the secrets, the connection, the triggers, the identities and the state bucket: Google holds it for 30 days, and its id never returns.\n", project)
 		} else {
 			fmt.Fprintf(out, "The project %s is gone already.\n", project)
 		}
@@ -102,6 +105,47 @@ func Destroy(ctx context.Context, clients *Clients, req *DestroyRequest, out io.
 	}
 
 	return dropPlanCheck(ctx, clients, req, out)
+}
+
+// deleteZones deletes the project's zones ahead of the project, each zone's record sets
+// but its apex NS and SOA first: a zone deleted with its project keeps its name servers
+// until the project purges, thirty days later, and Cloud DNS gives a name and its
+// subdomains five name-server sets in all across every project, so a root organization
+// bootstrapped again within the month would be refused its zone.
+func deleteZones(ctx context.Context, clients *Clients, project string, out io.Writer) error {
+	dns, err := clients.DNS(ctx)
+	if err != nil {
+		return err
+	}
+	defer dns.Close()
+	zones, err := dns.Zones(ctx, project)
+	if err != nil {
+		return err
+	}
+	for _, z := range zones {
+		records, err := dns.RecordSets(ctx, project, z.Name)
+		if err != nil {
+			return err
+		}
+		var deletions []RecordSet
+		for _, r := range records {
+			if r.Name == z.DNSName && (r.Type == recordTypeNS || r.Type == recordTypeSOA) {
+				continue
+			}
+			deletions = append(deletions, r)
+		}
+		if len(deletions) > 0 {
+			if err := dns.ChangeRecordSets(ctx, project, z.Name, nil, deletions); err != nil {
+				return err
+			}
+		}
+		if err := dns.DeleteZone(ctx, project, z.Name); err != nil {
+			return err
+		}
+		fmt.Fprintf(out, "Deleted the zone %s (%s) ahead of the project: its name servers are free for a zone of the name at once, where a zone deleted with its project holds them until the project purges, thirty days later.\n", z.Name, strings.TrimSuffix(z.DNSName, "."))
+	}
+
+	return nil
 }
 
 // dropPlanCheck takes the plan trigger's check out of the repository's default-branch
