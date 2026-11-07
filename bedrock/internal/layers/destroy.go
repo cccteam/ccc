@@ -131,10 +131,12 @@ func keptOut(address string) (string, bool) {
 	return "", false
 }
 
-// tagsNotice is said once when a tag resource was taken out of the state: a key or value
-// at the organization node, from a render before the tags moved into the environment
-// projects, goes with no project.
-const tagsNotice = "A tag key or value at the organization node, from a render before the tags moved into the environment projects, stays behind: delete it by hand (gcloud resource-manager tags values delete, then keys delete) once the projects are purged, 30 days after this destroy.\n"
+// tagsNotice is said once when a tag resource was taken out of the state: the run cannot
+// tell from the address whether the key or value sits in an environment project, where
+// it goes with the project, or at the organization node, from a render before the tags
+// moved into the environment projects, where it goes with nothing, so it says what to
+// look for and what to do if one is there.
+const tagsNotice = "If a tag key or value stands at the organization node (gcloud resource-manager tags keys list --parent organizations/<id>), from a render before the tags moved into the environment projects, it stays behind: delete it by hand (gcloud resource-manager tags values delete, then keys delete) once the projects it was bound to are purged, 30 days after their deletion; a key in an environment project goes with the project.\n"
 
 // checkDestroyVariable refuses a layer that declares no destroy variable: a render of an
 // earlier bedrock, whose projects and folders the apply before the destroy could not
