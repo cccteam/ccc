@@ -2233,7 +2233,12 @@ so:
 - **Registered by 2-net, the default.** A new organization buys its apps domain through
   Cloud Domains in the network layer: one placement entry, registered and pointed at the
   zone by the next apply, with no registrar step. Cloud Domains accepts no transfer in, so
-  a domain the client already owns takes one of the next two shapes.
+  a domain the client already owns takes one of the next two shapes. A registration lives
+  and dies with its project: it cannot move to another project, and deleting the project
+  loses the domain past a thirty-day restore window. So the default suits a permanent
+  organization alone; an organization that will be torn down, a laboratory among them,
+  registers no domain and delegates one registered at the company's registrar, as the next
+  two shapes describe.
 - **Delegated at the apex.** A domain as it is registered (its apex, such as
   `example.com`) with nothing else on it, registered anywhere: its name servers at the
   registrar are set to the zone's, once.
