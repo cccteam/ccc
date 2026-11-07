@@ -17,20 +17,20 @@ require (
 	github.com/cccteam/ccc/impulse v0.6.4
 	github.com/cccteam/ccc/resource v0.15.4
 	github.com/cccteam/ccc/tracer v0.3.2
-	github.com/cccteam/db-initiator v0.4.3
-	github.com/cccteam/httpio v0.7.22
+	github.com/cccteam/db-initiator v0.4.4
+	github.com/cccteam/httpio v0.7.23
 	github.com/cccteam/logger v0.1.31
 	github.com/cccteam/session v0.13.20
 	github.com/cccteam/spxscan v0.0.18
 	github.com/go-chi/chi/v5 v5.5.0
 	github.com/go-playground/errors/v5 v5.4.0
-	github.com/go-playground/validator/v10 v10.30.5
+	github.com/go-playground/validator/v10 v10.30.6
 	github.com/google/go-cmp v0.7.0
 	github.com/sethvargo/go-envconfig v1.4.3
 	github.com/shopspring/decimal v1.6.0
 	github.com/spf13/cobra v1.10.2
-	google.golang.org/api v0.308.0
-	google.golang.org/grpc v1.84.0
+	google.golang.org/api v0.310.0
+	google.golang.org/grpc v1.85.0
 )
 
 require (
@@ -40,9 +40,9 @@ require (
 	cloud.google.com/go/auth v0.24.1 // indirect
 	cloud.google.com/go/auth/oauth2adapt v0.3.0 // indirect
 	cloud.google.com/go/compute/metadata v0.10.0 // indirect
-	cloud.google.com/go/firestore v1.29.0 // indirect
+	cloud.google.com/go/firestore v1.29.2 // indirect
 	cloud.google.com/go/iam v1.14.0 // indirect
-	cloud.google.com/go/logging v1.21.0 // indirect
+	cloud.google.com/go/logging v1.21.1 // indirect
 	cloud.google.com/go/longrunning v1.3.0 // indirect
 	cloud.google.com/go/monitoring v1.31.0 // indirect
 	cloud.google.com/go/storage v1.70.0 // indirect
@@ -72,13 +72,13 @@ require (
 	github.com/docker/go-connections v0.8.1 // indirect
 	github.com/docker/go-units v0.5.0 // indirect
 	github.com/ebitengine/purego v0.11.1 // indirect
-	github.com/envoyproxy/go-control-plane/envoy v1.39.0 // indirect
+	github.com/envoyproxy/go-control-plane/envoy v1.39.1-0.20260819172001-e6e3fd93e4be // indirect
 	github.com/envoyproxy/protoc-gen-validate v1.3.3 // indirect
 	github.com/ettle/strcase v0.2.0 // indirect
 	github.com/fatih/structtag v1.2.0 // indirect
 	github.com/felixge/httpsnoop v1.1.0 // indirect
 	github.com/fxamacker/cbor/v2 v2.9.6 // indirect
-	github.com/gabriel-vasile/mimetype v1.4.15 // indirect
+	github.com/gabriel-vasile/mimetype v1.4.16 // indirect
 	github.com/georgysavva/scany/v2 v2.1.4 // indirect
 	github.com/go-jose/go-jose/v4 v4.1.6 // indirect
 	github.com/go-logr/logr v1.4.4 // indirect
@@ -92,7 +92,7 @@ require (
 	github.com/golang/protobuf v1.5.4 // indirect
 	github.com/google/s2a-go v0.1.11 // indirect
 	github.com/google/uuid v1.6.0 // indirect
-	github.com/googleapis/enterprise-certificate-proxy v0.3.23 // indirect
+	github.com/googleapis/enterprise-certificate-proxy v0.3.24 // indirect
 	github.com/googleapis/gax-go/v2 v2.27.0 // indirect
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.31.0 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
@@ -102,7 +102,7 @@ require (
 	github.com/jackc/pgx-shopspring-decimal v0.0.0-20220624020537-1d36b5a1853e // indirect
 	github.com/jackc/pgx/v5 v5.11.0 // indirect
 	github.com/jackc/puddle/v2 v2.2.3 // indirect
-	github.com/klauspost/compress v1.20.1 // indirect
+	github.com/klauspost/compress v1.20.2 // indirect
 	github.com/leodido/go-urn v1.5.0 // indirect
 	github.com/lufia/plan9stats v0.0.0-20260802145828-341c2f0c90b5 // indirect
 	github.com/magiconair/properties v1.18.12 // indirect

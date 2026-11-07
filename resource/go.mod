@@ -5,8 +5,8 @@ go 1.27.3
 require (
 	aidanwoods.dev/go-paseto v1.6.0
 	cloud.google.com/go v0.123.0
-	cloud.google.com/go/firestore v1.29.0
-	cloud.google.com/go/logging v1.21.0
+	cloud.google.com/go/firestore v1.29.2
+	cloud.google.com/go/logging v1.21.1
 	cloud.google.com/go/spanner v1.96.1
 	cloud.google.com/go/storage v1.70.0
 	firebase.google.com/go/v4 v4.22.0
@@ -18,10 +18,10 @@ require (
 	github.com/cccteam/ccc/pkg v0.1.9
 	github.com/cccteam/ccc/securehash v0.0.20
 	github.com/cccteam/ccc/tracer v0.3.2
-	github.com/cccteam/db-initiator v0.4.3
-	github.com/cccteam/httpio v0.7.22
+	github.com/cccteam/db-initiator v0.4.4
+	github.com/cccteam/httpio v0.7.23
 	github.com/cccteam/logger v0.1.31
-	github.com/cccteam/session v0.13.14
+	github.com/cccteam/session v0.13.19
 	github.com/cccteam/spxscan v0.0.18
 	github.com/cloudspannerecosystem/memefish v0.9.0
 	github.com/ettle/strcase v0.2.0
@@ -42,8 +42,8 @@ require (
 	golang.org/x/sync v0.24.0
 	golang.org/x/text v0.43.0
 	golang.org/x/tools v0.52.0
-	google.golang.org/api v0.308.0
-	google.golang.org/grpc v1.84.0
+	google.golang.org/api v0.310.0
+	google.golang.org/grpc v1.85.0
 	google.golang.org/protobuf v1.36.12
 )
 
@@ -76,7 +76,7 @@ require (
 	github.com/docker/go-connections v0.8.1 // indirect
 	github.com/docker/go-units v0.5.0 // indirect
 	github.com/ebitengine/purego v0.11.1 // indirect
-	github.com/envoyproxy/go-control-plane/envoy v1.39.0 // indirect
+	github.com/envoyproxy/go-control-plane/envoy v1.39.1-0.20260819172001-e6e3fd93e4be // indirect
 	github.com/envoyproxy/protoc-gen-validate v1.3.3 // indirect
 	github.com/fatih/structtag v1.2.0 // indirect
 	github.com/felixge/httpsnoop v1.1.0 // indirect
@@ -91,14 +91,14 @@ require (
 	github.com/golang-jwt/jwt/v4 v4.5.2 // indirect
 	github.com/golang/protobuf v1.5.4 // indirect
 	github.com/google/s2a-go v0.1.11 // indirect
-	github.com/googleapis/enterprise-certificate-proxy v0.3.23 // indirect
+	github.com/googleapis/enterprise-certificate-proxy v0.3.24 // indirect
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.31.0 // indirect
 	github.com/jackc/pgerrcode v0.0.0-20250907135507-afb5586c32a6 // indirect
 	github.com/jackc/pgpassfile v1.0.0 // indirect
 	github.com/jackc/pgservicefile v0.0.0-20240606120523-5a60cdf6a761 // indirect
 	github.com/jackc/pgx-shopspring-decimal v0.0.0-20220624020537-1d36b5a1853e // indirect
 	github.com/jackc/puddle/v2 v2.2.3 // indirect
-	github.com/klauspost/compress v1.20.1 // indirect
+	github.com/klauspost/compress v1.20.2 // indirect
 	github.com/lufia/plan9stats v0.0.0-20260802145828-341c2f0c90b5 // indirect
 	github.com/magiconair/properties v1.18.12 // indirect
 	github.com/moby/docker-image-spec v1.3.1 // indirect
