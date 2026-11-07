@@ -6,6 +6,7 @@ package createtest
 import (
 	"context"
 	"fmt"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -14,6 +15,7 @@ import (
 	"github.com/go-playground/errors/v5"
 
 	"github.com/cccteam/ccc/bedrock/internal/create"
+	"github.com/cccteam/ccc/bedrock/internal/org"
 )
 
 // FakeGoogle is the stand-in. Folders are by "parent|name"; Projects, Accounts and
@@ -29,13 +31,15 @@ type FakeGoogle struct {
 	Accounts       map[string]bool
 	Buckets        map[string]bool
 	// Zones are the public zones by project|name, each with its name servers.
-	Zones      map[string][]string
-	Enabled    map[string][]string
-	Billing    map[string]string
-	Grants     []string
-	Revoked    []string
-	Calls      []string
-	Identities []string
+	Zones   map[string][]string
+	Enabled map[string][]string
+	Billing map[string]string
+	// SpendBudgets are the budgets by billing account.
+	SpendBudgets map[string][]org.Budget
+	Grants       []string
+	Revoked      []string
+	Calls        []string
+	Identities   []string
 	// Refuse names a call (its method name) to answer with the error, for a creation
 	// that stops halfway.
 	Refuse map[string]error
@@ -46,8 +50,33 @@ type FakeGoogle struct {
 func New() *FakeGoogle {
 	return &FakeGoogle{
 		Folders: map[string]string{}, Projects: map[string]bool{}, Numbers: map[string]string{}, Accounts: map[string]bool{},
-		Buckets: map[string]bool{}, Zones: map[string][]string{}, Enabled: map[string][]string{}, Billing: map[string]string{}, Refuse: map[string]error{},
+		Buckets: map[string]bool{}, Zones: map[string][]string{}, Enabled: map[string][]string{}, Billing: map[string]string{}, SpendBudgets: map[string][]org.Budget{}, Refuse: map[string]error{},
 	}
+}
+
+// Budgets answers the billing account's budgets from memory.
+func (g *FakeGoogle) Budgets(_ context.Context, billingAccount string) ([]org.Budget, error) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	if err := g.call("Budgets", billingAccount); err != nil {
+		return nil, err
+	}
+
+	return slices.Clone(g.SpendBudgets[billingAccount]), nil
+}
+
+// CreateBudget remembers the budget on the billing account, named after its place.
+func (g *FakeGoogle) CreateBudget(_ context.Context, billingAccount string, b *org.Budget) error {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	if err := g.call("CreateBudget", billingAccount, b.DisplayName); err != nil {
+		return err
+	}
+	b.Name = fmt.Sprintf("billingAccounts/%s/budgets/%d", billingAccount, len(g.SpendBudgets[billingAccount])+1)
+	b.CurrencyCode = "USD"
+	g.SpendBudgets[billingAccount] = append(g.SpendBudgets[billingAccount], *b)
+
+	return nil
 }
 
 // ZoneNameServers are the name servers the stand-in assigns every zone it makes.
@@ -363,6 +392,11 @@ func (g *FakeGoogle) Made() []string {
 	}
 	for name := range g.Buckets {
 		made = append(made, "bucket "+name)
+	}
+	for account, budgets := range g.SpendBudgets {
+		for _, b := range budgets {
+			made = append(made, fmt.Sprintf("budget %s|%s=%d %s", account, b.DisplayName, b.Units, strings.Join(b.Ancestors, ",")))
+		}
 	}
 	sort.Strings(made)
 

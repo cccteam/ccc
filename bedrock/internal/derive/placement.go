@@ -42,7 +42,7 @@ type Placement struct {
 	// <label> in production, <label>-next for the next revision and <label>-pr<N> for a
 	// pull-request stack, whose Cloud Run service carries the same name; and, per
 	// environment, the hostnames the site answers on besides, on a vanity domain the
-	// organization delegates whole to its network project (SiteHostnames.Vanity). Written
+	// organization declares (SiteHostnames.Vanity). Written
 	// as the label alone ("console": "pp-console") or as an object with the label and the
 	// vanity hostnames. A site left out keeps the default label, the code (in the sites
 	// layout the code, a hyphen and the site's name), so the code is in a URL by default
@@ -231,8 +231,9 @@ type Project struct {
 
 // SiteHostnames is what one site answers on: its hostname label under the apps domain,
 // empty for the default, and the vanity hostnames it serves per environment, on a
-// vanity domain the organization declares (vanityDomains in its placement) and 2-net
-// serves with a zone and a certificate of its own: the domain itself for one site of
+// vanity domain the organization declares (vanityDomains in its placement, delegated to
+// its network project or kept at the customer's DNS provider) and 2-net holds the
+// certificate of: the domain itself for one site of
 // the application, a label of it (console.<domain>) for the others. In an environment
 // that names them, the first declared is the site's canonical hostname there (the
 // sign-in callbacks, the build argument hostname, the scheduler's calls and the

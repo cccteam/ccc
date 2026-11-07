@@ -46,6 +46,7 @@ func record(t *testing.T, root *org.Placement) *org.Placement {
 		ContactDomains: []string{"@imp.example"},
 		Projects:       map[string]string{"boot": "rgb-boot-gbl-core-e5f6"},
 		Labels:         map[string]string{"bedrock-lab": "true"},
+		MonthlyBudget:  500,
 	}
 	if err := org.Fill(root, h); err != nil {
 		t.Fatalf("Fill() error = %v", err)
@@ -246,6 +247,7 @@ func TestRun(t *testing.T) {
 	wantMade := []string{
 		"account rgb-boot-gbl-tofu@rgb-boot-gbl-core-e5f6.iam.gserviceaccount.com",
 		"bucket rgb-boot-gbl-state-e5f6",
+		"budget 012345-6789AB-CDEF01|rgb organization=500 folders/" + orgFolder,
 		"folder folders/" + orgFolder + "|terraform=" + tfFolder,
 		"folder organizations/123456789012|rgb=" + orgFolder,
 		"project rgb-boot-gbl-core-e5f6 (100000000001, billing 012345-6789AB-CDEF01, 8 APIs)",
@@ -488,6 +490,7 @@ func TestRunResumes(t *testing.T) {
 	f.google.Projects["rgb-boot-gbl-core-e5f6"], f.google.Numbers["rgb-boot-gbl-core-e5f6"] = true, "100000000042"
 	f.google.Accounts["rgb-boot-gbl-tofu@rgb-boot-gbl-core-e5f6.iam.gserviceaccount.com"] = true
 	f.google.Buckets["rgb-boot-gbl-state-e5f6"] = true
+	f.google.SpendBudgets["012345-6789AB-CDEF01"] = []org.Budget{org.HostingBudget("rgb", 500, "900000000007")}
 	f.google.Zones["rgb-net-gbl-core-e5f6|rgb-net-gbl-dns-apps"] = createtest.ZoneNameServers
 	f.srv.AddRepo(owner, "rgb-infrastructure", &githubtest.Repo{
 		Refs: map[string]github.Object{"refs/heads/master": {Type: "commit", SHA: "init1"}}, Ancestry: map[string][]string{"init1": {"init1"}},
@@ -508,6 +511,7 @@ func TestRunResumes(t *testing.T) {
 	}
 	wantOut := []string{
 		"Folder rgb exists under organizations/123456789012: 900000000007.\n",
+		"The spend budget \"rgb organization\" stands on 012345-6789AB-CDEF01 already; the root organization's apply keeps it.\n",
 		"Project rgb-boot-gbl-core-e5f6 exists.\n",
 		"Boot identity rgb-boot-gbl-tofu@rgb-boot-gbl-core-e5f6.iam.gserviceaccount.com exists.\n",
 		"State bucket rgb-boot-gbl-state-e5f6 exists.\n",
@@ -712,6 +716,54 @@ func TestRunFirstApplyAgainAfterRace(t *testing.T) {
 	}
 	if applies != 2 {
 		t.Errorf("1-org applied %d time(s), want 2", applies)
+	}
+}
+
+// TestRunSeededBeforeFirstApply: the request's Seeded hook runs once the seed stands,
+// with the organization's folder, and before any first apply, so the root organization's
+// apply can set the folder's organization policy that 1-org's first apply runs under.
+func TestRunSeededBeforeFirstApply(t *testing.T) {
+	t.Parallel()
+
+	f := newFlow(t)
+	dir, root := checkout(t)
+	req := request(root, dir)
+	var seededWith string
+	var appliesBefore int
+	req.Seeded = func(_ context.Context, organizationFolder string) error {
+		seededWith = organizationFolder
+		for _, c := range f.runner.ran {
+			if c.Args[0] == "apply" {
+				appliesBefore++
+			}
+		}
+
+		return nil
+	}
+	var out bytes.Buffer
+	if _, err := create.Run(t.Context(), f.clients(), req, &out); err != nil {
+		t.Fatalf("Run() error = %v; output:\n%s", err, out.String())
+	}
+	if want := f.google.Folders["organizations/123456789012|rgb"]; seededWith == "" || seededWith != want {
+		t.Errorf("Seeded ran with folder %q, want the organization's folder %q", seededWith, want)
+	}
+	if appliesBefore != 0 {
+		t.Errorf("%d apply(ies) ran before Seeded, want none", appliesBefore)
+	}
+
+	// A hook that fails stops the creation before its first applies.
+	g := newFlow(t)
+	dir, root = checkout(t)
+	req = request(root, dir)
+	req.Seeded = func(context.Context, string) error { return errors.New("the policy is refused") }
+	out.Reset()
+	if _, err := create.Run(t.Context(), g.clients(), req, &out); err == nil || !strings.Contains(err.Error(), "after the seed of rgb, before its first applies") || !strings.Contains(err.Error(), "the policy is refused") {
+		t.Errorf("Run() error = %v, want the hook's refusal", err)
+	}
+	for _, c := range g.runner.ran {
+		if c.Args[0] == "apply" {
+			t.Errorf("an apply ran after the hook refused: %v", c.Args)
+		}
 	}
 }
 

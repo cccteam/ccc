@@ -43,7 +43,7 @@ func TestOrgCreate(t *testing.T) {
 	}
 
 	// The person fills in what is the organization's own.
-	h.AppsDomain, h.Spanner.Config = "apps.rgb.example", "nam10"
+	h.AppsDomain, h.Spanner.Config, h.MonthlyBudget = "apps.rgb.example", "nam10", 500
 	h.Regions[1] = org.Region{Name: "us-west3", Code: "uw3"}
 	h.TeamGroups = map[string]string{"tst": "team-tst@imp.example", "stg": "team-stg@imp.example", "prd": "team-prd@imp.example"}
 	if err := h.Write(record); err != nil {
@@ -67,7 +67,8 @@ func TestOrgCreate(t *testing.T) {
 		"The merge of this pull request creates rgb, as the creating identity (imr-create-gbl-tofu@imr-root-gbl-core-c3d4.iam.gserviceaccount.com):",
 		"Nothing is granted by hand before the merge: the creating identity holds Folder Creator at the",
 		"Billing Account Administrator on 012345-6789AB-CDEF01 since the bootstrap",
-		"a billing administrator sets its spend budget",
+		"  - its spend budget on the billing account, 500 a month in the account's currency on its\n    folder (monthlyBudget)",
+		"makes its\nspend budget (500 a month in the account's currency, monthlyBudget) on its folder",
 	}
 	for _, want := range wantOut {
 		if !strings.Contains(out, want) {

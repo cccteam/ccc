@@ -48,7 +48,7 @@ func (granted) Close() error {
 func draft() *org.Placement {
 	return &org.Placement{
 		Kind: org.RootKind, Prefix: "imr", OrganizationDomain: "imp.example", OrganizationID: "123456789012", DirectoryCustomerID: "C0a1b2c3d",
-		BillingAccount: "012345-6789AB-CDEF01", BreakGlassAccount: "bedrock@imp.example", GithubOrganization: "imp-example", GithubDefaultBranch: "master",
+		BillingAccount: "012345-6789AB-CDEF01", MonthlyBudget: 1500, BreakGlassAccount: "bedrock@imp.example", GithubOrganization: "imp-example", GithubDefaultBranch: "master",
 		SourceRepo: "imr-root-infrastructure", Regions: []org.Region{{Name: "us-central1", Code: "uc1"}},
 		Domains: map[string]org.Domain{"clientbay.example": {}}, KeyOperators: []string{"group:key-operators@imp.example"},
 		BedrockVersion: "v0.5.0", BedrockSHA256: strings.Repeat("ab", 32), Labels: map[string]string{"bedrock-lab": "true"},
@@ -92,6 +92,8 @@ func bootstrapWorld(t *testing.T) (*roottest.Fake, *githubtest.Server, *root.Cli
 	t.Helper()
 
 	fake := roottest.New()
+	// The billing export, as a person points it at the dataset after the bootstrap.
+	fake.Landed = root.ExportTables("012345-6789AB-CDEF01")
 	srv := githubtest.New(t)
 	srv.Login = "imp-bot"
 	srv.Memberships["imp-example"] = "admin"

@@ -35,6 +35,9 @@ func Standing(t *testing.T, p *org.Placement, srv *githubtest.Server) *Fake {
 	f.Projects[project], f.Numbers[project] = true, p.ProjectNumbers[org.RootProjectKey]
 	f.Buckets[p.StateBucket] = true
 	f.Enabled[project] = slices.Clone(root.Services)
+	// The billing export, as it stands once a person pointed it at the dataset the apply
+	// makes: the engine's export check is clean from the first apply on.
+	f.Landed = root.ExportTables(p.BillingAccount)
 	srv.AddRepo(p.GithubOrganization, p.SourceRepo, &githubtest.Repo{})
 	srv.PublicApps["google-cloud-build"] = github.App{ID: 10529, Slug: "google-cloud-build", Name: "Google Cloud Build"}
 	for _, m := range p.AppManifests() {

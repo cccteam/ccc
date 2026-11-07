@@ -5,6 +5,7 @@
   "organizationId": "123456789012",
   "directoryCustomerId": "C0a1b2c3d",
   "billingAccount": "012345-6789AB-CDEF01",
+  "monthlyBudget": 1500,
   "githubOrganization": "imp-example",
   "githubBotAccount": "imp-bot",
   "githubDefaultBranch": "master",

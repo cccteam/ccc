@@ -4,7 +4,12 @@
 // DNS; what the world sees comes from the resolver. Which shape the domain has
 // (registered by the network layer, delegated at its apex from a registrar elsewhere,
 // or delegated as a label of a domain served elsewhere) is not configured: it is what
-// the answers show. A registered domain's name servers are read from the answers too,
+// the answers show. A vanity domain kept at the customer's DNS provider is the one
+// shape the placement declares (dns customer), since there is no zone here to read: the
+// check resolves each record the provider is to carry, the A records of the hostnames
+// declared on the domain at the load balancer's address and the certificate's
+// authorization CNAME, read from Certificate Manager, and prints the ones missing or
+// differing. A registered domain's name servers are read from the answers too,
 // never trusted from the registration: after its zone is made again, a registration
 // still names the old set until it is pointed at the zone in Cloud Domains. In a root
 // organization the same check reads each domain's zone in the root project, which holds the
@@ -26,6 +31,7 @@ import (
 
 	"github.com/go-playground/errors/v5"
 	"golang.org/x/net/publicsuffix"
+	certificatemanager "google.golang.org/api/certificatemanager/v1"
 	dns "google.golang.org/api/dns/v1"
 	"google.golang.org/api/googleapi"
 )
@@ -106,12 +112,30 @@ type ZoneReader interface {
 	ManagedZone(ctx context.Context, project, zone string) (*Zone, error)
 	// RecordSets are every record set of the zone.
 	RecordSets(ctx context.Context, project, zone string) ([]Record, error)
+	// ZoneByDNSName is the project's zone for the DNS name (example.app., with the
+	// trailing dot), by its name, or "" and nil when the project holds none.
+	ZoneByDNSName(ctx context.Context, project, dnsName string) (string, *Zone, error)
 	// Close releases the connection.
 	Close() error
 }
 
 // ZoneReaderFunc opens a ZoneReader.
 type ZoneReaderFunc func(ctx context.Context) (ZoneReader, error)
+
+// AuthorizationReader reads a DNS authorization of Certificate Manager: the record that
+// proves a domain, which no zone here holds for a vanity domain kept at the customer's
+// DNS provider. NewCertificateManager is the real one; tests pass a fake.
+type AuthorizationReader interface {
+	// DNSAuthorization is the record of the project's authorization by name
+	// (<prefix>-net-gbl-dnsauth-<domain>), or nil when the project holds no such
+	// authorization.
+	DNSAuthorization(ctx context.Context, project, name string) (*Record, error)
+	// Close releases the connection.
+	Close() error
+}
+
+// AuthorizationReaderFunc opens an AuthorizationReader.
+type AuthorizationReaderFunc func(ctx context.Context) (AuthorizationReader, error)
 
 // Resolver answers the public questions the check asks. *net.Resolver is the real one;
 // tests pass a fake.
@@ -123,16 +147,58 @@ type Resolver interface {
 }
 
 // Lookups are what the check reads through: Cloud DNS for what the zone holds, opened by
-// OpenZones, and Resolver for what the world sees.
+// OpenZones, Certificate Manager for a kept vanity domain's authorization record, opened
+// by OpenAuthorizations, and Resolver for what the world sees.
 type Lookups struct {
-	OpenZones ZoneReaderFunc
-	Resolver  Resolver
+	OpenZones          ZoneReaderFunc
+	OpenAuthorizations AuthorizationReaderFunc
+	Resolver           Resolver
 }
 
-// DefaultLookups are the real ones: the Cloud DNS API with the run's Google credentials,
-// and the system's resolver.
+// DefaultLookups are the real ones: the Cloud DNS and Certificate Manager APIs with the
+// run's Google credentials, and the system's resolver.
 func DefaultLookups() *Lookups {
-	return &Lookups{OpenZones: NewCloudDNS, Resolver: net.DefaultResolver}
+	return &Lookups{OpenZones: NewCloudDNS, OpenAuthorizations: NewCertificateManager, Resolver: net.DefaultResolver}
+}
+
+// certificateManager is the AuthorizationReader over the Certificate Manager API.
+type certificateManager struct {
+	service *certificatemanager.Service
+}
+
+// NewCertificateManager opens the Certificate Manager API with Application Default
+// Credentials.
+func NewCertificateManager(ctx context.Context) (AuthorizationReader, error) {
+	service, err := certificatemanager.NewService(ctx)
+	if err != nil {
+		return nil, errors.Wrap(err, "certificatemanager.NewService()")
+	}
+
+	return &certificateManager{service: service}, nil
+}
+
+// DNSAuthorization reads the authorization (dnsAuthorizations.get, in the global
+// location, where 2-net makes them); one the project lacks is nil.
+func (c *certificateManager) DNSAuthorization(ctx context.Context, project, name string) (*Record, error) {
+	a, err := c.service.Projects.Locations.DnsAuthorizations.Get("projects/" + project + "/locations/global/dnsAuthorizations/" + name).Context(ctx).Do()
+	if err != nil {
+		var apiErr *googleapi.Error
+		if errors.As(err, &apiErr) && apiErr.Code == http.StatusNotFound {
+			return nil, nil
+		}
+
+		return nil, errors.Wrapf(err, "certificatemanager.ProjectsLocationsDnsAuthorizationsService.Get(): %s in %s", name, project)
+	}
+	if a.DnsResourceRecord == nil {
+		return nil, nil
+	}
+
+	return &Record{Name: a.DnsResourceRecord.Name, Type: a.DnsResourceRecord.Type, Data: []string{a.DnsResourceRecord.Data}}, nil
+}
+
+// Close has nothing to release: the REST client holds no connection of its own.
+func (*certificateManager) Close() error {
+	return nil
 }
 
 // cloudDNS is the ZoneReader over the Cloud DNS API.
@@ -164,6 +230,21 @@ func (c *cloudDNS) ManagedZone(ctx context.Context, project, zone string) (*Zone
 	}
 
 	return &Zone{DNSName: z.DnsName, NameServers: z.NameServers}, nil
+}
+
+// ZoneByDNSName lists the project's zones for the DNS name (managedZones.list filtered by
+// dnsName) and answers the first; a project without one answers none.
+func (c *cloudDNS) ZoneByDNSName(ctx context.Context, project, dnsName string) (string, *Zone, error) {
+	list, err := c.service.ManagedZones.List(project).DnsName(dnsName).Context(ctx).Do()
+	if err != nil {
+		return "", nil, errors.Wrapf(err, "dns.ManagedZonesService.List(): %s in %s", dnsName, project)
+	}
+	if len(list.ManagedZones) == 0 {
+		return "", nil, nil
+	}
+	z := list.ManagedZones[0]
+
+	return z.Name, &Zone{DNSName: z.DnsName, NameServers: z.NameServers}, nil
 }
 
 // RecordSets lists the zone's record sets (resourceRecordSets.list), every page.
@@ -207,6 +288,16 @@ type CheckRequest struct {
 	// a domain that carries other DNS differs (a label of it declared as the vanity
 	// domain, not a new apps domain).
 	Vanity bool
+	// CustomerDNS marks a vanity domain kept at the customer's DNS provider (dns
+	// customer in vanityDomains): no zone here serves it, and the provider carries the
+	// records the check resolves instead of a delegation: an A record at the load
+	// balancer's address for each of Hostnames (the hostnames the organization records on
+	// the domain, the domain itself or a label of it), and the authorization CNAME of
+	// the domain's DNS authorization in Certificate Manager, named Authorization. Zone
+	// is then the apps zone, whose apex record carries the load balancer's address.
+	CustomerDNS   bool
+	Hostnames     []string
+	Authorization string
 	// Delegating marks a domain of a root organization (domains in its placement),
 	// whose zone in the root project holds the domain's delegation alone: no address record, no
 	// certificate authorization, one NS record set per label handed onward (Labels). The
@@ -302,6 +393,24 @@ type Report struct {
 	// domain is delegated.
 	Delegating bool
 	Labels     []LabelReport
+	// CustomerDNS marks a vanity domain kept at the customer's DNS provider; Address is
+	// the load balancer's address its hostnames point at, and Hosts what the world
+	// answers for each hostname declared on it.
+	CustomerDNS bool
+	Address     string
+	Hosts       []HostReport
+}
+
+// HostReport is one hostname of a kept vanity domain: the name and the IPv4 addresses
+// the world answers for it.
+type HostReport struct {
+	Name     string
+	Answered []string
+}
+
+// Points reports whether the hostname answers the address and no other.
+func (h HostReport) Points(address string) bool {
+	return len(h.Answered) == 1 && h.Answered[0] == address
 }
 
 // appsZone is what the zone holds that the check compares against.
@@ -322,6 +431,9 @@ type appsZone struct {
 func Check(ctx context.Context, l *Lookups, req CheckRequest) (*Report, error) {
 	if err := Validate(req.Domain); err != nil {
 		return nil, err
+	}
+	if req.CustomerDNS {
+		return checkKept(ctx, l, req)
 	}
 	registered, err := registeredHere(req.Dir, req.Domain)
 	if err != nil {
@@ -367,6 +479,95 @@ func Check(ctx context.Context, l *Lookups, req CheckRequest) (*Report, error) {
 	}
 
 	return r, nil
+}
+
+// checkKept checks a vanity domain kept at the customer's DNS provider: the load
+// balancer's address from the apps zone's apex record, the authorization record from
+// Certificate Manager, then what the world answers for each hostname declared on the
+// domain and for the authorization's name. Every other record of the domain is the
+// customer's and is not read. It is refused when the apps zone or the authorization is
+// not there (2-net not applied with the domain declared).
+func checkKept(ctx context.Context, l *Lookups, req CheckRequest) (*Report, error) {
+	address, err := loadBalancerAddress(ctx, l.OpenZones, req)
+	if err != nil {
+		return nil, err
+	}
+	if l.OpenAuthorizations == nil {
+		return nil, errors.New("no Certificate Manager client is wired: the check of a vanity domain kept at the customer's DNS provider reads the domain's authorization record there")
+	}
+	authorizations, err := l.OpenAuthorizations(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer authorizations.Close()
+	authorization, err := authorizations.DNSAuthorization(ctx, req.Project, req.Authorization)
+	if err != nil {
+		return nil, err
+	}
+	if authorization == nil {
+		return nil, errors.Newf("no DNS authorization %s in %s: the apply of %s makes it for the vanity domain %s (vanityDomains in placement.json, bedrock org render); apply %s, then check again", req.Authorization, req.Project, DefaultLayer, req.Domain, DefaultLayer)
+	}
+	r := &Report{Domain: req.Domain, Project: req.Project, Vanity: true, CustomerDNS: true, Address: address, Authorization: *authorization}
+	for _, host := range req.Hostnames {
+		answered, err := l.Resolver.LookupHost(ctx, host)
+		if err := answered4(err, "the addresses of "+host); err != nil {
+			return nil, err
+		}
+		r.Hosts = append(r.Hosts, HostReport{Name: host, Answered: ipv4(answered)})
+	}
+	r.AuthorizationResolves, err = resolvesTo(ctx, l.Resolver, *authorization)
+	if err != nil {
+		return nil, err
+	}
+
+	return r, nil
+}
+
+// loadBalancerAddress is the address the apps zone's apex record points at: the one
+// address of the load balancer, which every hostname of a kept vanity domain points at
+// too.
+func loadBalancerAddress(ctx context.Context, open ZoneReaderFunc, req CheckRequest) (string, error) {
+	reader, err := open(ctx)
+	if err != nil {
+		return "", err
+	}
+	defer reader.Close()
+	zone, err := reader.ManagedZone(ctx, req.Project, req.Zone)
+	if err != nil {
+		return "", err
+	}
+	if zone == nil {
+		return "", errors.Newf("no zone %s in %s: the apply of %s creates it, with the load balancer's address the hostnames of %s point at; apply %s, then check again", req.Zone, req.Project, DefaultLayer, req.Domain, DefaultLayer)
+	}
+	records, err := reader.RecordSets(ctx, req.Project, req.Zone)
+	if err != nil {
+		return "", err
+	}
+	for _, rec := range records {
+		if rec.Type == typeA && sameName(rec.Name, zone.DNSName) && len(rec.Data) > 0 {
+			return rec.Data[0], nil
+		}
+	}
+
+	return "", errors.Newf("the zone %s in %s lacks the A record of %s, which carries the load balancer's address: the apply of %s creates it; apply %s, then check again", req.Zone, req.Project, zone.DNSName, DefaultLayer, DefaultLayer)
+}
+
+// answered4 is answered for a hostname's addresses.
+func answered4(err error, what string) error {
+	return answered(err, what)
+}
+
+// ipv4 keeps the IPv4 addresses of an answer: the load balancer has one IPv4 address,
+// and an AAAA record the customer carries beside is not this check's.
+func ipv4(addresses []string) []string {
+	var out []string
+	for _, a := range addresses {
+		if ip := net.ParseIP(a); ip != nil && ip.To4() != nil {
+			out = append(out, a)
+		}
+	}
+
+	return out
 }
 
 // checkLabels asks the world, for each label the zone hands onward, which name servers
@@ -605,6 +806,9 @@ func (r *Report) Passed() bool {
 	if r.Delegating {
 		return r.Delegation == Delegated && !slices.ContainsFunc(r.Labels, func(l LabelReport) bool { return !l.Handed() })
 	}
+	if r.CustomerDNS {
+		return !slices.ContainsFunc(r.Hosts, func(h HostReport) bool { return !h.Points(r.Address) }) && r.AuthorizationResolves
+	}
 
 	return r.Delegation == Delegated && r.AuthorizationResolves
 }
@@ -617,6 +821,11 @@ func (r *Report) Passed() bool {
 // take host names and the trailing dot is a zone file's convention; a record the zone
 // itself holds is shown as the zone-file line it is.
 func (r *Report) Write(w io.Writer) {
+	if r.CustomerDNS {
+		r.writeKept(w)
+
+		return
+	}
 	switch r.Delegation {
 	case Delegated:
 		fmt.Fprintf(w, "%s is delegated to the zone %s in %s: it answers the zone's name servers (%s).\n", r.Domain, r.Zone, r.Project, strings.Join(r.NameServers, ", "))
@@ -656,8 +865,9 @@ func (r *Report) Write(w io.Writer) {
 			return
 		}
 		if r.Vanity {
-			fmt.Fprintln(w, "Refused: a domain that carries other DNS (a website, mail) is never delegated whole, and a site's hostnames directly on it would each need their own records at its DNS provider.")
+			fmt.Fprintln(w, "Refused: a domain that carries other DNS (a website, mail) is never delegated whole. Two ways out, the customer's choice:")
 			fmt.Fprintf(w, "Declare a label of it as the vanity domain instead, such as app.%s: set it in place of %s in vanityDomains in placement.json and put the site's hostnames on it in the application's placement (hostnames.<site>.vanity), run bedrock org render, apply %s, and run bedrock domain check again for the NS records to add at the DNS provider that serves %s.\n", r.Domain, r.Domain, DefaultLayer, r.Domain)
+			fmt.Fprintf(w, "Or keep %s where it is: set its entry in vanityDomains to {\"dns\": \"customer\"}, run bedrock org render, apply %s, and run bedrock domain check again for the records to add at the DNS provider that serves it, an A record per hostname declared on it and the certificate's authorization CNAME; its mail and every other record stay as they are.\n", r.Domain, DefaultLayer)
 
 			return
 		}
@@ -672,6 +882,42 @@ func (r *Report) Write(w io.Writer) {
 		return
 	}
 	r.writeAuthorization(w)
+}
+
+// writeKept says, for a vanity domain kept at the customer's DNS provider, what each
+// hostname declared on it answers and whether the authorization record resolves, and
+// prints the records missing or differing as the provider's form takes them.
+func (r *Report) writeKept(w io.Writer) {
+	fmt.Fprintf(w, "%s is kept at its DNS provider (vanityDomains: dns customer), and no zone here serves it: its hostnames point at the load balancer (%s) by records added there.\n", r.Domain, r.Address)
+	var missing []Record
+	for _, h := range r.Hosts {
+		switch {
+		case h.Points(r.Address):
+			fmt.Fprintf(w, "%s answers the load balancer's address.\n", h.Name)
+		case len(h.Answered) == 0:
+			fmt.Fprintf(w, "%s answers no address.\n", h.Name)
+			missing = append(missing, Record{Name: h.Name + ".", Type: typeA, Data: []string{r.Address}})
+		default:
+			fmt.Fprintf(w, "%s answers %s, not the load balancer's address alone.\n", h.Name, strings.Join(h.Answered, ", "))
+			missing = append(missing, Record{Name: h.Name + ".", Type: typeA, Data: []string{r.Address}})
+		}
+	}
+	if len(r.Hosts) == 0 {
+		fmt.Fprintf(w, "No application declares a hostname on %s yet (hostnames.<site>.vanity in an application's placement, recorded by bedrock org register --next or bedrock org hostnames): a hostname declared later adds one A record here, which this check prints then.\n", r.Domain)
+	}
+	if r.AuthorizationResolves {
+		fmt.Fprintf(w, "The authorization record resolves: the certificate for %s and *.%s is not waiting on it.\n", r.Domain, r.Domain)
+	} else {
+		fmt.Fprintf(w, "The certificate for %s and *.%s is still waiting on the authorization record below: it does not resolve yet (a record just added can take up to 48 hours to be seen everywhere).\n", r.Domain, r.Domain)
+		missing = append(missing, r.Authorization)
+	}
+	if len(missing) == 0 {
+		return
+	}
+	fmt.Fprintf(w, "At the DNS provider that serves %s: add the %d record(s) below, as its form takes them (host, type, value: the host relative to %s, @ for the domain itself, the value without the trailing dot a zone file writes), in place of any record of the same host and type. Every other record of %s (its mail, its website elsewhere) stays as it is. A CAA record set at %s, if it has one, must admit pki.goog (0 issue \"pki.goog\"), or the certificate is never issued.\n", r.Domain, len(missing), r.Domain, r.Domain, r.Domain)
+	for _, rec := range missing {
+		fmt.Fprintln(w, rec.FormLine(r.Domain))
+	}
 }
 
 // writeLabels says, for each label the zone hands onward, whether its name answers the

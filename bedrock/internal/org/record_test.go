@@ -12,7 +12,7 @@ import (
 // the organization's own to decide, and nothing the root organization supplies.
 func hostingRecord() *Placement {
 	return &Placement{
-		Prefix: "rgb", AppsDomain: "apps.rgb.example", Spanner: Spanner{Config: "nam10"},
+		Prefix: "rgb", AppsDomain: "apps.rgb.example", Spanner: Spanner{Config: "nam10"}, MonthlyBudget: 500,
 		Regions:        []Region{{Name: "us-central1", Code: "uc1"}, {Name: "us-west3", Code: "uw3"}},
 		TeamGroups:     map[string]string{"tst": "team-tst@imp.example", "stg": "team-stg@imp.example", "prd": "team-prd@imp.example"},
 		ContactDomains: []string{"@imp.example"},

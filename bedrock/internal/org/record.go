@@ -137,8 +137,8 @@ func Fill(root, h *Placement) error {
 		return errors.Newf("projects.boot %q is not %s-boot-gbl-core-<suffix>, the boot project's name", h.Projects[bootProject], h.Prefix)
 	}
 	h.StateBucket = h.Prefix + "-boot-gbl-state-" + strings.TrimPrefix(h.Projects[bootProject], h.Prefix+"-boot-gbl-core-")
-	if slices.Contains([]string{"", replaceMe}, h.Spanner.Config) || h.AppsDomain == "" || len(h.Regions) != regionCount || len(h.TeamGroups) == 0 {
-		return errors.Newf("%s/%s/%s needs what is the organization's own to decide before it is recorded: appsDomain, spanner.config, two regions (the primary first) and teamGroups (one group per environment); contactDomains, entitlementDurations and labels as wanted", RecordsDir, h.Prefix, PlacementFile)
+	if slices.Contains([]string{"", replaceMe}, h.Spanner.Config) || h.AppsDomain == "" || len(h.Regions) != regionCount || len(h.TeamGroups) == 0 || h.MonthlyBudget <= 0 {
+		return errors.Newf("%s/%s/%s needs what is the organization's own to decide before it is recorded: appsDomain, spanner.config, two regions (the primary first), teamGroups (one group per environment) and monthlyBudget (its spend budget, whole units of the billing account's currency a month); contactDomains, entitlementDurations and labels as wanted", RecordsDir, h.Prefix, PlacementFile)
 	}
 
 	return h.Validate()

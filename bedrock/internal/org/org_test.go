@@ -112,7 +112,7 @@ func TestPlacementValidate(t *testing.T) {
 		}, wantErr: `hostnames.harbor names "qa", which is not one of tst, stg, prd`},
 		{name: "a recorded hostname off the apps domain and off the vanity domain", mutate: func(p *Placement) {
 			p.Hostnames = map[string]map[string]map[string]string{"harbor": {"tst": {"harbor-tst.example.com": "projects/p/global/backendServices/b"}}}
-		}, wantErr: `hostnames.harbor.tst "harbor-tst.example.com" is under neither the apps domain apps.imp.example nor a declared vanity domain (harborlights.example) as the domain itself or one label under it: declare the domain in vanityDomains, or serve the site under a label of a declared one`},
+		}, wantErr: `hostnames.harbor.tst "harbor-tst.example.com" is under neither the apps domain apps.imp.example nor a declared vanity domain (beacon.example, harborlights.example) as the domain itself or one label under it: declare the domain in vanityDomains, or serve the site under a label of a declared one`},
 		{name: "a recorded hostname off the apps domain, no vanity domain declared", mutate: func(p *Placement) {
 			p.VanityDomains = nil
 			p.Hostnames = map[string]map[string]map[string]string{"harbor": {"tst": {"harbor-tst.example.com": "projects/p/global/backendServices/b"}}}
@@ -125,7 +125,7 @@ func TestPlacementValidate(t *testing.T) {
 		}},
 		{name: "a recorded vanity hostname two labels under the domain", mutate: func(p *Placement) {
 			p.Hostnames = map[string]map[string]map[string]string{"harbor": {"prd": {"www.console.harborlights.example": "projects/p/global/backendServices/b"}}}
-		}, wantErr: `hostnames.harbor.prd "www.console.harborlights.example" is under neither the apps domain apps.imp.example nor a declared vanity domain (harborlights.example) as the domain itself or one label under it`},
+		}, wantErr: `hostnames.harbor.prd "www.console.harborlights.example" is under neither the apps domain apps.imp.example nor a declared vanity domain (beacon.example, harborlights.example) as the domain itself or one label under it`},
 		{name: "a recorded vanity hostname whose label breaks the rule", mutate: func(p *Placement) {
 			p.Hostnames = map[string]map[string]map[string]string{"harbor": {"prd": {"console-.harborlights.example": "projects/p/global/backendServices/b"}}}
 		}, wantErr: `hostnames.harbor.prd: hostname label "console-" under the vanity domain harborlights.example is not a DNS label`},
@@ -136,22 +136,28 @@ func TestPlacementValidate(t *testing.T) {
 			}
 		}, wantErr: "hostname harborlights.example in prd is harbor's and beacon's: each hostname of an environment belongs to one application"},
 		{name: "no vanity domain", mutate: func(p *Placement) { p.VanityDomains = nil }},
-		{name: "two vanity domains", mutate: func(p *Placement) { p.VanityDomains = []string{"harborlights.example", "beacon.example"} }},
-		{name: "a vanity domain that is a label of another domain", mutate: func(p *Placement) { p.VanityDomains = []string{"app.client.example"} }},
-		{name: "a vanity domain in capitals", mutate: func(p *Placement) { p.VanityDomains = []string{"HarborLights.example"} }, wantErr: `vanityDomains names "HarborLights.example", which is not a bare lowercase domain such as example.com`},
-		{name: "a vanity domain with a trailing dot", mutate: func(p *Placement) { p.VanityDomains = []string{"harborlights.example."} }, wantErr: `vanityDomains names "harborlights.example.", which is not a bare lowercase domain`},
-		{name: "the apps domain as a vanity domain", mutate: func(p *Placement) { p.VanityDomains = []string{"apps.imp.example"} }, wantErr: `vanityDomains names "apps.imp.example", which is the apps domain: a vanity domain is a client's own domain, delegated whole to the network project beside it`},
-		{name: "a vanity domain under the apps domain", mutate: func(p *Placement) { p.VanityDomains = []string{"lights.apps.imp.example"} }, wantErr: `vanityDomains names "lights.apps.imp.example", which is under the apps domain apps.imp.example: its zone already serves every name under it`},
-		{name: "a vanity domain above the apps domain", mutate: func(p *Placement) { p.VanityDomains = []string{"imp.example"} }, wantErr: `vanityDomains names "imp.example", which is above the apps domain apps.imp.example: one zone would serve both`},
-		{name: "a vanity domain under the organization's domain, a domain like any other", mutate: func(p *Placement) { p.VanityDomains = []string{"mail.imp.example"} }},
-		{name: "a vanity domain listed twice", mutate: func(p *Placement) { p.VanityDomains = []string{"harborlights.example", "harborlights.example"} }, wantErr: `vanityDomains lists "harborlights.example" twice`},
-		{name: "a vanity domain under another listed", mutate: func(p *Placement) { p.VanityDomains = []string{"harborlights.example", "www.harborlights.example"} }, wantErr: `vanityDomains lists "harborlights.example" and "www.harborlights.example", one under the other: the zone of a vanity domain serves everything under it, so the one above is enough`},
-		{name: "a vanity domain above another listed", mutate: func(p *Placement) { p.VanityDomains = []string{"www.harborlights.example", "harborlights.example"} }, wantErr: `vanityDomains lists "www.harborlights.example" and "harborlights.example", one under the other`},
+		{name: "two vanity domains", mutate: func(p *Placement) { p.VanityDomains = VanityDomains{"harborlights.example": {}, "beacon.example": {}} }},
+		{name: "a vanity domain that is a label of another domain", mutate: func(p *Placement) { p.VanityDomains = VanityDomains{"app.client.example": {}} }},
+		{name: "a vanity domain in capitals", mutate: func(p *Placement) { p.VanityDomains = VanityDomains{"HarborLights.example": {}} }, wantErr: `vanityDomains names "HarborLights.example", which is not a bare lowercase domain such as example.com`},
+		{name: "a vanity domain with a trailing dot", mutate: func(p *Placement) { p.VanityDomains = VanityDomains{"harborlights.example.": {}} }, wantErr: `vanityDomains names "harborlights.example.", which is not a bare lowercase domain`},
+		{name: "the apps domain as a vanity domain", mutate: func(p *Placement) { p.VanityDomains = VanityDomains{"apps.imp.example": {}} }, wantErr: `vanityDomains names "apps.imp.example", which is the apps domain: a vanity domain is a client's own domain, delegated whole to the network project beside it`},
+		{name: "a vanity domain under the apps domain", mutate: func(p *Placement) { p.VanityDomains = VanityDomains{"lights.apps.imp.example": {}} }, wantErr: `vanityDomains names "lights.apps.imp.example", which is under the apps domain apps.imp.example: its zone already serves every name under it`},
+		{name: "a vanity domain above the apps domain", mutate: func(p *Placement) { p.VanityDomains = VanityDomains{"imp.example": {}} }, wantErr: `vanityDomains names "imp.example", which is above the apps domain apps.imp.example: one zone would serve both`},
+		{name: "a vanity domain under the organization's domain, a domain like any other", mutate: func(p *Placement) { p.VanityDomains = VanityDomains{"mail.imp.example": {}} }},
+		{name: "a vanity domain under another declared", mutate: func(p *Placement) {
+			p.VanityDomains = VanityDomains{"harborlights.example": {}, "www.harborlights.example": {}}
+		}, wantErr: `vanityDomains lists "harborlights.example" and "www.harborlights.example", one under the other: a vanity domain's zone, or its certificate, serves everything one level under it, so the one above is enough`},
+		{name: "a vanity domain kept at the customer's DNS provider", mutate: func(p *Placement) { p.VanityDomains = VanityDomains{"harborlights.example": {DNS: DNSCustomer}} }},
+		{name: "a vanity domain kept, with hostnames on it", mutate: func(p *Placement) {
+			p.VanityDomains = VanityDomains{"harborlights.example": {DNS: DNSCustomer}}
+			p.Hostnames = map[string]map[string]map[string]string{"harbor": {"prd": {"harborlights.example": "projects/p/global/backendServices/b", "www.harborlights.example": "projects/p/global/backendServices/b"}}}
+		}},
+		{name: "a vanity domain whose dns is neither empty nor customer", mutate: func(p *Placement) { p.VanityDomains = VanityDomains{"harborlights.example": {DNS: "ours"}} }, wantErr: `vanityDomains.harborlights.example.dns is "ours": leave it out for a domain delegated to the network project, or set it to "customer" for one kept at the customer's DNS provider`},
 		{name: "a vanity domain of 38 characters, the most the names fit", mutate: func(p *Placement) {
-			p.VanityDomains = []string{strings.Repeat("a", 30) + ".example"}
+			p.VanityDomains = VanityDomains{strings.Repeat("a", 30) + ".example": {}}
 		}},
 		{name: "a vanity domain of 39 characters", mutate: func(p *Placement) {
-			p.VanityDomains = []string{strings.Repeat("a", 31) + ".example"}
+			p.VanityDomains = VanityDomains{strings.Repeat("a", 31) + ".example": {}}
 		}, wantErr: `vanityDomains names "` + strings.Repeat("a", 31) + `.example", whose certificate map entry imp-net-gbl-cme-` + strings.Repeat("a", 31) + `-example-wildcard would be 64 characters; Certificate Manager and Cloud DNS take at most 63 in a name, so a vanity domain is at most 38 characters`},
 		{name: "a recorded hostname two labels deep", mutate: func(p *Placement) {
 			p.Hostnames = map[string]map[string]map[string]string{"harbor": {"tst": {"tst.harbor.apps.imp.example": "projects/p/global/backendServices/b"}}}
@@ -464,26 +470,27 @@ func TestGithubAppSteps(t *testing.T) {
 			name: "the root README: the consent screen and the role groups",
 			path: "README.md",
 			want: []string{
-				"3. **The consent screen.** In each environment project's Google Cloud\n   console, before the first application's OAuth client is made there",
+				"2. **The consent screen.** In each environment project's Google Cloud\n   console, before the first application's OAuth client is made there",
 				"## Created by the root organization\n",
-				"2. **The spend budget**, after the creation. In the Billing console, a billing\n   administrator sets the spend budget (`0-bootstrap/README.md`, \"The spend\n   budget\"); the two layer identities' Billing Account User, which `1-org`\n   needs the day it links a project it creates, is the creation's.",
+				"no spend budget to set (the creation made it from the\nrecord's `monthlyBudget`; `0-bootstrap/README.md`, \"The spend budget\")",
 				"with the audience **Internal**",
 				"`<group prefix><role>@imp.example`",
 				"set \"Who can view members\" so that the group's members can",
 			},
 		},
 		{
-			name: "0-bootstrap: the infrastructure app made by the root organization's bootstrap, its key in the root project, the budget the one hand step",
+			name: "0-bootstrap: the infrastructure app made by the root organization's bootstrap, its key in the root project, the budget the creation's",
 			path: "0-bootstrap/README.md",
 			want: []string{
 				"The app is the root organization's: its bootstrap made\nit from bedrock's declaration (the root `README.md`, \"Bootstrapped by one\ncommand\")",
 				"organization records the same App ID (`githubInfrastructureAppId` in\n`placement.json`, filled in by the creation).",
 				"The key itself lives in the root organization `imr`'s root\nproject (`root` in `placement.json`), added, proven and pinned there by its key\noperators",
-				"### The spend budget, by a billing administrator\n",
+				"### The spend budget\n",
+				"The spend budget `imp organization` stands on the billing account\n`012345-6789AB-CDEF01`, on this organization's folder: the amount the record\nnames (`monthlyBudget`, whole units of the account's currency a month)",
 				"## Created by the root organization\n",
 				"3. **The first apply of `1-org`**, the same way, with the infrastructure\n   GitHub App's token for its GitHub provider",
 				"hold `roles/billing.user` on the billing account `012345-6789AB-CDEF01` since the\ncreation, which granted it as the root organization's creating identity, a\nBilling Account Administrator.",
-				"In the Billing console, as a billing administrator, set the spend budget:",
+				"Nothing on the billing account stays by hand: the spend budget is the\ncreation's (\"The spend budget\" below).",
 				"## The GitHub Apps' keys\n",
 				"`imr-root-gbl-core-c3d4`; `root` in\n`placement.json`), one secret per app for every bedrock organization in the\nGoogle Cloud organization: `imr-root-gbl-github-infrastructure-key`,\n`imr-root-gbl-github-deployer-key` and `imr-root-gbl-github-release-key`.",
 				"`bedrock secret\nadd` and `pin` refuse here and name that organization",
@@ -3838,7 +3845,7 @@ func TestHostRowsVanity(t *testing.T) {
 		t.Errorf("ApplicationHostnames(harbor, prd) = %q, want the served hostnames, the vanity ones too", got)
 	}
 	undeclared := map[string]map[string]string{"tst": record["tst"], "stg": record["stg"], "prd": {"harbor.apps.imp.example": stem("prd") + "-backend", "harbor.example": stem("prd") + "-backend"}}
-	if _, err := p.RecordHostnames("harbor", undeclared); err == nil || !strings.Contains(err.Error(), `hostnames.harbor.prd "harbor.example" is under neither the apps domain apps.imp.example nor a declared vanity domain (harborlights.example)`) {
+	if _, err := p.RecordHostnames("harbor", undeclared); err == nil || !strings.Contains(err.Error(), `hostnames.harbor.prd "harbor.example" is under neither the apps domain apps.imp.example nor a declared vanity domain (beacon.example, harborlights.example)`) {
 		t.Fatalf("RecordHostnames() under an undeclared domain = %v, want a refusal naming the declared domains", err)
 	}
 	if got := p.Hostnames["harbor"]["prd"]["harborlights.example"]; got == "" {

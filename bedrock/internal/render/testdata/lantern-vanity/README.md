@@ -675,9 +675,11 @@ Beside its apps-domain hostname, a site answers on a vanity domain where
 `placement.json` declares it (`hostnames.<site>.vanity`, per environment):
 `console.lanterns.example` in `prd` for `console`;
 `lanterns.example` and `www.lanterns.example` in `prd` for `portal`. A vanity domain is the organization's, declared in its
-placement (`vanityDomains`) and delegated whole to the network project, where
-`2-net` serves it with a zone and a certificate of its own, for the domain and
-one label below it, and `bedrock domain check` verifies the delegation. In an
+placement (`vanityDomains`): delegated to the network project, where `2-net`
+serves it with a zone of its own, or kept at the customer's DNS provider and
+pointed at the load balancer by the records `bedrock domain check` prints;
+`2-net` holds its certificate either way, for the domain and one label below
+it, and the declaration here is the same whichever the shape. In an
 environment that declares them, the vanity hostnames come first in
 `var.hostnames`, and the first declared is the canonical hostname there: the
 directory registrations' redirect URLs, the hostname build argument, the

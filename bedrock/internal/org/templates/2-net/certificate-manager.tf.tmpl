@@ -68,10 +68,13 @@ resource "google_certificate_manager_certificate_map_entry" "wildcard" {
 # ---------------------------------------------------------------------------
 # Vanity domains: a DNS authorization and a managed certificate per domain
 # (var.vanity_domains), for the domain and one label below it as for the apps
-# domain, proven by the record dns.tf copies into the domain's zone, and two
-# entries each in the one map, the apex and the wildcard, so a client
+# domain, proven by the authorization's record, which dns.tf copies into the
+# domain's zone when the domain is delegated here and the customer adds at
+# their provider when the domain is kept there (var.customer_dns_domains), and
+# two entries each in the one map, the apex and the wildcard, so a client
 # presenting a hostname on a vanity domain gets that domain's certificate. The
-# certificate stays in PROVISIONING until the domain is delegated to its zone
+# certificate stays in PROVISIONING until the record resolves: the domain
+# delegated to its zone, or the record added where its DNS is served
 # (README.md, "Vanity domains").
 # ---------------------------------------------------------------------------
 

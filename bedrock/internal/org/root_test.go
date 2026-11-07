@@ -93,7 +93,7 @@ func TestRootPlacementValidate(t *testing.T) {
 		}, wantErr: `hostingOrganizations entry "rgb": folder "folders/1" is not a folder's numeric id`},
 		{name: "an application", mutate: func(p *Placement) { p.Applications = []Application{{Code: "quill", Repository: "quill"}} }, wantErr: "applications is set, and a root organization has no use for it"},
 		{name: "team groups", mutate: func(p *Placement) { p.TeamGroups = map[string]string{"tst": "team-tst@imp.example"} }, wantErr: "teamGroups is set, and a root organization has no use for it"},
-		{name: "vanity domains", mutate: func(p *Placement) { p.VanityDomains = []string{"harborlights.example"} }, wantErr: "vanityDomains is set, and a root organization has no use for it"},
+		{name: "vanity domains", mutate: func(p *Placement) { p.VanityDomains = VanityDomains{"harborlights.example": {}} }, wantErr: "vanityDomains is set, and a root organization has no use for it"},
 		{name: "entitlement durations", mutate: func(p *Placement) { p.EntitlementDurations = map[string]string{"secretOperator": "30m"} }, wantErr: "entitlementDurations is set, and a root organization has no use for it"},
 		{name: "a teardown", mutate: func(p *Placement) { p.Teardown = true }, wantErr: "teardown is set, and a root organization has no use for it"},
 		{name: "recorded hostnames", mutate: func(p *Placement) {

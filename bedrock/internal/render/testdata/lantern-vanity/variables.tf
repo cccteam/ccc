@@ -88,9 +88,9 @@ variable "hostnames" {
     host. Every hostname here is registered with the
     load balancer by an entry in 2-net's hosts; output net_hosts is that entry.
     Where placement.json declares them for the site (hostnames.<site>.vanity, per
-    environment), the hostnames on a vanity domain the organization delegates whole
-    to its network project (vanityDomains in its placement; 2-net serves it with a
-    zone and a certificate of its own) come first, the first of them the canonical
+    environment), the hostnames on a vanity domain the organization declares
+    (vanityDomains in its placement: delegated to its network project, or kept at
+    its DNS provider; 2-net holds its certificate) come first, the first the canonical
     host there: console.lanterns.example in prd for console; lanterns.example and www.lanterns.example in prd for portal.
     The apps-domain hostname follows them, keeps answering and is registered the
     same way; the next revision's -next twin and a pull-request stack's hostname

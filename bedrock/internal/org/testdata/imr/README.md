@@ -146,7 +146,7 @@ at a terminal, with the break-glass account's credentials (`gcloud auth
 application-default login`):
 
 ```bash
-bedrock org bootstrap <dir> --prefix imr --github-organization imp-example [--domain <domain>]... [--key-operator <member>]...
+bedrock org bootstrap <dir> --prefix imr --github-organization imp-example --monthly-budget <units> [--domain <domain>]... [--key-operator <member>]...
 ```
 
 Before it, by hand, where it happens:
@@ -193,9 +193,11 @@ holds as the domains' owner, with a Token Creator on it and on the creating
 identity that the run grants itself and takes off at its end; last its own
 Owner off the root project, and the check. No key and no token touches the computer's disk.
 
-What it leaves: the break-glass account's Folder Admin on the folder, nothing
-else by hand, and this repository at its first commit, from which every change
-goes by pull request.
+What it leaves: the break-glass account's Folder Admin on the folder and its
+BigQuery Admin on the root project, this repository at its first commit, from
+which every change goes by pull request, and one step after it, once per
+billing account: the billing export, pointed at the dataset the bootstrap made,
+in the Billing console ("Spend budgets and the billing export", below).
 
 ## How the root organization is kept
 
@@ -211,7 +213,8 @@ the apply, run on it:
   placement, section by section (the APIs, the identities and their roles, the
   secrets' aliases and policies, the grants, the zones and their record sets,
   the applier's and the creating identity's ownership of the domains,
-  the connection and the triggers, the repository's settings and ruleset), and
+  the connection and the triggers, the repository's settings and ruleset, the
+  organization policies, the spend budgets and the billing export), and
   posts what the merge would change, and which hosting organizations it would
   create, in one comment on the pull request as the deployer app, updated on a
   later push. Nothing is changed.
@@ -254,6 +257,56 @@ out of the repository's ruleset (the trigger is gone with the project, and the
 journal line's pull request merges on the review alone until a bootstrap again
 requires the check), and every domain delegated here then points at servers
 that answer nothing, so a root organization is destroyed once no domain is.
+
+## Spend budgets and the billing export
+
+Two kinds of spend budget stand on the billing account `012345-6789AB-CDEF01`,
+made by bedrock and kept by the apply, so that none is set by hand and none is
+forgotten:
+
+- `imr billing account`, on every project of the account: the amount
+  `monthlyBudget` names in `placement.json` here, in whole units of the
+  account's currency a month. The bootstrap made it, so the account's whole
+  spend is watched from the first day.
+- `<prefix> organization`, one per hosting organization, on its folder: the
+  amount its record names (`organizations/<prefix>/placement.json`,
+  `monthlyBudget`). The creation made it, before the organization's first
+  apply.
+
+Each alerts at 50, 90 and 100 percent of its amount, on actual spend, by mail
+to the billing account's administrators and users, which is whom Cloud Billing
+mails when a budget names no channel; a budget sends alerts and stops nothing.
+The apply tells each budget by its name and brings its amount, its folder and
+its thresholds back, so a change made in the console is undone on the next
+merge: an amount changes by pull request, in `placement.json` here or in the
+organization's record. The apply trigger keeps the budgets as the creating
+identity, a Billing Account Administrator; the plan trigger's runner holds
+nothing on the billing account and notes that it did not compare them, as does
+`bedrock org check` unless a billing administrator runs it.
+
+The billing export is the account's detail: every charge, by project, service,
+SKU and label, in BigQuery, from which cost is reported by application,
+environment or organization (a Cloud Run revision carries the labels
+`organization`, `environment` and `application`; every project of a hosting
+organization the label `environment`; a Spanner instance is billed whole, and
+its databases carry no label). The bootstrap made the dataset
+`billing` in the root project `imr-root-gbl-core-c3d4`
+(US), and the apply keeps it. Google has no API for pointing
+an account's export at a dataset, so that is the one step a person takes after
+the bootstrap, once per billing account, in the Billing console as the
+break-glass account, which holds what the step takes (Billing Account
+Administrator on the account, and BigQuery Admin on the root project, which the
+apply keeps for it): Billing, the account `012345-6789AB-CDEF01`, Billing
+export; under Standard usage cost, Edit settings, the project `imr-root-gbl-core-c3d4`
+and the dataset `billing`, Save; the same under Detailed usage cost
+and under Pricing (whose BigQuery Data Transfer Service API the bootstrap
+enabled). The first rows land within hours, the pricing export's within two
+days, and nothing lands for the days before the step. Every run of the engine,
+`bedrock org check` included, looks for the three tables
+(`gcp_billing_export_v1_<account>`, `gcp_billing_export_resource_v1_<account>`
+and `cloud_pricing_export`) and reports one missing, or a usage table
+unwritten for three days, as a finding, so an export never pointed, or turned
+off, is seen.
 
 ## The GitHub Apps' keys
 
@@ -344,6 +397,16 @@ ids (`folders`) and each environment project's public-invoker tag
 (`publicInvokerTags`). The `terraform` folder gets no policy, so the boot
 project and the layer identities in it are never locked out by a constraint
 they depend on.
+
+One constraint is the exception, set on the organization's folder itself, by
+the creation right after the seed and before `1-org`'s first apply, so every
+folder beneath inherits it, the `terraform` folder included:
+`compute.skipDefaultNetworkCreation`. With it no project of the organization
+is ever made with a default network, so the project factory's deletion of it,
+the step Google's own race refused in the lab (an API enabled moments ago not
+yet seen by every service), has nothing to do. It can lock nothing out, which
+is why it alone reaches the `terraform` folder; the apply compares it on the
+organization's folder on every run after, as it compares the rest.
 
 On every one of the four folders, the tf-gcp-setup baseline trimmed to
 constraints that cost nothing operationally, each closing a door nothing here
@@ -616,7 +679,11 @@ grants the new organization's identities their use of the billing account.
    the boot project with its billing link and its APIs, the boot identity with
    its roles on the folder and on the boot project, the break-glass account's
    Folder Admin on the folder, the state bucket, and the boot identity's policy
-   administration of the four shared secrets here; then, against the new
+   administration of the four shared secrets here; then, as the applier, the
+   one organization policy on the new folder by which no project is made with
+   a default network ("The organization-policy baseline"); then the spend
+   budget its record names, on the new folder ("Spend budgets and the billing
+   export"); then, against the new
    bucket, the first applies of the new organization's two foundation layers,
    `0-bootstrap` and `1-org`, with the projects recorded in its placement, and
    Billing Account User on the billing account for its boot and org identities;
@@ -643,9 +710,10 @@ grants the new organization's identities their use of the billing account.
    the new boot identity's grants on the shared secrets, and that is the last
    reach into the new organization: nothing under its folder is this
    organization's to refresh, and `bedrock org check` there lists any grant on
-   the folder to a principal outside it. Left to a billing administrator, in
-   the new organization: its spend budget (its `0-bootstrap/README.md`, "The
-   spend budget"). Its apps domain, a label of a domain here, is handed onward
+   the folder to a principal outside it. Its spend budget, the amount its
+   record names (`monthlyBudget`), stands on its folder since the creation and
+   is kept by the apply here ("Spend budgets and the billing export"). Its
+   apps domain, a label of a domain here, is handed onward
    to its zone by the same merge, whose apply writes the NS record set, so the
    apps domain resolves within the hour; an application's name takes the two
    pull requests of "Handing a label onward".

@@ -32,6 +32,9 @@ import (
 	"google.golang.org/api/serviceusage/v1"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+
+	"github.com/cccteam/ccc/bedrock/internal/budgets"
+	"github.com/cccteam/ccc/bedrock/internal/org"
 )
 
 // Google is what the creation asks Google Cloud, as the creating identity.
@@ -89,6 +92,10 @@ type Google interface {
 	// GrantSecret adds the member to the role on the secret's policy
 	// (projects/P[/locations/L]/secrets/N); a member already in the role is left.
 	GrantSecret(ctx context.Context, secret, role, member string) error
+	// Budgets are the billing account's spend budgets, and CreateBudget makes one on it:
+	// the creating identity holds Billing Account Administrator.
+	Budgets(ctx context.Context, billingAccount string) ([]org.Budget, error)
+	CreateBudget(ctx context.Context, billingAccount string, b *org.Budget) error
 	// Close releases the connections.
 	Close() error
 }
@@ -109,6 +116,7 @@ type google struct {
 	storage  *storage.Client
 	secrets  *secretmanager.Client
 	dns      *dns.Service
+	budgets  budgets.Client
 	opts     []option.ClientOption
 	regional map[string]*secretmanager.Client
 }
@@ -152,8 +160,21 @@ func NewGoogle(ctx context.Context, opts ...option.ClientOption) (Google, error)
 	if g.dns, err = dns.NewService(ctx, opts...); err != nil {
 		return nil, errors.Wrap(err, "dns.NewService()")
 	}
+	if g.budgets, err = budgets.New(ctx, opts...); err != nil {
+		return nil, err
+	}
 
 	return g, nil
+}
+
+// Budgets lists the billing account's budgets.
+func (g *google) Budgets(ctx context.Context, billingAccount string) ([]org.Budget, error) {
+	return g.budgets.Budgets(ctx, billingAccount)
+}
+
+// CreateBudget makes the budget on the billing account.
+func (g *google) CreateBudget(ctx context.Context, billingAccount string, b *org.Budget) error {
+	return g.budgets.CreateBudget(ctx, billingAccount, b)
 }
 
 // PublicZone reads the zone, answering nothing when there is none.

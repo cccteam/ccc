@@ -7,7 +7,9 @@
 // policies on them: in the creation, right after 1-org's first apply, and on every apply
 // after, from the organization's record (organizations/<prefix>/placement.json), which
 // the creation filled with the folders' ids and each environment project's public-invoker
-// tag (folders, publicInvokerTags).
+// tag (folders, publicInvokerTags). One constraint is set earlier and higher, on the
+// organization's own folder right after the seed (OrganizationFolderBaseline), so that
+// 1-org's first apply already runs under it.
 
 package root
 
@@ -33,6 +35,32 @@ const (
 // the order the policies are set: the terraform folder is left out, so the boot project
 // and the layer identities in it are never locked out by a constraint they depend on.
 var policyFolders = []string{"shared", "tst", "stg", "prd"}
+
+// organizationFolderKey names the hosting organization's own folder in a policy's report
+// line; the folder has no key in the record, which lists the four beneath it.
+const organizationFolderKey = "organization"
+
+// OrganizationFolderBaseline is the one constraint set on the hosting organization's own
+// folder, which every folder beneath inherits, the terraform folder included: set by the
+// creation right after the seed and before 1-org's first apply, so no project of the
+// organization is ever made with a default network, and the project factory's deletion
+// of it, the step Google's race refused in the lab, has nothing to do. Only a constraint
+// that can lock nothing out goes here; the rest of the baseline stays off the terraform
+// folder (policyFolders).
+var OrganizationFolderBaseline = []BaselinePolicy{
+	{Constraint: "compute.skipDefaultNetworkCreation", Rule: enforced()},
+}
+
+// OrganizationFolderPolicies are the policies set on the hosting organization's own
+// folder, by its numeric id.
+func OrganizationFolderPolicies(folderID string) []FolderPolicy {
+	policies := make([]FolderPolicy, 0, len(OrganizationFolderBaseline))
+	for _, b := range OrganizationFolderBaseline {
+		policies = append(policies, FolderPolicy{FolderKey: organizationFolderKey, FolderID: folderID, Constraint: b.Constraint, Policy: Policy{Name: "folders/" + folderID + "/policies/" + b.Constraint, Rules: []PolicyRule{b.Rule}}})
+	}
+
+	return policies
+}
 
 // BaselinePolicy is one constraint of the baseline and the rule set on every folder.
 type BaselinePolicy struct {
@@ -190,8 +218,8 @@ func sameJSON(a, b string) bool {
 }
 
 // orgPolicies is the section: for each hosting organization created (recorded with its
-// folder, or created by this run), each policy of the baseline it lacks or holds
-// otherwise is set.
+// folder, or created by this run), the constraint on its own folder and each policy of
+// the baseline on the four beneath that it lacks or holds otherwise is set.
 func (e *engine) orgPolicies(ctx context.Context) error {
 	for _, record := range e.p.HostingOrganizations {
 		h, ok, err := e.hostingRecord(record)
@@ -201,28 +229,54 @@ func (e *engine) orgPolicies(ctx context.Context) error {
 		if !ok {
 			continue
 		}
+		if folder := e.organizationFolder(record); folder != "" {
+			if err := e.setPolicies(ctx, h.Prefix, OrganizationFolderPolicies(folder)); err != nil {
+				return err
+			}
+		}
 		policies, findings := DesiredPolicies(h)
 		for _, f := range findings {
 			e.finding(f)
 		}
-		for _, want := range policies {
-			got, exists, err := e.policies.Policy(ctx, want.Policy.Name)
-			if err != nil {
+		if err := e.setPolicies(ctx, h.Prefix, policies); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+// organizationFolder is the hosting organization's own folder: the one this run's
+// creation made, else the one its hand-off recorded; empty for an organization not
+// created yet.
+func (e *engine) organizationFolder(record org.HostingOrganization) string {
+	if folder, ok := e.createdFolders[record.Prefix]; ok {
+		return folder
+	}
+
+	return record.Folder
+}
+
+// setPolicies sets each policy of the hosting organization that its folder lacks or holds
+// otherwise, each a change of the policies section.
+func (e *engine) setPolicies(ctx context.Context, prefix string, policies []FolderPolicy) error {
+	for _, want := range policies {
+		got, exists, err := e.policies.Policy(ctx, want.Policy.Name)
+		if err != nil {
+			return err
+		}
+		switch {
+		case !exists:
+			if err := e.change(ctx, sectionPolicies, "sets "+want.What(prefix), func(ctx context.Context) error {
+				return e.policies.CreatePolicy(ctx, "folders/"+want.FolderID, &want.Policy)
+			}); err != nil {
 				return err
 			}
-			switch {
-			case !exists:
-				if err := e.change(ctx, sectionPolicies, "sets "+want.What(h.Prefix), func(ctx context.Context) error {
-					return e.policies.CreatePolicy(ctx, "folders/"+want.FolderID, &want.Policy)
-				}); err != nil {
-					return err
-				}
-			case !RulesEqual(got.Rules, want.Policy.Rules):
-				if err := e.change(ctx, sectionPolicies, "brings "+want.What(h.Prefix)+" to the baseline", func(ctx context.Context) error {
-					return e.policies.UpdatePolicy(ctx, &want.Policy)
-				}); err != nil {
-					return err
-				}
+		case !RulesEqual(got.Rules, want.Policy.Rules):
+			if err := e.change(ctx, sectionPolicies, "brings "+want.What(prefix)+" to the baseline", func(ctx context.Context) error {
+				return e.policies.UpdatePolicy(ctx, &want.Policy)
+			}); err != nil {
+				return err
 			}
 		}
 	}

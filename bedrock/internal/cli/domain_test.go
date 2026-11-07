@@ -44,6 +44,16 @@ func (z zonesByName) RecordSets(_ context.Context, _, zone string) ([]domain.Rec
 	}, nil
 }
 
+func (z zonesByName) ZoneByDNSName(_ context.Context, _, dnsName string) (string, *domain.Zone, error) {
+	for zone, name := range z {
+		if name+"." == dnsName {
+			return zone, &domain.Zone{DNSName: dnsName, NameServers: []string{checkServer}}, nil
+		}
+	}
+
+	return "", nil, nil
+}
+
 func (zonesByName) Close() error {
 	return nil
 }
@@ -90,7 +100,10 @@ func checkRepo(t *testing.T, recorded, zoneReplacement bool, vanity []string) st
 		t.Fatal(err)
 	}
 	p.AppsDomain = checkDomain
-	p.VanityDomains = vanity
+	p.VanityDomains = org.VanityDomains{}
+	for _, d := range vanity {
+		p.VanityDomains[d] = org.VanityDomain{}
+	}
 	p.ZoneReplacement = zoneReplacement
 	if !recorded {
 		p.Projects = nil

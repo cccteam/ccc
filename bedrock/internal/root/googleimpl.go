@@ -33,6 +33,7 @@ import (
 	"cloud.google.com/go/secretmanager/apiv1/secretmanagerpb"
 	"cloud.google.com/go/storage"
 	"github.com/go-playground/errors/v5"
+	bigquery "google.golang.org/api/bigquery/v2"
 	"google.golang.org/api/cloudbilling/v1"
 	cloudbuild "google.golang.org/api/cloudbuild/v1"
 	cloudbuildv2 "google.golang.org/api/cloudbuild/v2"
@@ -45,6 +46,7 @@ import (
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/fieldmaskpb"
 
+	"github.com/cccteam/ccc/bedrock/internal/budgets"
 	"github.com/cccteam/ccc/bedrock/internal/org"
 )
 
@@ -1283,4 +1285,95 @@ func policyFromProto(p *orgpolicypb.Policy) *Policy {
 	}
 
 	return out
+}
+
+// --- Budgets and BigQuery ---
+
+// NewBudgets opens the Budgets API with the run's credentials, billing its calls to the
+// root project: a person's application default credentials name no project of their own.
+func NewBudgets(ctx context.Context, quotaProject string) (budgets.Client, error) {
+	return budgets.New(ctx, option.WithQuotaProject(quotaProject))
+}
+
+// NewBudgetsAs opens the Budgets API as the identity the credentials impersonate: the
+// applier as the creating identity, which holds Billing Account Administrator.
+func NewBudgetsAs(ctx context.Context, identity string) (budgets.Client, error) {
+	source, err := impersonate.CredentialsTokenSource(ctx, impersonate.CredentialsConfig{TargetPrincipal: identity, Scopes: []string{cloudPlatformScope}})
+	if err != nil {
+		return nil, errors.Wrapf(err, "impersonate.CredentialsTokenSource(): %s", identity)
+	}
+
+	return budgets.New(ctx, option.WithTokenSource(source))
+}
+
+// NewDatasets opens BigQuery.
+func NewDatasets(ctx context.Context) (Datasets, error) {
+	service, err := bigquery.NewService(ctx)
+	if err != nil {
+		return nil, errors.Wrap(err, "bigquery.NewService()")
+	}
+
+	return &datasets{service: service}, nil
+}
+
+type datasets struct {
+	service *bigquery.Service
+}
+
+func (d *datasets) Dataset(ctx context.Context, project, id string) (location string, exists bool, err error) {
+	ds, err := d.service.Datasets.Get(project, id).Context(ctx).Do()
+	var apiErr *googleapi.Error
+	if errors.As(err, &apiErr) && apiErr.Code == http.StatusNotFound {
+		return "", false, nil
+	}
+	if err != nil {
+		return "", false, errors.Wrapf(err, "bigquery.DatasetsService.Get(): %s.%s", project, id)
+	}
+
+	return ds.Location, true, nil
+}
+
+func (d *datasets) CreateDataset(ctx context.Context, project, id, location string, labels map[string]string) error {
+	ds := &bigquery.Dataset{
+		DatasetReference: &bigquery.DatasetReference{ProjectId: project, DatasetId: id},
+		Location:         location,
+		Labels:           labels,
+		Description:      "The billing account's export: every charge by project, service, SKU and label (bedrock).",
+	}
+	if _, err := d.service.Datasets.Insert(project, ds).Context(ctx).Do(); err != nil {
+		return errors.Wrapf(err, "bigquery.DatasetsService.Insert(): %s.%s in %s", project, id, location)
+	}
+
+	return nil
+}
+
+func (d *datasets) Tables(ctx context.Context, project, dataset string) ([]TableInfo, error) {
+	var ids []string
+	err := d.service.Tables.List(project, dataset).Context(ctx).Pages(ctx, func(page *bigquery.TableList) error {
+		for _, t := range page.Tables {
+			if t.TableReference != nil {
+				ids = append(ids, t.TableReference.TableId)
+			}
+		}
+
+		return nil
+	})
+	if err != nil {
+		return nil, errors.Wrapf(err, "bigquery.TablesService.List(): %s.%s", project, dataset)
+	}
+	tables := make([]TableInfo, 0, len(ids))
+	for _, id := range ids {
+		t, err := d.service.Tables.Get(project, dataset, id).Context(ctx).Do()
+		if err != nil {
+			return nil, errors.Wrapf(err, "bigquery.TablesService.Get(): %s.%s.%s", project, dataset, id)
+		}
+		tables = append(tables, TableInfo{ID: id, LastModified: time.UnixMilli(int64(t.LastModifiedTime))}) //nolint:gosec // milliseconds since 1970 fit an int64 for the next 290 million years
+	}
+
+	return tables, nil
+}
+
+// Close has nothing to release: the REST client holds no connection of its own.
+func (*datasets) Close() error {
+	return nil
 }

@@ -53,6 +53,12 @@ type Request struct {
 	// and pull request), or a person's.
 	Token  string
 	Commit string
+	// Seeded runs once the seed stands and before the first applies, with the
+	// organization's folder: the root organization's apply sets the folder's organization
+	// policy there (the applier holds Organization Policy Administrator; the creating
+	// identity does not), so 1-org's first apply makes no project with a default network.
+	// nil when nothing is to run.
+	Seeded func(ctx context.Context, organizationFolder string) error
 }
 
 // Marker is what the creation leaves in the root organization's state bucket once the
@@ -274,8 +280,41 @@ func (f *creation) create(ctx context.Context) (*Result, error) {
 		return nil, err
 	}
 	h.ProjectNumbers = map[string]string{bootKey: number}
+	if f.req.Seeded != nil {
+		if err := f.req.Seeded(ctx, seed.OrganizationFolder); err != nil {
+			return nil, errors.Wrapf(err, "after the seed of %s, before its first applies", h.Prefix)
+		}
+	}
+	if err := f.budget(ctx, g, h, seed.OrganizationFolder); err != nil {
+		return nil, err
+	}
 
 	return f.establish(ctx, g, h, seed, number)
+}
+
+// budget makes the organization's spend budget on the billing account, as the creating
+// identity (a Billing Account Administrator since the bootstrap): the amount its record
+// names (monthlyBudget), counting its folder, with alerts at half, nine tenths and the
+// whole of it to the billing account's administrators and users. One that stands by name
+// is left as it is: the root organization's apply keeps it.
+func (f *creation) budget(ctx context.Context, g Google, h *org.Placement, folder string) error {
+	budgets, err := g.Budgets(ctx, h.BillingAccount)
+	if err != nil {
+		return err
+	}
+	name := org.HostingBudgetName(h.Prefix)
+	if slices.ContainsFunc(budgets, func(b org.Budget) bool { return b.DisplayName == name }) {
+		fmt.Fprintf(f.out, "The spend budget %q stands on %s already; the root organization's apply keeps it.\n", name, h.BillingAccount)
+
+		return nil
+	}
+	b := org.HostingBudget(h.Prefix, h.MonthlyBudget, folder)
+	if err := g.CreateBudget(ctx, h.BillingAccount, &b); err != nil {
+		return err
+	}
+	fmt.Fprintf(f.out, "Made the spend budget %q on %s: %d %s a month on folder %s, with alerts at 50, 90 and 100 percent of it to the billing account's administrators and users.\n", name, h.BillingAccount, b.Units, b.CurrencyCode, folder)
+
+	return nil
 }
 
 // seed makes what the first applies need: the organization's folder at the organization node

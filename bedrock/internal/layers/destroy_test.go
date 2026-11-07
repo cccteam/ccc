@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -13,6 +14,7 @@ import (
 	"github.com/go-playground/errors/v5"
 
 	"github.com/cccteam/ccc/bedrock/internal/deploy"
+	"github.com/cccteam/ccc/bedrock/internal/org"
 )
 
 // handRun scripts the fake tofu of one layer for org destroy: what state list prints,
@@ -33,6 +35,10 @@ type handRunner struct {
 	ran       []string
 	copyHeld  []string
 	copyState string
+	// netHeld is what the 2-net working copy held when initialized, and netGuarded whether
+	// its dns.tf still carried prevent_destroy.
+	netHeld    []string
+	netGuarded bool
 }
 
 func (r *handRunner) where(c deploy.Command) string {
@@ -65,6 +71,20 @@ func (r *handRunner) Run(_ context.Context, c deploy.Command, out io.Writer) err
 	run := r.runs[filepath.Base(c.Dir)]
 	switch c.Args[0] {
 	case "init":
+		if filepath.Base(c.Dir) == netLayer {
+			entries, err := os.ReadDir(c.Dir)
+			if err != nil {
+				return errors.Wrap(err, "os.ReadDir()")
+			}
+			for _, e := range entries {
+				r.netHeld = append(r.netHeld, e.Name())
+			}
+			dns, err := os.ReadFile(filepath.Join(c.Dir, "dns.tf"))
+			if err != nil {
+				return errors.Wrap(err, "os.ReadFile()")
+			}
+			r.netGuarded = strings.Contains(string(dns), "prevent_destroy = true")
+		}
 		if strings.HasSuffix(r.where(c), "(copy)") {
 			entries, err := os.ReadDir(c.Dir)
 			if err != nil {
@@ -133,6 +153,9 @@ func destroyCheckout(t *testing.T, destroyVariable bool) string {
 		"0-bootstrap/README.md":        "# not copied\n",
 		"1-org/" + variablesFile:       variables,
 		"1-org/initialize.tf":          "terraform {\n  backend \"gcs\" {\n    bucket = \"imp-boot-gbl-state-a1b2\"\n    prefix = \"1-org\"\n  }\n}\n",
+		"2-net/terraform.tfvars":       "registrations = {}\n",
+		"2-net/" + lockFile:            "# lock\n",
+		"2-net/README.md":              "# not copied\n",
 	}
 	for name, content := range files {
 		path := filepath.Join(dir, name)
@@ -173,6 +196,14 @@ var (
 		`module.boot_project.module.project-factory.module.project_services.google_project_service.project_services["iam.googleapis.com"]`,
 	}
 	pulledState = `{"version": 4, "resources": []}` + "\n"
+	// 2-net's state in the tests: the apps zone, a vanity zone, the load balancer's address
+	// and one registration.
+	netState = []string{
+		"google_dns_managed_zone.apps",
+		`google_dns_managed_zone.vanity["example.dev"]`,
+		"google_compute_global_address.lb",
+		`google_clouddomains_registration.this["example.dev"]`,
+	}
 )
 
 func fixedToken(context.Context) (string, error) {
@@ -186,6 +217,10 @@ func noToken(context.Context) (string, error) {
 func TestDestroy(t *testing.T) {
 	t.Parallel()
 
+	placement, err := org.ReadPlacement("../org/testdata/imp/placement.json")
+	if err != nil {
+		t.Fatal(err)
+	}
 	tests := []struct {
 		name            string
 		destroyVariable bool
@@ -198,6 +233,9 @@ func TestDestroy(t *testing.T) {
 		// wantAbsent are texts the output may not hold.
 		wantAbsent []string
 		wantCopy   bool
+		// wantNet asks for the 2-net working copy to have been rendered with the zones
+		// unguarded and the checkout's values beside the render.
+		wantNet bool
 	}{
 		{
 			name:            "destroys 1-org then 0-bootstrap, the repositories out of the state and the projects and folders unprotected first",
@@ -227,15 +265,20 @@ func TestDestroy(t *testing.T) {
 			wantCopy: true,
 		},
 		{
-			name:            "keeps the network project and the organization's folder when the layer registers domains",
+			name:            "keeps the network project and the organization's folder when the layer registers domains, 2-net destroyed inside it first with the registrations out of its state",
 			destroyVariable: true,
 			keepNet:         true,
 			token:           fixedToken,
 			runs: map[string]*handRun{
+				netLayer:       {stateList: netState},
 				orgLayer:       {stateList: orgState},
 				BootstrapLayer: {stateList: bootState, statePull: pulledState},
 			},
 			wantRan: []string{
+				"2-net: tofu init -input=false -no-color -reconfigure [data 2-net.data]",
+				"2-net: tofu state list [data 2-net.data]",
+				`2-net: tofu state rm google_clouddomains_registration.this["example.dev"] [data 2-net.data]`,
+				"2-net: tofu destroy -input=false -no-color -auto-approve [data 2-net.data]",
 				"1-org: tofu init -input=false -no-color -reconfigure [data 1-org.data]",
 				"1-org: tofu state list [data 1-org.data]",
 				"1-org: tofu state rm github_repository.infrastructure [token] [data 1-org.data]",
@@ -251,8 +294,15 @@ func TestDestroy(t *testing.T) {
 				`0-bootstrap(copy): tofu apply -input=false -no-color -auto-approve -var destroy=true -target=google_folder.terraform -target=module.boot_project.module.project-factory.google_project.main -target=module.boot_project.module.project-factory.module.project_services.google_project_service.project_services["iam.googleapis.com"]`,
 				"0-bootstrap(copy): tofu destroy -input=false -no-color -auto-approve -var destroy=true -exclude=google_folder.organization",
 			},
-			wantOut:  []string{"Destroyed 1-org.", "Destroyed 0-bootstrap."},
+			wantOut: []string{
+				"=== destroy of 2-net, inside the network project kept for its registrations ===",
+				`Took google_clouddomains_registration.this["example.dev"] out of 2-net's state: the registration stays in the kept project, a person's to transfer out or give up.`,
+				"Destroyed 2-net.",
+				"The network project holds the registrations and nothing else now: 2-net's zones and records, load balancer and certificates are gone, and the domains registered there stop resolving until a zone stands elsewhere and each registration is pointed at it.",
+				"Destroyed 1-org.", "Destroyed 0-bootstrap.",
+			},
 			wantCopy: true,
+			wantNet:  true,
 		},
 		{
 			name:            "skips a layer whose state holds nothing, without asking for a token",
@@ -334,7 +384,7 @@ func TestDestroy(t *testing.T) {
 			dir := destroyCheckout(t, tt.destroyVariable)
 			runner := &handRunner{runs: tt.runs}
 			var out bytes.Buffer
-			err := Destroy(context.Background(), runner, &DestroyRequest{Dir: dir, GithubToken: tt.token, KeepNet: tt.keepNet}, &out)
+			err := Destroy(context.Background(), runner, &DestroyRequest{Dir: dir, Placement: placement, GithubToken: tt.token, KeepNet: tt.keepNet}, &out)
 			switch {
 			case tt.wantErr == "" && err != nil:
 				t.Fatalf("Destroy() = %v, want no error; printed:\n%s", err, out.String())
@@ -352,6 +402,16 @@ func TestDestroy(t *testing.T) {
 			for _, absent := range tt.wantAbsent {
 				if strings.Contains(out.String(), absent) {
 					t.Errorf("printed:\n%s\nwant it without %q", out.String(), absent)
+				}
+			}
+			if tt.wantNet {
+				if runner.netGuarded {
+					t.Errorf("the 2-net copy's dns.tf still carries prevent_destroy")
+				}
+				for _, want := range []string{".opentofu-version", ".terraform.lock.hcl", "dns.tf", "terraform.tfvars", "variables.tf"} {
+					if !slices.Contains(runner.netHeld, want) {
+						t.Errorf("the 2-net copy held %v, want %s among them", runner.netHeld, want)
+					}
 				}
 			}
 			if tt.wantCopy {

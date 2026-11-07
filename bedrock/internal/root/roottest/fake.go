@@ -12,6 +12,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/go-playground/errors/v5"
 
@@ -19,6 +20,7 @@ import (
 
 	"google.golang.org/grpc/status"
 
+	"github.com/cccteam/ccc/bedrock/internal/budgets"
 	"github.com/cccteam/ccc/bedrock/internal/create"
 	"github.com/cccteam/ccc/bedrock/internal/deploy"
 	"github.com/cccteam/ccc/bedrock/internal/org"
@@ -79,7 +81,20 @@ type Fake struct {
 	Numbers        map[string]string
 	Accounts       map[string]bool
 	Buckets        map[string]bool
-	next           int64
+	// SpendBudgets are the billing accounts' budgets (budgets.Client, which the creation
+	// seam shares), by billing account id; BudgetIdentities the identities the Budgets
+	// API was opened as.
+	SpendBudgets     map[string][]org.Budget
+	BudgetIdentities []string
+	// Datasets are BigQuery's datasets by "project/id" to location; DatasetTables the
+	// tables by "project/dataset", and Landed the tables (root.ExportTables) Tables
+	// answers, written now, for a dataset that stands and that DatasetTables names none
+	// for: the billing export as a person pointed it at the dataset the apply made.
+	// Standing sets Landed; a test of the export check clears it, or names stale tables.
+	Datasets      map[string]string
+	DatasetTables map[string][]root.TableInfo
+	Landed        []string
+	next          int64
 
 	// The verification seam's memory (root.Verifier), keyed "identity|domain": Unowned
 	// says the identity is not an owner; Tokens is its token (made up when absent);
@@ -100,7 +115,8 @@ func New() *Fake {
 		Refuse: map[string]error{}, RefuseOnce: map[string]error{},
 		Secrets: map[string]*root.Secret{}, Versions: map[string][]root.SecretVersion{}, Payloads: map[string][]byte{}, SecretPolicies: map[string][]org.Binding{},
 		ZoneMap: map[string]map[string]root.Zone{}, Records: map[string][]root.RecordSet{},
-		Folders: map[string]string{}, Projects: map[string]bool{}, Numbers: map[string]string{}, Accounts: map[string]bool{}, Buckets: map[string]bool{},
+		Folders: map[string]string{}, Projects: map[string]bool{}, Numbers: map[string]string{}, Accounts: map[string]bool{}, Buckets: map[string]bool{}, SpendBudgets: map[string][]org.Budget{},
+		Datasets: map[string]string{}, DatasetTables: map[string][]root.TableInfo{},
 		Connections: map[string]root.Connection{}, Links: map[string]string{}, Triggers: map[string]*root.Trigger{}, ConnectionPolicies: map[string][]org.Binding{},
 		Roles: map[string]root.Role{}, Policies: map[string][]org.Binding{}, BucketPolicies: map[string][]root.ConditionedBinding{}, Enabled: map[string][]string{}, BillingOf: map[string]string{},
 		OrgPolicies: map[string]*root.Policy{},
@@ -132,7 +148,122 @@ func (f *Fake) Clients(c *root.Clients) {
 	c.Builds = func(context.Context) (root.Builds, error) { return f, nil }
 	c.IAM = func(context.Context) (root.IAM, error) { return f, nil }
 	c.Locks = func(context.Context) (root.Locks, error) { return f, nil }
+	c.Budgets = func(context.Context, string) (budgets.Client, error) { return f, nil }
+	c.BudgetsAs = func(_ context.Context, identity string) (budgets.Client, error) {
+		f.mu.Lock()
+		defer f.mu.Unlock()
+		f.BudgetIdentities = append(f.BudgetIdentities, identity)
+
+		return f, nil
+	}
+	c.Datasets = func(context.Context) (root.Datasets, error) { return f, nil }
 	c.Store = func(context.Context) (deploy.Store, error) { return f, nil }
+}
+
+// --- Budgets ---
+
+// Budgets answers the billing account's budgets from memory.
+func (f *Fake) Budgets(_ context.Context, billingAccount string) ([]org.Budget, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if err := f.call("Budgets", billingAccount); err != nil {
+		return nil, err
+	}
+	out := make([]org.Budget, 0, len(f.SpendBudgets[billingAccount]))
+	for _, b := range f.SpendBudgets[billingAccount] {
+		c := b
+		c.Ancestors, c.Thresholds = slices.Clone(b.Ancestors), slices.Clone(b.Thresholds)
+		out = append(out, c)
+	}
+
+	return out, nil
+}
+
+// CreateBudget remembers the budget on the billing account and names it.
+func (f *Fake) CreateBudget(_ context.Context, billingAccount string, b *org.Budget) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if err := f.call("CreateBudget", billingAccount, b.DisplayName); err != nil {
+		return err
+	}
+	b.Name = fmt.Sprintf("billingAccounts/%s/budgets/%d", billingAccount, len(f.SpendBudgets[billingAccount])+1)
+	b.CurrencyCode = "USD"
+	f.SpendBudgets[billingAccount] = append(f.SpendBudgets[billingAccount], *b)
+
+	return nil
+}
+
+// UpdateBudget replaces the budget by its name.
+func (f *Fake) UpdateBudget(_ context.Context, b *org.Budget) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if err := f.call("UpdateBudget", b.Name); err != nil {
+		return err
+	}
+	for account, budgets := range f.SpendBudgets {
+		for i := range budgets {
+			if budgets[i].Name == b.Name {
+				c := *b
+				c.CurrencyCode = budgets[i].CurrencyCode
+				f.SpendBudgets[account][i] = c
+
+				return nil
+			}
+		}
+	}
+
+	return errors.Wrap(status.Error(codes.NotFound, b.Name+" does not exist"), "billingbudgets.BillingAccounts.Budgets.Patch()")
+}
+
+// --- BigQuery ---
+
+// Dataset is whether the dataset is there, and its location.
+func (f *Fake) Dataset(_ context.Context, project, id string) (location string, exists bool, err error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if err := f.call("Dataset", project, id); err != nil {
+		return "", false, err
+	}
+	location, exists = f.Datasets[project+"/"+id]
+
+	return location, exists, nil
+}
+
+// CreateDataset remembers the dataset in its location.
+func (f *Fake) CreateDataset(_ context.Context, project, id, location string, _ map[string]string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if err := f.call("CreateDataset", project, id, location); err != nil {
+		return err
+	}
+	if _, ok := f.Datasets[project+"/"+id]; ok {
+		return errors.Wrap(status.Error(codes.AlreadyExists, project+"/"+id+" exists"), "bigquery.DatasetsService.Insert()")
+	}
+	f.Datasets[project+"/"+id] = location
+
+	return nil
+}
+
+// Tables answers the dataset's tables from memory.
+func (f *Fake) Tables(_ context.Context, project, dataset string) ([]root.TableInfo, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if err := f.call("Tables", project, dataset); err != nil {
+		return nil, err
+	}
+	key := project + "/" + dataset
+	if tables, ok := f.DatasetTables[key]; ok {
+		return slices.Clone(tables), nil
+	}
+	if _, exists := f.Datasets[key]; !exists {
+		return nil, nil
+	}
+	tables := make([]root.TableInfo, 0, len(f.Landed))
+	for _, id := range f.Landed {
+		tables = append(tables, root.TableInfo{ID: id, LastModified: time.Now()})
+	}
+
+	return tables, nil
 }
 
 func (f *Fake) call(name string, args ...string) error {

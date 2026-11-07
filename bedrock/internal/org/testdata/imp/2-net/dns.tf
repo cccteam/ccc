@@ -78,20 +78,23 @@ resource "google_dns_record_set" "dns_authorization" {
 # ---------------------------------------------------------------------------
 # Vanity domains
 #
-# One public zone per vanity domain (var.vanity_domains, from placement.json's
-# vanityDomains): a client's own domain an application serves on, delegated
-# whole to this zone from the registrar where it is registered, or registered
-# here (domains.tf) and pointed at the zone by the same apply. It holds what
-# the apps zone holds: the apex and the wildcard at the load balancer's
-# address, and the certificate's authorization record. Its name is the one a
-# parked zone of the domain has, and a parked zone moves here when the domain
-# is declared (domains.tf). bedrock domain check verifies each delegation as
-# it verifies the apps domain's, and refuses a domain that carries other DNS
-# (README.md, "Vanity domains").
+# One public zone per vanity domain delegated here (local.vanity_zones: the
+# domains placement.json's vanityDomains declares without dns "customer"): a
+# client's own domain an application serves on, delegated whole to this zone
+# from the registrar where it is registered, or registered here (domains.tf)
+# and pointed at the zone by the same apply. It holds what the apps zone
+# holds: the apex and the wildcard at the load balancer's address, and the
+# certificate's authorization record. Its name is the one a parked zone of
+# the domain has, and a parked zone moves here when the domain is declared
+# (domains.tf). bedrock domain check verifies each delegation as it verifies
+# the apps domain's, and refuses a domain that carries other DNS (README.md,
+# "Vanity domains"). A vanity domain kept at the customer's DNS provider
+# (var.customer_dns_domains) has no zone here: the provider carries the A
+# records and the authorization CNAME bedrock domain check prints.
 # ---------------------------------------------------------------------------
 
 resource "google_dns_managed_zone" "vanity" {
-  for_each = local.vanity_domains
+  for_each = local.vanity_zones
 
   project     = local.project_id
   name        = "${local.name_prefix}-dns-${replace(each.key, ".", "-")}"
@@ -128,7 +131,7 @@ resource "google_dns_record_set" "vanity_lb" {
 # The proof of ownership for each vanity domain's certificate, copied from its
 # authorization as the apps domain's is.
 resource "google_dns_record_set" "vanity_authorization" {
-  for_each = local.vanity_domains
+  for_each = local.vanity_zones
 
   project      = local.project_id
   managed_zone = google_dns_managed_zone.vanity[each.key].name

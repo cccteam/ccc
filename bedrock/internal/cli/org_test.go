@@ -626,7 +626,7 @@ func TestOrgPreflight(t *testing.T) {
 			wantOut: []string{
 				"Organization Administrator (roles/resourcemanager.organizationAdmin), on organization 123456789012: holds resourcemanager.organizations.getIamPolicy, resourcemanager.organizations.setIamPolicy",
 				"Folder Creator (roles/resourcemanager.folderCreator), on organization 123456789012: holds resourcemanager.folders.create",
-				"Billing Account Administrator (roles/billing.admin), on billing account 012345-6789AB-CDEF01: holds billing.accounts.getIamPolicy, billing.accounts.setIamPolicy, billing.resourceAssociations.create",
+				"Billing Account Administrator (roles/billing.admin), on billing account 012345-6789AB-CDEF01: holds billing.accounts.getIamPolicy, billing.accounts.setIamPolicy, billing.budgets.create, billing.budgets.list, billing.resourceAssociations.create",
 				"These credentials hold every permission bedrock org bootstrap needs",
 			},
 		},
@@ -747,12 +747,12 @@ func TestOrgCommands(t *testing.T) {
 				"1. In a terminal, in the root organization's repository: bedrock org create imp, which\n     writes the record (organizations/imp/placement.json)",
 				"2. The merge, as the root organization's creating identity: the organization's folder at\n     the organization root (123456789012), the terraform folder under it, the boot project\n     imp-boot-gbl-core-<suffix>, the boot identity imp-boot-gbl-tofu with its roles on the\n     organization's folder and on the boot project, the break-glass account's (seed@imp.example) Folder Admin on it and the state\n     bucket imp-boot-gbl-state-<suffix>",
 				"the repository imp-example/imp-impulse-infrastructure with the rendered\n     foundation as its first push",
-				"3. In the Billing console, as a billing administrator of 012345-6789AB-CDEF01: the spend budget on the\n     account (0-bootstrap/README.md, \"The spend budget\"); nothing renders it. The boot and\n     org identities (imp-boot-gbl-tofu, imp-org-gbl-tofu) hold Billing Account User on it\n     already, granted by the creation",
-				"4. In each environment project's Google Cloud console, before the first application's\n     OAuth client is made there: the consent screen (APIs & Services, OAuth consent\n     screen), with the audience Internal",
+				"the spend budget the record names (monthlyBudget) on\n     the organization's folder, which the root organization's apply keeps",
+				"3. In each environment project's Google Cloud console, before the first application's\n     OAuth client is made there: the consent screen (APIs & Services, OAuth consent\n     screen), with the audience Internal",
 				"From then on the two Cloud Build triggers in the boot project (imp-boot-uc1-layers-plan and imp-boot-uc1-layers-apply)\napply every layer: a pull request plans the layers it touches as their plan identities and\nposts the plans on it",
 				"bedrock org check lists\nany grant on the organization's folder to a principal outside the organization.",
 				"Pinned bedrock " + headVersion + " in ",
-				"\nAfter the first apply of 2-net: bedrock domain check prints what the apps domain, and each vanity domain, still needs, and where.\n",
+				"\nAfter the first apply of 2-net: bedrock domain check prints what the apps domain, and each vanity domain, still needs, and where (for a vanity domain kept at its DNS provider, the records to add there).\n",
 			},
 		},
 		{
@@ -816,7 +816,7 @@ func TestOrgCommands(t *testing.T) {
 				"1. This render, quill-service at its identities: its repository", "the same apply then runs 2-env\n     once more, each environment in order",
 				"2. bedrock org register quill --next, then the pull request it renders: the public-invoker\n     tag (1-org), the registry grants (2-shr) and the database admins (2-spn)",
 				"4. bedrock org register quill --next once more, then the pull request it renders: the\n     hostnames (2-net)",
-				"\n  5. After 2-net's apply: bedrock domain check, which passes when the apps domain and each vanity domain resolve to their zones.\n",
+				"\n  5. After 2-net's apply: bedrock domain check, which passes when the apps domain and each vanity domain resolve to their zones, or, for a vanity domain kept at its DNS provider, when the records it prints are there.\n",
 			},
 		},
 		{
@@ -1571,6 +1571,8 @@ func (f *destroyTofu) Output(_ context.Context, c deploy.Command, _ io.Writer) (
 		return []byte(`{"version": 4}`), nil
 	case filepath.Base(c.Dir) == "1-org":
 		return []byte("github_repository.infrastructure\nmodule.project[\"tst\"].module.project-factory.google_project.main\n"), nil
+	case filepath.Base(c.Dir) == "2-net":
+		return []byte("google_clouddomains_registration.this[\"example.dev\"]\ngoogle_dns_managed_zone.apps\n"), nil
 	default:
 		return []byte("module.boot_project.module.project-factory.google_project.main\n"), nil
 	}
@@ -1645,9 +1647,15 @@ func TestOrgDestroy(t *testing.T) {
 			registered:  true,
 			interactive: never,
 			args:        []string{"--yes"},
-			wantOut:     []string{"Kept: the network project imp-net-gbl-core-9c0d, with its folder and the organization's, since 2-net registers example.dev there", "The network project imp-net-gbl-core-9c0d stays with its registrations, for a person."},
-			wantRan:     11,
-			wantJournal: "(imp-boot-gbl-core-a1b2, imp-shr-gbl-core-7a8b, imp-spn-gbl-core-2e3f, imp-tst-gbl-core-1a2b, imp-stg-gbl-core-3c4d, imp-prd-gbl-core-5e6f): Google holds them for 30 days, their ids never return. The GitHub repositories stay. The network project imp-net-gbl-core-9c0d was kept with its registrations, for a person.\n",
+			wantOut: []string{
+				"Kept: the network project imp-net-gbl-core-9c0d, with its folder and the organization's, since 2-net registers example.dev there",
+				"and example.dev stop resolving until a zone stands elsewhere",
+				`Took google_clouddomains_registration.this["example.dev"] out of 2-net's state`,
+				"Destroyed 2-net.",
+				"The network project imp-net-gbl-core-9c0d stays with its registrations and nothing else: 2-net's zones, load balancer and certificates are gone",
+			},
+			wantRan:     15,
+			wantJournal: "(imp-boot-gbl-core-a1b2, imp-shr-gbl-core-7a8b, imp-spn-gbl-core-2e3f, imp-tst-gbl-core-1a2b, imp-stg-gbl-core-3c4d, imp-prd-gbl-core-5e6f): Google holds them for 30 days, their ids never return. The GitHub repositories stay. The network project imp-net-gbl-core-9c0d was kept with its registrations and nothing else: 2-net was destroyed inside it.\n",
 		},
 	}
 	for _, tt := range tests {

@@ -211,7 +211,7 @@ func (p *Placement) ValidateDraft() error {
 	if len(p.Regions) != 1 || p.Regions[0].Name == "" || !regionCodeRE.MatchString(p.Regions[0].Code) {
 		return errors.New("regions needs one entry, the region the connection, the triggers and the state bucket are in, with its name and a three-character code (us-central1, uc1)")
 	}
-	for _, validate := range []func() error{p.validateDirectoryCustomer, p.validateAppNames, p.validateApprovingReviews, p.validateKeyHolding, p.validateCiLargeRunner, p.validateDomains} {
+	for _, validate := range []func() error{p.validateDirectoryCustomer, p.validateAppNames, p.validateApprovingReviews, p.validateKeyHolding, p.validateCiLargeRunner, p.validateDomains, p.validateMonthlyBudget} {
 		if err := validate(); err != nil {
 			return err
 		}

@@ -80,6 +80,7 @@ func bootstrapWorld(t *testing.T) (deps, *roottest.Fake, *githubtest.Server, []s
 	t.Helper()
 
 	fake := roottest.New()
+	fake.Landed = rootorg.ExportTables("012345-6789AB-CDEF01")
 	srv := githubtest.New(t)
 	srv.Login = "imp-bot"
 	srv.Memberships["imp-example"] = "admin"
@@ -135,7 +136,7 @@ func TestOrgBootstrap(t *testing.T) {
 	t.Setenv(github.TokenEnv, "test-token")
 	d, fake, srv, brought := bootstrapWorld(t)
 	dir := filepath.Join(t.TempDir(), "imr-root-infrastructure")
-	args := append([]string{"org", "bootstrap", dir, "--prefix", "imr", "--github-organization", "imp-example", "--domain", "clientbay.example", "--key-operator", "group:key-operators@imp.example", "--label", "bedrock-lab=true", "--no-browser"}, brought...)
+	args := append([]string{"org", "bootstrap", dir, "--prefix", "imr", "--github-organization", "imp-example", "--monthly-budget", "1500", "--domain", "clientbay.example", "--key-operator", "group:key-operators@imp.example", "--label", "bedrock-lab=true", "--no-browser"}, brought...)
 	out, err := execute(d, "", args...)
 	if err != nil {
 		t.Fatalf("org bootstrap = %v; printed:\n%s", err, out)
@@ -185,14 +186,14 @@ func TestOrgBootstrap(t *testing.T) {
 			t.Errorf("the run again printed:\n%s\nwant it to contain %q", out, want)
 		}
 	}
-	_, err = execute(d, "", "org", "bootstrap", dir, "--prefix", "imr", "--no-browser")
+	_, err = execute(d, "", "org", "bootstrap", dir, "--prefix", "imr", "--monthly-budget", "1500", "--no-browser")
 	if want := "records the imr root organization from an earlier run, and names everything: run again without --prefix"; err == nil || !strings.Contains(err.Error(), want) {
 		t.Errorf("org bootstrap with a naming flag = %v, want %q", err, want)
 	}
 }
 
-// TestOrgBootstrapPrompts: at a terminal, the prefix and the GitHub organization are asked
-// for, and the token is typed without echo.
+// TestOrgBootstrapPrompts: at a terminal, the prefix, the GitHub organization and the
+// spend budget are asked for, and the token is typed without echo.
 func TestOrgBootstrapPrompts(t *testing.T) {
 	t.Setenv(github.TokenEnv, "")
 	d, _, _, brought := bootstrapWorld(t)
@@ -203,13 +204,14 @@ func TestOrgBootstrapPrompts(t *testing.T) {
 		return []byte("test-token\n"), nil
 	}
 	dir := filepath.Join(t.TempDir(), "imr-root-infrastructure")
-	out, err := execute(d, "imr\nimp-example\n", append([]string{"org", "bootstrap", dir, "--no-browser"}, brought...)...)
+	out, err := execute(d, "imr\nimp-example\n1500\n", append([]string{"org", "bootstrap", dir, "--no-browser"}, brought...)...)
 	if err != nil {
 		t.Fatalf("org bootstrap = %v; printed:\n%s", err, out)
 	}
 	for _, want := range []string{
 		"The prefix the root organization's names start with (2 to 4 lowercase characters, a letter first):",
 		"The GitHub organization's login (the Bot Account is an owner of it):",
+		"The spend budget on the whole billing account, in whole units of its currency a month",
 		"The GitHub Bot Account's token (a classic personal access token; it goes into Secret Manager and nowhere else): ",
 		"Bootstrapped the imr root organization as bedrock@imp.example",
 	} {
@@ -229,37 +231,37 @@ func TestOrgBootstrapRefusals(t *testing.T) {
 		args    []string
 		wantErr string
 	}{
-		{name: "no prefix and no terminal", args: []string{"--github-organization", "imp-example"}, wantErr: "no --prefix given and no terminal to ask on"},
+		{name: "no prefix and no terminal", args: []string{"--github-organization", "imp-example", "--monthly-budget", "1500"}, wantErr: "no --prefix given and no terminal to ask on"},
 		{name: "no GitHub organization and no terminal", args: []string{"--prefix", "imr"}, wantErr: "no --github-organization given and no terminal to ask on"},
-		{name: "no token and no terminal", env: "none", args: []string{"--prefix", "imr", "--github-organization", "imp-example"}, wantErr: "no token of the GitHub Bot Account: set GITHUB_TOKEN to a classic personal access token of the Bot Account"},
+		{name: "no token and no terminal", env: "none", args: []string{"--prefix", "imr", "--github-organization", "imp-example", "--monthly-budget", "1500"}, wantErr: "no token of the GitHub Bot Account: set GITHUB_TOKEN to a classic personal access token of the Bot Account"},
 		{
 			name: "several organizations and no terminal",
 			prepare: func(d *deps) {
 				d.org.root.Discovery = (&fakeDiscovery{account: "bedrock@imp.example", orgs: []rootorg.Organization{{ID: "123456789012", Domain: "imp.example"}, {ID: "210987654321", Domain: "other.example"}}, billing: []rootorg.BillingAccount{{ID: "012345-6789AB-CDEF01", Open: true}}}).open
 			},
-			args:    []string{"--prefix", "imr", "--github-organization", "imp-example"},
+			args:    []string{"--prefix", "imr", "--github-organization", "imp-example", "--monthly-budget", "1500"},
 			wantErr: "these credentials see 2 Google Cloud organizations and no terminal is here to choose on: pass --organization, one of 123456789012 (imp.example), 210987654321 (other.example)",
 		},
 		{
 			name: "an organization the credentials do not see",
-			args: []string{"--prefix", "imr", "--github-organization", "imp-example", "--organization", "other.example"}, wantErr: "--organization other.example is none these credentials see: 123456789012 (imp.example)",
+			args: []string{"--prefix", "imr", "--github-organization", "imp-example", "--monthly-budget", "1500", "--organization", "other.example"}, wantErr: "--organization other.example is none these credentials see: 123456789012 (imp.example)",
 		},
 		{
 			name: "no open billing account",
 			prepare: func(d *deps) {
 				d.org.root.Discovery = (&fakeDiscovery{account: "bedrock@imp.example", orgs: []rootorg.Organization{{ID: "123456789012", Domain: "imp.example"}}}).open
 			},
-			args:    []string{"--prefix", "imr", "--github-organization", "imp-example"},
+			args:    []string{"--prefix", "imr", "--github-organization", "imp-example", "--monthly-budget", "1500"},
 			wantErr: "these credentials see no open billing account: the break-glass account holds Billing Account Administrator on the one the organization's projects link to",
 		},
-		{name: "a prefix that breaks the rule", args: []string{"--prefix", "Imr", "--github-organization", "imp-example"}, wantErr: `prefix "Imr" is not 2 to 4 lowercase alphanumeric characters starting with a letter`},
-		{name: "a domain that is not bare", args: []string{"--prefix", "imr", "--github-organization", "imp-example", "--domain", "ClientBay.example"}, wantErr: `domains names "ClientBay.example", which is not a bare lowercase domain`},
-		{name: "a region of another shape", args: []string{"--prefix", "imr", "--github-organization", "imp-example", "--region", "global"}, wantErr: `"global" is not a region name of the shape <area>-<direction><number> (us-central1)`},
-		{name: "an app brought without its key", args: []string{"--prefix", "imr", "--github-organization", "imp-example", "--deployer-app", "5001"}, wantErr: "--deployer-app and --deployer-key go together: the App ID of the deployer app and the file holding its private key"},
+		{name: "a prefix that breaks the rule", args: []string{"--prefix", "Imr", "--github-organization", "imp-example", "--monthly-budget", "1500"}, wantErr: `prefix "Imr" is not 2 to 4 lowercase alphanumeric characters starting with a letter`},
+		{name: "a domain that is not bare", args: []string{"--prefix", "imr", "--github-organization", "imp-example", "--monthly-budget", "1500", "--domain", "ClientBay.example"}, wantErr: `domains names "ClientBay.example", which is not a bare lowercase domain`},
+		{name: "a region of another shape", args: []string{"--prefix", "imr", "--github-organization", "imp-example", "--monthly-budget", "1500", "--region", "global"}, wantErr: `"global" is not a region name of the shape <area>-<direction><number> (us-central1)`},
+		{name: "an app brought without its key", args: []string{"--prefix", "imr", "--github-organization", "imp-example", "--monthly-budget", "1500", "--deployer-app", "5001"}, wantErr: "--deployer-app and --deployer-key go together: the App ID of the deployer app and the file holding its private key"},
 		{
 			name:    "a bedrock built from a checkout",
 			prepare: func(d *deps) { d.version = nil },
-			args:    []string{"--prefix", "imr", "--github-organization", "imp-example"},
+			args:    []string{"--prefix", "imr", "--github-organization", "imp-example", "--monthly-budget", "1500"},
 			wantErr: "this bedrock is (devel), which no placement can pin, and the root organization's triggers fetch the bedrock placement.json pins",
 		},
 	}

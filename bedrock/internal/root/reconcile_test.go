@@ -8,6 +8,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -373,6 +374,7 @@ func TestEnginePolicies(t *testing.T) {
 	report, _ := w.run(t, root.Check, false)
 	got := whats(report)
 	containsAll(t, got,
+		"organization policies: sets compute.skipDefaultNetworkCreation on folder organization (123456789012345) of imp",
 		"organization policies: sets iam.managed.disableServiceAccountKeyCreation on folder shared (900000000011) of imp",
 		"organization policies: sets cloudbuild.allowedIntegrations on folder prd (900000000014) of imp",
 		"organization policies: sets iam.allowedPolicyMemberDomains on folder tst (900000000012) of imp",
@@ -384,8 +386,8 @@ func TestEnginePolicies(t *testing.T) {
 			policies++
 		}
 	}
-	if want := 4*len(root.Baseline) + 3 + 4; policies != want {
-		t.Errorf("%d policies to set, want %d (the baseline on four folders, member domains on three, contact domains on four)", policies, want)
+	if want := len(root.OrganizationFolderBaseline) + 4*len(root.Baseline) + 3 + 4; policies != want {
+		t.Errorf("%d policies to set, want %d (the organization folder's own, the baseline on four folders, member domains on three, contact domains on four)", policies, want)
 	}
 	if slices.ContainsFunc(got, func(s string) bool { return strings.Contains(s, "iam.allowedPolicyMemberDomains on folder shared") }) {
 		t.Errorf("domain-restricted sharing on the shared folder: %v", got)
@@ -397,6 +399,10 @@ func TestEnginePolicies(t *testing.T) {
 	member := w.fake.OrgPolicies["folders/900000000012/policies/iam.allowedPolicyMemberDomains"]
 	if member == nil || len(member.Rules) != 2 || !member.Rules[0].AllowAll || member.Rules[0].Condition == nil || member.Rules[0].Condition.Expression != "resource.matchTagId('tagKeys/281000000001', 'tagValues/282000000001')" || !slices.Equal(member.Rules[1].AllowedValues, []string{"C0a1b2c3d"}) {
 		t.Errorf("domain-restricted sharing on tst = %+v", member)
+	}
+	network := w.fake.OrgPolicies["folders/123456789012345/policies/compute.skipDefaultNetworkCreation"]
+	if network == nil || len(network.Rules) != 1 || network.Rules[0].Enforce == nil || !*network.Rules[0].Enforce {
+		t.Errorf("the network constraint on the organization's folder = %+v", network)
 	}
 	contacts := w.fake.OrgPolicies["folders/900000000011/policies/essentialcontacts.managed.allowedContactDomains"]
 	if contacts == nil || len(contacts.Rules) != 1 || contacts.Rules[0].Enforce == nil || !*contacts.Rules[0].Enforce || contacts.Rules[0].Parameters != `{"allowedDomains":["@imp.example"]}` {
@@ -743,5 +749,103 @@ func TestDestroyDropsPlanCheck(t *testing.T) {
 		if !strings.Contains(buf.String(), want) {
 			t.Errorf("Destroy() again printed:\n%s\nwant %q", buf.String(), want)
 		}
+	}
+}
+
+// TestEngineBudgets: the root organization's spend budget on the whole billing account
+// and a created hosting organization's on its folder are made when missing, brought back
+// when changed by hand, kept as the creating identity by an apply, and noted as not
+// compared by a run refused the read.
+func TestEngineBudgets(t *testing.T) {
+	t.Parallel()
+
+	const account = "012345-6789AB-CDEF01"
+	w := newWorld(t)
+	report, _ := w.run(t, root.Check, false)
+	containsAll(t, whats(report),
+		`budgets: makes the spend budget "imr billing account" on billing account 012345-6789AB-CDEF01: 1500 a month in the account's currency on every project of the account, with alerts at 50, 90 and 100 percent of it to the account's administrators and users`,
+		`budgets: makes the spend budget "imp organization" on billing account 012345-6789AB-CDEF01: 500 a month in the account's currency on folder 123456789012345, with alerts at 50, 90 and 100 percent of it to the account's administrators and users`,
+	)
+	w.run(t, root.Apply, true)
+	made := w.fake.SpendBudgets[account]
+	if len(made) != 2 || made[0].Name == "" || made[0].Units != 1500 || len(made[0].Ancestors) != 0 || !slices.Equal(made[0].Thresholds, []float64{0.5, 0.9, 1}) ||
+		made[1].Units != 500 || !slices.Equal(made[1].Ancestors, []string{"folders/123456789012345"}) {
+		t.Fatalf("budgets made = %+v", made)
+	}
+	if len(w.fake.BudgetIdentities) != 0 {
+		t.Errorf("the bootstrap opened the Budgets API as %v, want as itself", w.fake.BudgetIdentities)
+	}
+	if clean, out := w.run(t, root.Check, false); !clean.Clean() {
+		t.Errorf("the check after the apply is not clean:\n%s\nchanges: %v", out, whats(clean))
+	}
+
+	// A hand change: the hosting organization's amount lowered in the console.
+	w.fake.SpendBudgets[account][1].Units = 100
+	drift, _ := w.run(t, root.Check, false)
+	if want := `budgets: brings the spend budget "imp organization" on billing account 012345-6789AB-CDEF01 back to 500 a month on folder 123456789012345, with alerts at 50, 90 and 100 percent`; !slices.Contains(whats(drift), want) || len(drift.Changes) != 1 {
+		t.Errorf("drift changes = %v, want %q alone", whats(drift), want)
+	}
+	w.run(t, root.Apply, false)
+	if got := w.fake.SpendBudgets[account][1]; got.Units != 500 || got.CurrencyCode != "USD" {
+		t.Errorf("after the apply, the budget = %+v", got)
+	}
+	if want := "imr-create-gbl-tofu@imr-root-gbl-core-c3d4.iam.gserviceaccount.com"; !slices.Equal(w.fake.BudgetIdentities, []string{want}) {
+		t.Errorf("the apply opened the Budgets API as %v, want as the creating identity %s", w.fake.BudgetIdentities, want)
+	}
+
+	// A plan trigger's run holds nothing on the billing account: a note, no change.
+	w.fake.Refuse["Budgets"] = status.Error(codes.PermissionDenied, "no")
+	plan, _ := w.run(t, root.Plan, false)
+	containsAll(t, plan.Notes, "the spend budgets on billing account 012345-6789AB-CDEF01 were not compared: this run holds no read of the billing account")
+	if slices.ContainsFunc(whats(plan), func(s string) bool { return strings.HasPrefix(s, "budgets: ") }) {
+		t.Errorf("a refused read changed budgets: %v", whats(plan))
+	}
+}
+
+// TestEngineBillingExport: the dataset the billing export lands in is made when missing
+// (and nothing is looked for in it that run), then the three exports' tables are looked
+// for: one missing, or a usage table unwritten for days, is a finding.
+func TestEngineBillingExport(t *testing.T) {
+	t.Parallel()
+
+	const project = "imr-root-gbl-core-c3d4"
+	w := newWorld(t)
+	report, _ := w.run(t, root.Check, false)
+	containsAll(t, whats(report), "billing export: makes the dataset billing in imr-root-gbl-core-c3d4 (US), where the billing export lands")
+	if slices.ContainsFunc(report.Findings, func(f string) bool { return strings.Contains(f, "billing export") }) {
+		t.Errorf("a finding about the export before its dataset stands: %q", report.Findings)
+	}
+	w.run(t, root.Apply, true)
+	if got := w.fake.Datasets[project+"/billing"]; got != "US" {
+		t.Errorf("the dataset's location = %q, want US", got)
+	}
+	if clean, out := w.run(t, root.Check, false); !clean.Clean() {
+		t.Errorf("the check after the apply is not clean:\n%s\nchanges: %v, findings: %q", out, whats(clean), clean.Findings)
+	}
+
+	// The export never pointed at the dataset: three findings, one per export.
+	w.fake.Landed = nil
+	missing, _ := w.run(t, root.Check, false)
+	containsAll(t, missing.Findings,
+		`the billing export has not landed in imr-root-gbl-core-c3d4.billing: the table gcp_billing_export_v1_012345_6789AB_CDEF01 is not there; in the Billing console, a person points the standard usage cost export of billing account 012345-6789AB-CDEF01 at the dataset, once (README.md, "Spend budgets and the billing export"), and the table appears within hours, the pricing export's within two days`,
+		"the table gcp_billing_export_resource_v1_012345_6789AB_CDEF01 is not there; in the Billing console, a person points the detailed usage cost export",
+		"the table cloud_pricing_export is not there; in the Billing console, a person points the pricing export",
+	)
+	if len(missing.Findings) != 3 || len(missing.Changes) != 0 {
+		t.Errorf("findings = %q, changes = %v; want three findings alone", missing.Findings, whats(missing))
+	}
+
+	// The export turned off: the usage tables unwritten for four days; the pricing table's
+	// age says nothing.
+	now := time.Now()
+	w.fake.DatasetTables[project+"/billing"] = []root.TableInfo{
+		{ID: "gcp_billing_export_v1_012345_6789AB_CDEF01", LastModified: now.Add(-4 * 24 * time.Hour)},
+		{ID: "gcp_billing_export_resource_v1_012345_6789AB_CDEF01", LastModified: now.Add(-time.Hour)},
+		{ID: "cloud_pricing_export", LastModified: now.Add(-40 * 24 * time.Hour)},
+	}
+	stale, _ := w.run(t, root.Check, false)
+	containsAll(t, stale.Findings, `the billing export to imr-root-gbl-core-c3d4.billing stopped: the table gcp_billing_export_v1_012345_6789AB_CDEF01 was last written 4 days ago; in the Billing console, the standard usage cost export of billing account 012345-6789AB-CDEF01 should still point at the dataset (README.md, "Spend budgets and the billing export")`)
+	if len(stale.Findings) != 1 {
+		t.Errorf("findings = %q, want the stale usage table alone", stale.Findings)
 	}
 }

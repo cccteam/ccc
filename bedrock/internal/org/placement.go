@@ -120,6 +120,13 @@ type Placement struct {
 	DirectoryCustomerID string `json:"directoryCustomerId,omitempty"`
 	// BillingAccount is the billing account projects are linked to.
 	BillingAccount string `json:"billingAccount"`
+	// MonthlyBudget is the spend budget, in whole units of the billing account's currency
+	// a month: a hosting organization's own, on its folder, made by the creation; a root
+	// organization's, on the whole billing account, made by the bootstrap; both kept by the
+	// root organization's apply, with alerts at half, nine tenths and the whole of it to
+	// the billing account's administrators and users. Required: a budget nobody set is
+	// what the hand step it replaces existed to prevent.
+	MonthlyBudget int64 `json:"monthlyBudget,omitempty"`
 	// AppsDomain is the domain the applications' hostnames hang under, never the
 	// identity domain. A root organization has none.
 	AppsDomain string `json:"appsDomain,omitempty"`
@@ -132,19 +139,24 @@ type Placement struct {
 	// hosting organization. The apply makes one zone per domain and one NS record set per
 	// label. None for a hosting organization.
 	Domains map[string]Domain `json:"domains,omitempty"`
-	// VanityDomains are the domains delegated whole to the network project beside the
-	// apps domain, each a client's own domain an application serves on (its brand
-	// domain, in production): 2-net serves each with a zone, a DNS authorization, a
-	// managed certificate for the domain and one label below it, and the certificate
-	// map's entries, as it serves the apps domain, and bedrock domain check verifies
-	// each one's delegation. An application declares the hostnames it serves on one
-	// (hostnames.<site>.vanity in its placement, the domain itself or a label of it),
-	// and the organization records them with the others and refuses a hostname under no
-	// domain declared here. A domain that carries other DNS (mail, a website) is never
-	// one: it is refused at the check, with a label of it to declare instead. A vanity
-	// domain may be registered here too (registrations in 2-net/terraform.tfvars, bedrock
-	// domain add), as the apps domain may; the registration then points at its zone.
-	VanityDomains []string `json:"vanityDomains,omitempty"`
+	// VanityDomains are the vanity domains beside the apps domain, by domain, each a
+	// client's own domain an application serves on (its brand domain, in production).
+	// An empty entry is delegated to the network project: 2-net serves it with a zone, as
+	// it serves the apps domain, and bedrock domain check verifies the delegation; a
+	// domain that carries other DNS (mail, a website) is refused there, with a label of
+	// it to declare instead, or the domain kept. An entry with dns "customer" is kept at
+	// the customer's DNS provider, which stays authoritative for it: 2-net renders no
+	// zone for it, and the provider carries the records bedrock prints (an A record per
+	// hostname declared on the domain, at the load balancer's address, and the
+	// certificate's authorization CNAME), which the check verifies instead. Either way
+	// 2-net holds a DNS authorization, a managed certificate for the domain and one label
+	// below it, and the certificate map's entries; an application declares the hostnames
+	// it serves on the domain (hostnames.<site>.vanity in its placement, the domain
+	// itself or a label of it), and the organization records them with the others and
+	// refuses a hostname under no domain declared here. A delegated vanity domain may be
+	// registered here too (registrations in 2-net/terraform.tfvars, bedrock domain add),
+	// as the apps domain may; the registration then points at its zone.
+	VanityDomains VanityDomains `json:"vanityDomains,omitempty"`
 	// ZoneReplacement, while true, renders 2-net's apps zone and its parked zones without
 	// prevent_destroy, so the change that makes a zone again (a new appsDomain, a
 	// replacement) can be planned and applied; false, the default, renders the rule that
@@ -570,7 +582,7 @@ func (p *Placement) Validate() error {
 	}
 	for _, validate := range []func() error{
 		p.validateDirectoryCustomer, p.validateBotAccount, p.validateGithubApps, p.validateAppNames, p.validateApprovingReviews, p.validateCloudBuild,
-		p.validateBedrockPin, p.validateProjects,
+		p.validateBedrockPin, p.validateProjects, p.validateMonthlyBudget,
 	} {
 		if err := validate(); err != nil {
 			return err
@@ -591,6 +603,22 @@ func (p *Placement) Validate() error {
 	}
 
 	return p.validateHosting()
+}
+
+// validateMonthlyBudget requires the spend budget: a hosting organization's on its
+// folder, a root organization's on the whole billing account, each a positive whole
+// amount in the billing account's currency a month.
+func (p *Placement) validateMonthlyBudget() error {
+	if p.MonthlyBudget <= 0 {
+		where := "its folder"
+		if p.IsRoot() {
+			where = "the whole billing account"
+		}
+
+		return errors.Newf("monthlyBudget is missing or not positive: the spend budget on %s, in whole units of the billing account's currency a month, which the root organization makes and keeps", where)
+	}
+
+	return nil
 }
 
 // validateHosting holds a hosting organization's placement to what the six layers render
@@ -1015,15 +1043,20 @@ func (p *Placement) VanityNames(domain string) string {
 }
 
 // validateVanityDomains refuses a vanity domain that is not a bare lowercase domain, the
-// apps domain or a name under or above it, one listed twice or under another listed (one
-// zone serves a domain and everything under it), and one whose names in 2-net would not
-// fit. The organization's own domain is a vanity domain like any other: whether it is
-// delegated whole or by a label is the live domain check's call, from what its apex
-// answers, not the placement's.
+// apps domain or a name under or above it, one under another declared (one zone, or one
+// certificate, serves a domain and everything one level under it), one whose dns says
+// something other than kept at the customer, and one whose names in 2-net would not fit.
+// The organization's own domain is a vanity domain like any other: whether it is
+// delegated whole, by a label, or kept is the customer's call, which the live domain
+// check reads from what its apex answers.
 func (p *Placement) validateVanityDomains() error {
-	for i, d := range p.VanityDomains {
+	names := p.VanityDomainNames()
+	for i, d := range names {
 		if !derive.HostnameOK(d) {
 			return errors.Newf("vanityDomains names %q, which is not a bare lowercase domain such as example.com", d)
+		}
+		if v := p.VanityDomains[d]; v.DNS != "" && v.DNS != DNSCustomer {
+			return errors.Newf("vanityDomains.%s.dns is %q: leave it out for a domain delegated to the network project, or set it to %q for one kept at the customer's DNS provider, which then carries the records bedrock domain check prints", d, v.DNS, DNSCustomer)
 		}
 		switch {
 		case d == p.AppsDomain:
@@ -1033,12 +1066,9 @@ func (p *Placement) validateVanityDomains() error {
 		case strings.HasSuffix(p.AppsDomain, "."+d):
 			return errors.Newf("vanityDomains names %q, which is above the apps domain %s: one zone would serve both", d, p.AppsDomain)
 		}
-		for _, earlier := range p.VanityDomains[:i] {
-			switch {
-			case d == earlier:
-				return errors.Newf("vanityDomains lists %q twice", d)
-			case strings.HasSuffix(d, "."+earlier), strings.HasSuffix(earlier, "."+d):
-				return errors.Newf("vanityDomains lists %q and %q, one under the other: the zone of a vanity domain serves everything under it, so the one above is enough", earlier, d)
+		for _, earlier := range names[:i] {
+			if strings.HasSuffix(d, "."+earlier) || strings.HasSuffix(earlier, "."+d) {
+				return errors.Newf("vanityDomains lists %q and %q, one under the other: a vanity domain's zone, or its certificate, serves everything one level under it, so the one above is enough", earlier, d)
 			}
 		}
 		if name := p.VanityNames(d); len(name) > resourceNameLimit {
@@ -1053,7 +1083,7 @@ func (p *Placement) validateVanityDomains() error {
 // one label below it, and the label (empty for the domain itself); none when the
 // hostname is on no declared vanity domain.
 func (p *Placement) VanityDomainOf(host string) (domain, label string, ok bool) {
-	for _, d := range p.VanityDomains {
+	for _, d := range p.VanityDomainNames() {
 		if host == d {
 			return d, "", true
 		}
@@ -2081,7 +2111,7 @@ func (p *Placement) validateRecordedHostname(app, env, host string) error {
 		case len(p.VanityDomains) == 0:
 			return errors.Newf("hostnames.%s.%s %q is not under the apps domain %s, and the placement declares no vanity domain (vanityDomains)", app, env, host, p.AppsDomain)
 		default:
-			return errors.Newf("hostnames.%s.%s %q is under neither the apps domain %s nor a declared vanity domain (%s) as the domain itself or one label under it: declare the domain in vanityDomains, or serve the site under a label of a declared one", app, env, host, p.AppsDomain, strings.Join(p.VanityDomains, ", "))
+			return errors.Newf("hostnames.%s.%s %q is under neither the apps domain %s nor a declared vanity domain (%s) as the domain itself or one label under it: declare the domain in vanityDomains, or serve the site under a label of a declared one", app, env, host, p.AppsDomain, strings.Join(p.VanityDomainNames(), ", "))
 		}
 	}
 	if strings.Contains(label, ".") {

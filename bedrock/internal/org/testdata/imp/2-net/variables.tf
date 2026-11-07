@@ -11,22 +11,24 @@ variable "apps_domain" {
 
 variable "vanity_domains" {
   description = <<-EOT
-    Domains delegated whole to this project beside the apps domain, each a
-    client's own domain an application serves on (its brand domain, in
-    production): this layer serves each with a zone, a DNS authorization, a
-    managed certificate for the domain and one label below it, and the
-    certificate map's entries, as it serves the apps domain, and the host
-    rules come from hosts as for any hostname. Rendered from placement.json
+    The vanity domains beside the apps domain, each a client's own domain an
+    application serves on (its brand domain, in production): this layer holds
+    for each a DNS authorization, a managed certificate for the domain and one
+    label below it, and the certificate map's entries, as for the apps domain,
+    and the host rules come from hosts as for any hostname. A domain not in
+    customer_dns_domains is delegated whole to this project and served by a
+    zone here, as the apps domain is. Rendered from placement.json
     (vanityDomains): an application declares the hostnames it serves on one in
     its own placement (hostnames.<site>.vanity, the domain itself or one label
     under it), and the organization records them with the others. A domain
-    that carries other DNS (mail, a website) is never one; bedrock domain
-    check refuses it and names a label of it to declare instead. A vanity
-    domain may be registered here too (registrations), as the apps domain may;
-    the registration then points at the domain's zone.
+    that carries other DNS (mail, a website) is never delegated whole; bedrock
+    domain check refuses it and names the two ways out, a label of it declared
+    instead, or the domain kept at its provider (customer_dns_domains). A
+    delegated vanity domain may be registered here too (registrations), as
+    the apps domain may; the registration then points at the domain's zone.
   EOT
   type        = list(string)
-  default     = ["harborlights.example"]
+  default     = ["beacon.example", "harborlights.example"]
 
   validation {
     condition     = alltrue([for d in var.vanity_domains : can(regex("^([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\\.)+[a-z]{2,}$", d))])
@@ -36,6 +38,29 @@ variable "vanity_domains" {
   validation {
     condition     = !contains(var.vanity_domains, var.apps_domain)
     error_message = "The apps domain has its own zone and certificate; a vanity domain is another domain."
+  }
+}
+
+variable "customer_dns_domains" {
+  description = <<-EOT
+    The vanity domains kept at the customer's DNS provider (vanityDomains
+    entries with dns "customer" in placement.json), each one of vanity_domains:
+    the provider stays authoritative for the domain, its mail and every other
+    record untouched, so this layer renders no zone and no record for it. The
+    customer adds the records bedrock domain check prints, as the provider's
+    form takes them: an A record per hostname the applications declare on the
+    domain (the apex, a label), at the load balancer's address, and the
+    certificate's authorization CNAME; named records, never a wildcard. The
+    check verifies them in the world's DNS instead of a delegation, and the
+    certificate is issued once the CNAME resolves. A kept domain is never
+    registered here (domains.tf).
+  EOT
+  type        = list(string)
+  default     = ["beacon.example"]
+
+  validation {
+    condition     = alltrue([for d in var.customer_dns_domains : contains(var.vanity_domains, d)])
+    error_message = "Every domain kept at the customer's DNS provider is one of the vanity domains."
   }
 }
 
@@ -105,8 +130,8 @@ variable "vanity_extra_records" {
   default = {}
 
   validation {
-    condition     = alltrue([for d, rs in var.vanity_extra_records : contains(var.vanity_domains, d)])
-    error_message = "Each key of vanity_extra_records is one of the vanity domains (vanityDomains in placement.json)."
+    condition     = alltrue([for d, rs in var.vanity_extra_records : contains(var.vanity_domains, d) && !contains(var.customer_dns_domains, d)])
+    error_message = "Each key of vanity_extra_records is one of the vanity domains delegated here (vanityDomains in placement.json, without dns customer): a kept domain's records are the customer's."
   }
 
   validation {
