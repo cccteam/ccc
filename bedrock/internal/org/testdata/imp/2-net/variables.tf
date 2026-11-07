@@ -1,5 +1,5 @@
 variable "apps_domain" {
-  description = "Domain the applications are served under: app.domain for prd, app-stg.domain, app-tst.domain, and prN-app-tst.domain for pull requests. Never the identity domain (decided 2026-09-26); registered by this layer when it is listed in var.registrations."
+  description = "Domain the applications are served under: app.domain for prd, app-stg.domain, app-tst.domain, and app-pr<N>.domain for pull requests, one label under the domain, served by the wildcard with no entry per pull request. Never the identity domain (decided 2026-09-26); registered by this layer when it is listed in var.registrations."
   type        = string
   default     = "apps.imp.example"
 

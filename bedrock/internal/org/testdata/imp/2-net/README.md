@@ -143,11 +143,11 @@ backend service does not exist, or whose project
 has not made the grant, fails the apply here with a permission or not-found
 error on the URL map.
 
-Pull-request environments (`harbor-pr<N>.apps.imp.example`) follow
-the same path, which means an entry here per open pull request. That is a
-cost of keeping the URL map in one place; the alternative, letting the tst
-environment write host rules into this URL map, would hand a pull-request
-build write access to the shared load balancer. Left as is.
+Pull-request environments (`harbor-pr<N>.apps.imp.example`) take
+no entry here: the apps domain's wildcard record and certificate cover them,
+and the pull-request backend in the tst environment picks the service by the
+hostname's first label, so an open pull request adds nothing to this layer
+and no pull-request build writes to the shared load balancer.
 
 ## Delegating the domain
 
@@ -165,7 +165,12 @@ the check finds it:
   zone: no registrar step. The registration keeps those name servers from
   then on; only a zone made again parts them ("Making a zone again"). Cloud
   Domains accepts no transfer in, so a domain the organization already owns
-  is delegated instead.
+  is delegated instead. A registration lives and dies with its project: it
+  cannot move to another project, and deleting the project loses the domain
+  past a thirty-day restore window. So registering here suits a permanent
+  organization alone; an organization that will be torn down, a laboratory
+  among them, registers no domain and delegates one registered at the
+  company's registrar, as the next two shapes describe.
 - **Delegated at the apex.** A domain as it is registered (its apex, such
   as `example.com`) with nothing else on it, registered anywhere: its name
   servers at the registrar become the zone's. One step, once.

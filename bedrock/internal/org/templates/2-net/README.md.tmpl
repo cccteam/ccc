@@ -165,7 +165,12 @@ the check finds it:
   zone: no registrar step. The registration keeps those name servers from
   then on; only a zone made again parts them ("Making a zone again"). Cloud
   Domains accepts no transfer in, so a domain the organization already owns
-  is delegated instead.
+  is delegated instead. A registration lives and dies with its project: it
+  cannot move to another project, and deleting the project loses the domain
+  past a thirty-day restore window. So registering here suits a permanent
+  organization alone; an organization that will be torn down, a laboratory
+  among them, registers no domain and delegates one registered at the
+  company's registrar, as the next two shapes describe.
 - **Delegated at the apex.** A domain as it is registered (its apex, such
   as `example.com`) with nothing else on it, registered anywhere: its name
   servers at the registrar become the zone's. One step, once.
