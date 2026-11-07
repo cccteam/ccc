@@ -20,8 +20,13 @@ There is no VPC in this project. See "Cross-project backends" for why.
   declares for its site (its code by default).
 - A Cloud DNS public zone for `apps_domain`, DNSSEC on, with A records for
   the apex and the wildcard pointing at the address, the authorization CNAME
-  copied from the DNS authorization, and whatever `extra_records` lists. The
-  zone carries `prevent_destroy`, as every zone a registration here points at
+  copied from the DNS authorization, and whatever `extra_records` lists. In
+  an organization the root organization created, the zone is the creation's,
+  made as the creating identity (Cloud DNS asks whoever makes a zone to own
+  the domain in Google's webmaster verification, which the root
+  organization's apply verifies that identity as) and adopted here through an
+  `import` block from `placement.json`'s
+  `appsZone`. The zone carries `prevent_destroy`, as every zone a registration here points at
   does, so neither a plan nor a stray destroy can make it again on other name
   servers ("Making a zone again").
 - Per vanity domain (`vanity_domains`, from `placement.json`'s
@@ -138,11 +143,11 @@ backend service does not exist, or whose project
 has not made the grant, fails the apply here with a permission or not-found
 error on the URL map.
 
-Pull-request environments (`harbor-pr<N>.apps.imp.example`) follow
-the same path, which means an entry here per open pull request. That is a
-cost of keeping the URL map in one place; the alternative, letting the tst
-environment write host rules into this URL map, would hand a pull-request
-build write access to the shared load balancer. Left as is.
+Pull-request environments (`harbor-pr<N>.apps.imp.example`) take
+no entry here: the apps domain's wildcard record and certificate cover them,
+and the pull-request backend in the tst environment picks the service by the
+hostname's first label, so an open pull request adds nothing to this layer
+and no pull-request build writes to the shared load balancer.
 
 ## Delegating the domain
 
@@ -160,7 +165,12 @@ the check finds it:
   zone: no registrar step. The registration keeps those name servers from
   then on; only a zone made again parts them ("Making a zone again"). Cloud
   Domains accepts no transfer in, so a domain the organization already owns
-  is delegated instead.
+  is delegated instead. A registration lives and dies with its project: it
+  cannot move to another project, and deleting the project loses the domain
+  past a thirty-day restore window. So registering here suits a permanent
+  organization alone; an organization that will be torn down, a laboratory
+  among them, registers no domain and delegates one registered at the
+  company's registrar, as the next two shapes describe.
 - **Delegated at the apex.** A domain as it is registered (its apex, such
   as `example.com`) with nothing else on it, registered anywhere: its name
   servers at the registrar become the zone's. One step, once.
@@ -257,6 +267,16 @@ and the check names a label of it to declare as the vanity domain instead
 set, the third step above), the application's hostnames then on that label.
 The `vanity_domains` output carries each zone's name servers and
 authorization record.
+
+A vanity domain delegated whole often needs a few records of its own beside
+the load balancer's: the null SPF (`v=spf1 -all`) and DMARC reject policy a
+domain that sends no mail publishes against spoofing, a site-verification
+TXT record, a CAA record admitting `pki.goog`. `vanity_extra_records` in
+`terraform.tfvars`, keyed by the domain, takes them as `extra_records` takes
+the apps domain's, rendered into that domain's zone. Never a mail-exchanger
+record: a zone here carries no customer's mail, and a domain that carries
+mail is delegated as a label, which the check's refusal of an occupied apex
+already decides.
 
 A domain bought here before it was declared a vanity domain had a parked
 zone (`domains.tf`); declaring it moves that zone, under the same name, to
@@ -361,8 +381,9 @@ applies it as the layer identity. Both hold
 their state-bucket grants from `1-org`. The first `init` writes
 `.terraform.lock.hcl`; commit it.
 
-By hand, for recovery, the bootstrap administrator applies it with their own
-sign-in and the organization-level roles the seed names (no entitlement
+By hand, for recovery, a person signed in as the break-glass account applies
+it, with the roles the account grants itself on the organization's folder for
+the run (`0-bootstrap/README.md`, "Recovery, by hand"; no entitlement
 covers a shared layer; `0-bootstrap/README.md`, "Recovery, by hand"):
 
 ```bash
@@ -382,6 +403,7 @@ tofu apply
 | `serving` | Whether the listeners stand and hosts route; `bedrock org teardown` renders it false. | `bool` | `true` | no |
 | `ssl_policy_profile` | Cipher profile of the SSL policy. | `string` | `"MODERN"` | no |
 | `vanity_domains` | Domains delegated whole beside the apps domain, each with a zone and a certificate of its own; rendered from `placement.json`. | `list(string)` | `["harborlights.example"]` | no |
+| `vanity_extra_records` | Further records in a vanity domain's zone, keyed by the domain (a null SPF, a DMARC policy, verification, CAA; never a mail-exchanger record). | `map(list(object))` | `{}` | no |
 
 Project ID and number, the layer identity, the boot project, and the prefix
 are read from `1-org`'s state rather than declared.

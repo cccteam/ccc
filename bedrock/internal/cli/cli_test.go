@@ -1653,7 +1653,7 @@ func TestDeployRelease(t *testing.T) {
 	}{
 		{
 			name:    "the step's variables are required, the app's id first",
-			wantErr: "RELEASE_APP_ID is not set: the release trigger's step passes the release app, its key's pinned version, the repository and the pushed branch to the command",
+			wantErr: "RELEASE_APP_ID is not set: the release trigger's step passes the release app, its key, the repository and the pushed branch to the command",
 		},
 		{
 			name:    "the repository is owner/name",

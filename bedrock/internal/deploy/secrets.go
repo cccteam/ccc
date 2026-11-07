@@ -1,6 +1,6 @@
 // secrets.go is the deploy sequence's seam to Secret Manager: the image build reads the
 // build secrets it passes to docker, and the talk-back reads the deployer app's private
-// key, each as the build's deploy identity, by the pinned version the stack names; the
+// key, each as the build's deploy identity, by the version the stack names; the
 // plan steps read the generated secrets' containers as the identity they plan as, and a
 // tag build's seeds one (generated.go).
 

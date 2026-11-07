@@ -30,12 +30,15 @@
 # The connection and the repository link exist once placement.json records
 # the Cloud Build GitHub authorization (cloudBuildInstallationId,
 # cloudBuildTokenSecretVersion; README, "The Cloud Build GitHub
-# authorization"): the browser step, in this project's Cloud Build console,
-# before this layer's first apply. Until then the rest of the layer applies
-# and nothing runs. The token secret the browser step writes lives in this
-# project; the environment projects' Cloud Build service agents read it for
-# their 2-env connections, granted here by the numbers placement.json
-# records (projectNumbers).
+# authorization"),
+# which the root organization's bootstrap made once, in its root project, and
+# this placement carries (the same two values as that organization's). Until
+# then the rest of the layer applies and nothing runs.
+# The token secret lives in that organization's root project; this layer
+# grants this project's Cloud Build service agent its read, for the triggers'
+# connection, and each environment project's, for its 2-env connection, by
+# the numbers placement.json records (projectNumbers), with the policy
+# administration the root organization gave the boot identity (github.tf).
 # ---------------------------------------------------------------------------
 
 locals {
@@ -43,9 +46,10 @@ locals {
   region_code = "uc1"
 
   # The Cloud Build GitHub App's installation on the organization and the
-  # token secret's version, from placement.json; null until recorded.
+  # token secret's alias current, from placement.json (a numbered version is
+  # taken too); null until recorded.
   cloud_build_installation_id      = 12345678
-  cloud_build_token_secret_version = "projects/imp-boot-gbl-core-a1b2/locations/us-central1/secrets/github-github-oauthtoken-abcdef/versions/1"
+  cloud_build_token_secret_version = "projects/imr-root-gbl-core-c3d4/secrets/imr-root-gbl-github-token/versions/current"
   connected                        = local.cloud_build_installation_id != null && local.cloud_build_token_secret_version != null
 
   # The token secret's resource name without its version, in either of the
@@ -55,9 +59,12 @@ locals {
   # (projects/P/secrets/N) added by hand works the same way.
   token_parts    = local.connected ? split("/", local.cloud_build_token_secret_version) : []
   token_regional = length(local.token_parts) == 8
-  token_project  = local.connected ? local.token_parts[1] : null
-  token_location = local.token_regional ? local.token_parts[3] : null
-  token_secret   = local.connected ? local.token_parts[local.token_regional ? 5 : 3] : null
+  # Until the authorization is recorded the three stand in and are never used:
+  # the grants on the secret have no instance then, and a required argument
+  # set to null fails the configuration's validation even so.
+  token_project  = local.connected ? local.token_parts[1] : module.boot_project.project_id
+  token_location = local.token_regional ? local.token_parts[3] : local.region
+  token_secret   = local.connected ? local.token_parts[local.token_regional ? 5 : 3] : "unrecorded"
 
   # The Cloud Build service agents that read the token: this project's, for
   # the triggers' connection, and each environment project's placement.json
@@ -73,9 +80,9 @@ locals {
     local.environment_project_numbers,
   ) : {}
 
-  # The two runner identities, with the keys each reads: the planner posts
-  # the plans as the deployer app and mints 1-org's GitHub token from the
-  # infrastructure app's key; the applier mints the same token.
+  # The two runner identities, with the keys each reads (github.tf): the
+  # planner posts the plans as the deployer app and mints 1-org's GitHub
+  # token from the infrastructure app's key; the applier mints the same token.
   runners = {
     planner = google_service_account.planner
     applier = google_service_account.applier
@@ -83,10 +90,6 @@ locals {
   runner_keys = {
     for pair in setproduct(keys(local.runners), ["infrastructure", "deployer"]) :
     "${pair[0]}__${pair[1]}" => { runner = pair[0], key = pair[1] }
-  }
-  key_containers = {
-    infrastructure = google_secret_manager_secret.github_infrastructure_key.secret_id
-    deployer       = google_secret_manager_secret.github_deployer_key.secret_id
   }
 }
 
@@ -164,8 +167,10 @@ resource "google_cloudbuildv2_repository" "infrastructure" {
 # the build logs (Cloud Logging, which a build as a user-specified service
 # account writes to), the connection's read token (bedrock org plan and apply
 # read the pull request's and the pushes' changed files through it), the two
-# apps' keys, and, for the applier, the markers under applied/ in the state
-# bucket that record each layer's last successful apply.
+# apps' keys, the read of the organization's folder, its projects and their IAM
+# policies for bedrock org check's leftover report, and, for the applier, the
+# markers under applied/ in the state bucket that record each layer's last
+# successful apply.
 # ---------------------------------------------------------------------------
 
 resource "google_service_account" "planner" {
@@ -200,9 +205,25 @@ resource "google_project_iam_member" "runner_builds" {
   member  = each.value.member
 }
 
+# bedrock org check, both triggers' step before the plan or the apply, lists the
+# grants a hand apply left (the leftover report): it finds the
+# organization's folder and its projects (Browser: resourcemanager.folders.get,
+# which Security Reviewer lacks and a folder search needs) and reads their IAM
+# policies (Security Reviewer), on the folder, for both runners.
+resource "google_folder_iam_member" "runner_policy_reader" {
+  for_each = {
+    for pair in setproduct(keys(local.runners), ["roles/browser", "roles/iam.securityReviewer"]) :
+    "${pair[0]}__${pair[1]}" => { runner = pair[0], role = pair[1] }
+  }
+
+  folder = google_folder.organization.name
+  role   = each.value.role
+  member = local.runners[each.value.runner].member
+}
+
 # Cloud Build runs a build as the trigger's service account on the service
 # agent's say-so, and whoever creates the trigger acts as that account: the
-# bootstrap administrator's Owner covers the first apply, the boot identity
+# creating identity's Owner covers the first apply, the boot identity
 # every apply after it.
 resource "google_service_account_iam_member" "runner_agent_user" {
   for_each = local.runners
@@ -246,7 +267,7 @@ resource "google_service_account_iam_member" "boot_plan_planner" {
 }
 
 # A plan of this layer reads the connection, the repository link and the two
-# triggers as the boot plan identity, whose organization-level reads
+# triggers as the boot plan identity, whose reads on the organization's folder
 # (var.boot_plan_roles) carry nothing of Cloud Build: the connection and the
 # link through roles/cloudbuild.connectionViewer, a regional trigger through
 # roles/cloudbuild.builds.viewer (its read is answered on cloudbuild.builds.get;
@@ -273,8 +294,8 @@ resource "google_cloudbuildv2_connection_iam_member" "runner_read_token" {
 resource "google_secret_manager_secret_iam_member" "runner_keys" {
   for_each = local.runner_keys
 
-  project   = module.boot_project.project_id
-  secret_id = local.key_containers[each.value.key]
+  project   = local.keys_project
+  secret_id = local.key_secrets[each.value.key]
   role      = "roles/secretmanager.secretAccessor"
   member    = local.runners[each.value.runner].member
 }

@@ -380,7 +380,7 @@ func newDeployRelease(d deps) *cobra.Command {
 		Short: "Cut the application's releases: release-please as the release GitHub App",
 		Long: `release runs in the stack's release trigger, in the first environment, on every push to the default
 branch or a patch line, as the application's release identity, from steps a pull request cannot
-edit. It mints the release GitHub App's installation token from its key's pinned version
+edit. It mints the release GitHub App's installation token from its key's alias in Secret Manager
 (RELEASE_APP_ID and RELEASE_KEY_SECRET, which the trigger passes from 2-env's outputs) and runs
 release-please, pinned, through npx, twice for the pushed branch (REPO_FULL_NAME, BRANCH_NAME):
 github-release, which makes the tag and the GitHub Release of a release pull request the push
@@ -844,7 +844,7 @@ version, which the stack passes as _DEPLOYER_APP_ID and _DEPLOYER_KEY_SECRET): a
 named <app>-pr<N> carrying the environment's URL, which the pull request's sidebar shows, and a
 comment with the release and the database mode. A teardown marks every deployment of the
 environment inactive instead. The app's installation token is minted when there is something to
-say, from its private key read by the pinned version, and is kept nowhere. A tag build, or an
+say, from its private key read by its alias in Secret Manager, and is kept nowhere. A tag build, or an
 environment without a deployer app yet, says nothing.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {

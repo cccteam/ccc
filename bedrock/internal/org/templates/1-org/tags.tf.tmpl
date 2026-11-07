@@ -12,30 +12,44 @@
 # where the tag is owned, from var.public_invokers.
 # ---------------------------------------------------------------------------
 
-# The key's name ends with the organization's suffix: a tag key sits at the
-# organization node (a folder cannot hold one), where names are unique per
-# parent and held after a delete.
+# One key per environment project, created in it: a tag key under a project
+# is attached within that project, which is where the services are, and
+# nothing of this organization's sits at the organization node, whose names
+# are shared by every organization under it and held after a delete. The
+# parent is the project's number, the form Google records.
 resource "google_tags_tag_key" "public_invoker" {
-  parent      = local.org_name
-  short_name  = "public-invoker-${local.boot.organization_suffix}"
+  for_each = local.environment_layers
+
+  parent      = "projects/${module.project[each.key].project_number}"
+  short_name  = "public-invoker"
   description = "true on a Cloud Run service that may grant roles/run.invoker to allUsers, for the load balancer; see org-policies.tf."
+
+  depends_on = [time_sleep.apis_ready]
 }
 
 resource "google_tags_tag_value" "public_invoker" {
-  parent      = google_tags_tag_key.public_invoker.id
+  for_each = local.environment_layers
+
+  parent      = google_tags_tag_key.public_invoker[each.key].id
   short_name  = "true"
   description = "The service may be invoked without an identity; its ingress keeps the callers to the load balancer."
 }
 
-# Each application's apply identity in every environment may bind the value to
-# its own Cloud Run services (public-invokers.auto.tfvars, rendered from
-# placement.json for the applications whose registration is past their
-# identities, after 2-env has created them: a grant on an identity that does
-# not exist is refused).
+# Each application's apply identity in every environment it is placed in may
+# bind that environment's value to its own Cloud Run services
+# (public-invokers.auto.tfvars, rendered from placement.json for the
+# applications whose registration is past their identities, after 2-env has
+# created them: a grant on an identity that does not exist is refused).
 resource "google_tags_tag_value_iam_member" "public_invoker" {
-  for_each = toset(flatten(values(var.public_invokers)))
+  for_each = {
+    for pair in flatten([
+      for app, envs in var.public_invokers : [
+        for env, member in envs : { key = "${app}__${env}", env = env, member = member }
+      ]
+    ]) : pair.key => pair
+  }
 
-  tag_value = google_tags_tag_value.public_invoker.id
+  tag_value = google_tags_tag_value.public_invoker[each.value.env].id
   role      = "roles/resourcemanager.tagUser"
-  member    = each.value
+  member    = each.value.member
 }

@@ -69,6 +69,11 @@ linters:
             - cloud.google.com/go/domains
             # deploy record writes the deployment record to the records bucket.
             - cloud.google.com/go/storage
+            # The root organization sets the organization-policy baseline on each hosting
+            # organization's folders through the Org Policy client; a managed constraint's
+            # parameters are a protobuf Struct.
+            - cloud.google.com/go/orgpolicy
+            - google.golang.org/protobuf/types/known/structpb
             # deploy resolve reads the build and mints its GitHub token through the Cloud
             # Build REST API with the process's default credentials.
             - golang.org/x/oauth2/google
@@ -77,6 +82,10 @@ linters:
             # the plan ran as, impersonated with the deploy identity's credentials.
             - google.golang.org/api/impersonate
             - google.golang.org/api/idtoken
+            # The root organization's apply verifies the applier and the creating
+            # identity as its domains' owners in Google's webmaster verification, as
+            # each identity, impersonated with the verification's own scope.
+            - google.golang.org/api/siteverification/v1
             # A restore run deletes a Firestore database's documents through the Firestore
             # REST API as the apply identity, impersonated the same way; the token source
             # becomes the HTTP client that calls it.
@@ -105,6 +114,9 @@ linters:
             # org check lists the API keys of the environment projects through the API
             # Keys REST client, naming each key that carries no API restriction.
             - google.golang.org/api/apikeys
+            # The founding of a hosting organization enables the new boot project's APIs
+            # through Service Usage's REST client, as the hand seed's gcloud does.
+            - google.golang.org/api/serviceusage
             # In the application layout the application is named by the module at the
             # repository root, read from its go.mod with the same parser impulse's
             # reader uses.
@@ -126,6 +138,14 @@ linters:
             - google.golang.org/api/dns/v1
             - google.golang.org/api/googleapi
             - golang.org/x/net/publicsuffix
+            # The root organization's engine makes the Cloud Build connection and the
+            # repository link through the v2 REST client and the triggers through v1; a
+            # bucket grant's condition is the IAM expression type, and a trigger's or a
+            # custom role's update names its fields with a field mask.
+            - google.golang.org/api/cloudbuild/v1
+            - google.golang.org/api/cloudbuild/v2
+            - google.golang.org/genproto/googleapis/type/expr
+            - google.golang.org/protobuf/types/known/fieldmaskpb
     exhaustive:
       default-signifies-exhaustive: true
     funlen:

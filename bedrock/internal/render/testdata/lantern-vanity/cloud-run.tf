@@ -113,13 +113,14 @@ resource "google_cloud_run_v2_service" "app" {
 # The load balancer forwards to the service with no identity of its own, so
 # invocation is open to all callers; ingress above keeps those callers to the
 # load balancer and the VPC. CCC's reference deployment runs the same pair. The
-# organization's domain policy refuses allUsers unless the service carries the
-# public-invoker tag (1-org tags.tf), so the tag is bound first.
+# environment folder's domain policy refuses allUsers unless the service carries
+# the environment project's public-invoker tag (1-org tags.tf), so the tag is
+# bound first.
 resource "google_tags_location_tag_binding" "public_invoker" {
   for_each = google_cloud_run_v2_service.app
 
   parent    = "//run.googleapis.com/projects/${local.env.project_number}/locations/${each.value.location}/services/${each.value.name}"
-  tag_value = local.org.public_invoker_tag_value
+  tag_value = local.org.public_invoker_tag_value[var.environment]
   location  = each.value.location
 }
 

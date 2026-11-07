@@ -1,5 +1,5 @@
 variable "apps_domain" {
-  description = "Domain the applications are served under: app.domain for prd, app-stg.domain, app-tst.domain, and prN-app-tst.domain for pull requests. Never the identity domain (decided 2026-09-26); registered by this layer when it is listed in var.registrations."
+  description = "Domain the applications are served under: app.domain for prd, app-stg.domain, app-tst.domain, and app-pr<N>.domain for pull requests, one label under the domain, served by the wildcard with no entry per pull request. Never the identity domain (decided 2026-09-26); registered by this layer when it is listed in var.registrations."
   type        = string
   default     = "apps.imp.example"
 
@@ -71,6 +71,52 @@ variable "extra_records" {
   validation {
     condition     = length(distinct([for r in var.extra_records : "${r.name}/${r.type}"])) == length(var.extra_records)
     error_message = "Each name/type pair may appear only once in extra_records; put several values in one entry's rrdatas."
+  }
+}
+
+variable "vanity_extra_records" {
+  description = <<-EOT
+    Further records in a vanity domain's zone, keyed by the domain, beyond the
+    load balancer A records and the certificate authorization this layer
+    manages itself: what a domain delegated whole publishes to prove itself
+    and to say it sends no mail. A null SPF (v=spf1 -all) and a DMARC reject
+    policy for a domain that sends no mail, a site-verification TXT record, a
+    CAA record admitting pki.goog. Never a mail-exchanger record: a zone here
+    carries no customer's mail, and a domain that carries mail is delegated
+    as a label instead (README.md, "Vanity domains").
+
+    Each entry is as in extra_records: name ("@" for the apex), type, ttl
+    (300 unless given), rrdatas (TXT values quoted).
+
+    Example:
+      {
+        "fastcars.app" = [
+          { name = "@", type = "TXT", rrdatas = ["\"v=spf1 -all\""] },
+          { name = "_dmarc", type = "TXT", rrdatas = ["\"v=DMARC1; p=reject\""] },
+        ]
+      }
+  EOT
+  type = map(list(object({
+    name    = string
+    type    = string
+    ttl     = optional(number, 300)
+    rrdatas = list(string)
+  })))
+  default = {}
+
+  validation {
+    condition     = alltrue([for d, rs in var.vanity_extra_records : contains(var.vanity_domains, d)])
+    error_message = "Each key of vanity_extra_records is one of the vanity domains (vanityDomains in placement.json)."
+  }
+
+  validation {
+    condition     = alltrue([for d, rs in var.vanity_extra_records : alltrue([for r in rs : r.type != "MX"])])
+    error_message = "A vanity domain's zone carries no mail-exchanger record: a domain that carries mail is delegated as a label instead."
+  }
+
+  validation {
+    condition     = alltrue([for d, rs in var.vanity_extra_records : length(distinct([for r in rs : "${r.name}/${r.type}"])) == length(rs)])
+    error_message = "Each name/type pair may appear only once per domain in vanity_extra_records; put several values in one entry's rrdatas."
   }
 }
 

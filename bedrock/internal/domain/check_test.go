@@ -168,7 +168,7 @@ func authForm(label string) string {
 	return host + " CNAME " + strings.TrimSuffix(authData, ".")
 }
 
-// TestCheck classifies the apps domain, a vanity domain the same way, and a zones
+// TestCheck classifies the apps domain, a vanity domain the same way, and a root
 // organization's domain with the labels its zone hands onward, over a fake Cloud DNS and a
 // fake resolver, and holds every record line the check prints, byte for byte, to the
 // fakes' values.
@@ -182,7 +182,7 @@ func TestCheck(t *testing.T) {
 		resolver *fakeResolver
 		// vanity marks the domain a vanity domain of the placement's.
 		vanity bool
-		// delegating marks the domain a zones organization's, whose zone holds the
+		// delegating marks the domain a root organization's, whose zone holds the
 		// delegation alone, with the labels it hands onward.
 		delegating bool
 		labels     []Label
@@ -422,7 +422,7 @@ func TestCheck(t *testing.T) {
 			wantLines: bare(),
 		},
 		{
-			name:       "a zones organization's domain delegated, its label handed: the zone holds the delegation alone, no certificate",
+			name:       "a root organization's domain delegated, its label handed: the zone holds the delegation alone, no certificate",
 			domain:     "clientbay.example",
 			zones:      &fakeZones{zone: &Zone{DNSName: "clientbay.example.", NameServers: zoneServers}},
 			resolver:   &fakeResolver{ns: map[string][]string{"clientbay.example": zoneServers, "harbor.clientbay.example": movedServers}},
@@ -437,7 +437,7 @@ func TestCheck(t *testing.T) {
 			wantAbsent: []string{"authorization", "certificate"},
 		},
 		{
-			name:       "a zones organization's domain delegated, nothing handed yet",
+			name:       "a root organization's domain delegated, nothing handed yet",
 			domain:     "clientbay.example",
 			zones:      &fakeZones{zone: &Zone{DNSName: "clientbay.example.", NameServers: zoneServers}},
 			resolver:   &fakeResolver{ns: map[string][]string{"clientbay.example": zoneServers}},
@@ -483,7 +483,7 @@ func TestCheck(t *testing.T) {
 			},
 		},
 		{
-			name:       "a zones organization's domain not delegated: the registrar step, the labels waiting, no registration offered",
+			name:       "a root organization's domain not delegated: the registrar step, the labels waiting, no registration offered",
 			domain:     "clientbay.example",
 			zones:      &fakeZones{zone: &Zone{DNSName: "clientbay.example.", NameServers: zoneServers}},
 			resolver:   &fakeResolver{ns: map[string][]string{"clientbay.example": {"ns1.registrar.example.", "ns2.registrar.example."}}},
@@ -499,7 +499,7 @@ func TestCheck(t *testing.T) {
 			wantAbsent: []string{"bedrock domain add", "certificate", "harbor.clientbay.example is handed"},
 		},
 		{
-			name:       "a zones organization's domain answering nothing at all: no registration offered",
+			name:       "a root organization's domain answering nothing at all: no registration offered",
 			domain:     "clientbay.example",
 			zones:      &fakeZones{zone: &Zone{DNSName: "clientbay.example.", NameServers: zoneServers}},
 			resolver:   &fakeResolver{},
@@ -509,7 +509,7 @@ func TestCheck(t *testing.T) {
 			wantAbsent: []string{"bedrock domain add"},
 		},
 		{
-			name:       "a zones organization's label of a domain served elsewhere: the NS records at its provider",
+			name:       "a root organization's label of a domain served elsewhere: the NS records at its provider",
 			domain:     "zones.imp.example",
 			zones:      &fakeZones{zone: &Zone{DNSName: "zones.imp.example.", NameServers: zoneServers}},
 			resolver:   &fakeResolver{},
@@ -522,7 +522,7 @@ func TestCheck(t *testing.T) {
 			wantAbsent: []string{"certificate", "authorization"},
 		},
 		{
-			name:   "a zones organization's domain carrying mail and a website is refused, with a label of it to hold instead",
+			name:   "a root organization's domain carrying mail and a website is refused, with a label of it to hold instead",
 			domain: "clientbay.example",
 			zones:  &fakeZones{zone: &Zone{DNSName: "clientbay.example.", NameServers: zoneServers}},
 			resolver: &fakeResolver{
@@ -537,25 +537,25 @@ func TestCheck(t *testing.T) {
 				"A 192.0.2.80",
 				"MX 10 mail.example.net.",
 				"Refused: a domain that carries other DNS (a website, mail) is never delegated whole, and the names handed onward would each need their own records at its DNS provider.",
-				"Hold a label of it instead, such as apps.clientbay.example: set it in place of clientbay.example in domains in placement.json, run bedrock org render, apply 1-dns, and run bedrock domain check again for the NS records to add at the DNS provider that serves clientbay.example.",
+				"Hold a label of it instead, such as apps.clientbay.example: set it in place of clientbay.example in domains in placement.json, merge the pull request, and run bedrock domain check again for the NS records to add at the DNS provider that serves clientbay.example.",
 			},
 			wantAbsent: []string{"vanityDomains", "appsDomain", "apps_domain"},
 		},
 		{
-			name:       "no zone for a zones organization's domain: 1-dns is not applied",
+			name:       "no zone for a root organization's domain: the apply has not made it",
 			domain:     "clientbay.example",
 			zones:      &fakeZones{},
 			resolver:   &fakeResolver{},
 			delegating: true,
-			wantErr:    "no zone ex-net-gbl-dns-apps in ex-net-gbl-core-1a2b: the apply of 1-dns creates it; apply 1-dns, then check again",
+			wantErr:    "no zone ex-net-gbl-dns-apps in ex-net-gbl-core-1a2b: the root organization's apply makes it from domains in placement.json; merge the pull request that lists the domain, then check again",
 		},
 		{
-			name:       "a zones organization's zone serving another domain",
+			name:       "a root organization's zone serving another domain",
 			domain:     "clientbay.example",
 			zones:      &fakeZones{zone: &Zone{DNSName: "example.org.", NameServers: zoneServers}},
 			resolver:   &fakeResolver{},
 			delegating: true,
-			wantErr:    "the zone ex-net-gbl-dns-apps in ex-net-gbl-core-1a2b serves example.org., not the domain clientbay.example: 1-dns names a domain's zone after the domain (domains in placement.json, bedrock org render); apply 1-dns as rendered, then check again",
+			wantErr:    "the zone ex-net-gbl-dns-apps in ex-net-gbl-core-1a2b serves example.org., not the domain clientbay.example: the root organization names a domain's zone after the domain (domains in placement.json); bedrock org check says what the apply would change, and the apply makes it so",
 		},
 		{
 			name:       "a label's lookup that fails, rather than finding nothing",

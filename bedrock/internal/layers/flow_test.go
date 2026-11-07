@@ -20,6 +20,8 @@ import (
 	"testing"
 
 	"github.com/go-playground/errors/v5"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 
 	"github.com/cccteam/ccc/bedrock/internal/deploy"
 	"github.com/cccteam/ccc/bedrock/internal/github"
@@ -40,8 +42,8 @@ const (
 	infraAppID       = "5080700"
 	installation     = int64(77)
 	bucket           = "imp-boot-gbl-state-a1b2"
-	deployerVersion  = "projects/imp-boot-gbl-core-a1b2/secrets/imp-boot-gbl-github-deployer-key/versions/1"
-	infraVersion     = "projects/imp-boot-gbl-core-a1b2/secrets/imp-boot-gbl-github-infrastructure-key/versions/1"
+	deployerVersion  = "projects/imr-root-gbl-core-c3d4/secrets/imr-root-gbl-github-deployer-key/versions/current"
+	infraVersion     = "projects/imr-root-gbl-core-c3d4/secrets/imr-root-gbl-github-infrastructure-key/versions/current"
 )
 
 // appKey is the RSA key the apps' tokens are minted with in tests, made once.
@@ -226,10 +228,12 @@ func (s *fakeSecrets) open(context.Context) (deploy.Secrets, error) {
 	return s, nil
 }
 
+// Access answers the payload, or NotFound as Secret Manager does for an alias that names
+// no version.
 func (s *fakeSecrets) Access(_ context.Context, version string) ([]byte, error) {
 	payload, ok := s.payloads[version]
 	if !ok {
-		return nil, errors.Newf("NotFound: %s", version)
+		return nil, errors.Wrap(status.Errorf(codes.NotFound, "Secret Version [%s] not found", version), "secretmanager.Client.AccessSecretVersion()")
 	}
 
 	return []byte(payload), nil
@@ -378,6 +382,20 @@ func (r *fakeRunner) Output(_ context.Context, c deploy.Command, _ io.Writer) ([
 	r.ran = append(r.ran, c)
 	run := r.runs[r.key(c)]
 	r.mu.Unlock()
+	if c.Args[0] == "output" {
+		// A creation reads 1-org's outputs of the organization it creates.
+		value := func(v any) map[string]any { return map[string]any{"value": v} }
+		data, err := json.Marshal(map[string]any{
+			"project_ids":     value(map[string]string{"shr": "rgb-shr-gbl-core-e5f6", "net": "rgb-net-gbl-core-e5f6", "spn": "rgb-spn-gbl-core-e5f6", "tst": "rgb-tst-gbl-core-e5f6", "stg": "rgb-stg-gbl-core-e5f6", "prd": "rgb-prd-gbl-core-e5f6"}),
+			"project_numbers": value(map[string]string{"shr": "100000000101", "net": "100000000102", "spn": "100000000103", "tst": "100000000104", "stg": "100000000105", "prd": "100000000106"}),
+			"folder_ids":      value(map[string]string{"shared": "900000000011", "tst": "900000000012", "stg": "900000000013", "prd": "900000000014"}),
+		})
+		if err != nil {
+			return nil, errors.Wrap(err, "json.Marshal()")
+		}
+
+		return data, nil
+	}
 	changes := map[string]map[string][]string{}
 	for name, actions := range run.outputs {
 		changes[name] = map[string][]string{"actions": actions}
@@ -546,9 +564,11 @@ func TestPlanRefusals(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name    string
-		subs    func(subs map[string]string)
-		mutate  func(p *org.Placement)
+		name   string
+		subs   func(subs map[string]string)
+		mutate func(p *org.Placement)
+		// secrets replaces the payloads Secret Manager answers, when set.
+		secrets map[string]string
 		changed []string
 		runs    map[string]tofuRun
 		wantErr string
@@ -595,10 +615,18 @@ func TestPlanRefusals(t *testing.T) {
 		},
 		{
 			name:    "the deployer app not recorded: the plans stay in the log",
-			mutate:  func(p *org.Placement) { p.GithubDeployerAppID, p.GithubDeployerKeyVersion = "", "" },
+			mutate:  func(p *org.Placement) { p.GithubDeployerAppID = "" },
 			changed: []string{"2-shr/registry.tf"},
 			runs:    map[string]tofuRun{"2-shr": {text: succeededPlan}},
-			wantOut: []string{"placement.json records no githubDeployerAppId or githubDeployerKeyVersion (0-bootstrap/README.md, \"The deployer GitHub App's key\"): the plans are in this log alone until both are recorded.\n"},
+			wantOut: []string{"placement.json records no githubDeployerAppId, or no project holding the keys (0-bootstrap/README.md, \"The GitHub Apps' keys\"): the plans are in this log alone until both are recorded.\n"},
+			absent:  []string{"Posted the plans"},
+		},
+		{
+			name:    "the deployer key's alias names no version yet: the plans stay in the log",
+			secrets: map[string]string{infraVersion: "the infrastructure key"},
+			changed: []string{"2-shr/registry.tf"},
+			runs:    map[string]tofuRun{"2-shr": {text: succeededPlan}},
+			wantOut: []string{"the alias current of " + deployerVersion + " names no version: the root organization that holds the keys pins one (bedrock secret pin github-deployer-key <version> there) and its apply sets the alias; the plans are in this log alone until then.\n"},
 			absent:  []string{"Posted the plans"},
 		},
 		{
@@ -639,6 +667,9 @@ func TestPlanRefusals(t *testing.T) {
 			if tt.changed != nil {
 				f.repo.Changed[headSHA] = tt.changed
 			}
+			if tt.secrets != nil {
+				f.secrets = &fakeSecrets{payloads: tt.secrets}
+			}
 			mutate := tt.mutate
 			if mutate == nil {
 				mutate = func(*org.Placement) {}
@@ -678,11 +709,11 @@ func TestPlanOrgToken(t *testing.T) {
 		mutate  func(p *org.Placement)
 		wantErr string
 	}{
-		{name: "the token minted", mutate: func(p *org.Placement) { p.GithubDeployerAppID, p.GithubDeployerKeyVersion = "", "" }},
+		{name: "the token minted", mutate: func(p *org.Placement) { p.GithubDeployerAppID = "" }},
 		{
 			name:    "the app not recorded",
-			mutate:  func(p *org.Placement) { p.GithubInfrastructureAppID, p.GithubInfrastructureKeyVersion = "", "" },
-			wantErr: "1-org's GitHub provider needs the infrastructure GitHub App (0-bootstrap/README.md, \"The infrastructure GitHub App\"): create it, record its App ID as githubInfrastructureAppId in placement.json, add its key to imp-boot-gbl-github-infrastructure-key in the boot project with bedrock secret add github-infrastructure-key, and pin the version with bedrock secret pin github-infrastructure-key <version>, which records githubInfrastructureKeyVersion and runs bedrock org render",
+			mutate:  func(p *org.Placement) { p.GithubInfrastructureAppID = "" },
+			wantErr: "1-org's GitHub provider needs the infrastructure GitHub App, which the root organization's bootstrap made and the creation recorded (githubInfrastructureAppId in placement.json); its key is the alias current of imr-root-gbl-github-infrastructure-key in the root organization's root project, added and pinned there (bedrock secret add github-infrastructure-key, bedrock secret pin github-infrastructure-key <version>)",
 		},
 	}
 	for _, tt := range tests {
@@ -826,6 +857,90 @@ func TestApply(t *testing.T) {
 	if lastInit > firstPlan {
 		t.Errorf("a run was initialized after the first plan (init at %d, plan at %d):\n%s", lastInit, firstPlan, strings.Join(lines, "\n"))
 	}
+}
+
+// TestApplyEnvironmentsAgain: a push's apply that applied 2-env runs it once more, each
+// environment in order, when an application stands at the identities step of its
+// registration (the second pass that was the apply trigger run by hand); a run named with
+// _LAYER does not.
+func TestApplyEnvironmentsAgain(t *testing.T) {
+	t.Parallel()
+
+	registering := func(p *org.Placement) {
+		p.Applications = append(p.Applications, org.Application{Code: "quill", Repository: "quill-service"})
+		p.Registration = map[string]org.RegistrationSteps{"quill": {"tst": org.RegistrationIdentities, "stg": org.RegistrationIdentities, "prd": org.RegistrationIdentities}}
+	}
+	runs := func() map[string]tofuRun {
+		return map[string]tofuRun{"2-shr": {text: succeededPlan}, "2-net": {text: succeededPlan}, "2-env tst": {text: succeededPlan}, "2-env stg": {text: succeededPlan}, "2-env prd": {text: succeededPlan}}
+	}
+	markers := func() map[string]string {
+		return map[string]string{
+			"applied/0-bootstrap": pushSHA, "applied/1-org": baseSHA, "applied/2-spn": baseSHA, "applied/2-net": baseSHA,
+			"applied/2-env/tst": baseSHA, "applied/2-env/stg": baseSHA, "applied/2-env/prd": baseSHA,
+		}
+	}
+	applied := func(f *flow) []string {
+		var order []string
+		for _, c := range f.runner.ran {
+			if c.Args[0] == applyCommand {
+				order = append(order, f.runner.key(c))
+			}
+		}
+
+		return order
+	}
+	const again = "2-env applies once more, each environment in order: quill at the identities step of its registration, and each environment but the last grants the next environment's deploy identity read on its records bucket, from state the first pass did not have.\n"
+
+	t.Run("a push's apply", func(t *testing.T) {
+		t.Parallel()
+
+		f := newFlow(t, pushSubs(), deployerAppID, runs())
+		f.store.objects = markers()
+		dir := checkout(t, registering)
+		var out bytes.Buffer
+		if err := Apply(t.Context(), f.clients(), request(dir), &out); err != nil {
+			t.Fatalf("Apply() error = %v; output:\n%s", err, out.String())
+		}
+		if !strings.Contains(out.String(), again) {
+			t.Errorf("output lacks %q:\n%s", again, out.String())
+		}
+		if want := []string{"2-shr", "2-env tst", "2-env stg", "2-env prd", "2-net", "2-env tst", "2-env stg", "2-env prd"}; !slices.Equal(applied(f), want) {
+			t.Errorf("applied in the order %v, want %v", applied(f), want)
+		}
+	})
+	t.Run("a run named with _LAYER", func(t *testing.T) {
+		t.Parallel()
+
+		subs := pushSubs()
+		subs[layerSub] = "2-env"
+		f := newFlow(t, subs, deployerAppID, runs())
+		f.store.objects = markers()
+		dir := checkout(t, registering)
+		var out bytes.Buffer
+		if err := Apply(t.Context(), f.clients(), request(dir), &out); err != nil {
+			t.Fatalf("Apply() error = %v; output:\n%s", err, out.String())
+		}
+		if strings.Contains(out.String(), "applies once more") {
+			t.Errorf("a named run applied 2-env again:\n%s", out.String())
+		}
+		if want := []string{"2-env tst", "2-env stg", "2-env prd"}; !slices.Equal(applied(f), want) {
+			t.Errorf("applied in the order %v, want %v", applied(f), want)
+		}
+	})
+	t.Run("no application at its identities", func(t *testing.T) {
+		t.Parallel()
+
+		f := newFlow(t, pushSubs(), deployerAppID, runs())
+		f.store.objects = markers()
+		dir := checkout(t, func(*org.Placement) {})
+		var out bytes.Buffer
+		if err := Apply(t.Context(), f.clients(), request(dir), &out); err != nil {
+			t.Fatalf("Apply() error = %v; output:\n%s", err, out.String())
+		}
+		if strings.Contains(out.String(), "applies once more") || len(applied(f)) != 5 {
+			t.Errorf("2-env applied again with nobody registering (%v):\n%s", applied(f), out.String())
+		}
+	})
 }
 
 // TestApplyNamed: _LAYER applies one layer again with no change check, and with

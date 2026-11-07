@@ -51,7 +51,7 @@ members_administrator = {
 # to the log and sends nothing.
 mail_mailbox = ""
 
-# The version of each secret an environment runs. Empty means "not yet": the
+# The version of each secret an environment runs. No entry means "not yet": the
 # container exists, nothing is mounted; tst alone runs that way,
 # and a release to any other environment is refused until every secret the
 # code declares is pinned there. Bump here after someone adds a version

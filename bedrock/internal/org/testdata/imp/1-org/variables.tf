@@ -1,5 +1,5 @@
 variable "allowed_contact_domains" {
-  description = "Domains permitted as Essential Contacts, enforced by the essentialcontacts.managed.allowedContactDomains constraint."
+  description = "Domains the Essential Contacts may belong to: the root organization enforces them on every folder here with the essentialcontacts.managed.allowedContactDomains constraint, from this organization's record (its README, \"The organization-policy baseline\"); this layer checks essential_contact_emails against them."
   type        = list(string)
   default     = ["@imp.example"]
 }
@@ -26,6 +26,17 @@ variable "application_repositories" {
   }
 }
 
+variable "adopted_applications" {
+  description = "The applications whose repositories existed on GitHub before they were registered, by code: this layer adopts each on its first apply through an import block (github.tf) instead of making it. Rendered into applications.auto.tfvars from placement.json's applications (adopted), which bedrock org register records from GitHub."
+  type        = list(string)
+  default     = []
+
+  validation {
+    condition     = alltrue([for a in var.adopted_applications : contains(var.applications, a)])
+    error_message = "adopted_applications names registered application codes alone."
+  }
+}
+
 variable "application_environments" {
   description = "The environments each application is placed in, by code, a prefix of the promotion order (the first environment; the first two; every one): the repository's GitHub Environments and their deployment policies are made for those alone (github.tf). Rendered into applications.auto.tfvars from placement.json's applications."
   type        = map(list(string))
@@ -37,7 +48,7 @@ variable "application_environments" {
   }
 
   validation {
-    condition     = alltrue([for app, envs in var.application_environments : length(envs) > 0 && try(envs == slice(["tst", "stg", "prd"], 0, length(envs)), false)])
+    condition     = alltrue([for app, envs in var.application_environments : length(envs) > 0 && try(envs == tolist(slice(["tst", "stg", "prd"], 0, length(envs))), false)])
     error_message = "Each application's environments are a prefix of the promotion order (`tst`, `stg` and `prd`)."
   }
 }
@@ -100,28 +111,16 @@ variable "github_infrastructure_team" {
   default     = ""
 }
 
-variable "ci_large_runner" {
-  description = "The larger runner the applications' CI runs the jobs its //impulse:ci line chooses on (the two test legs and the image build without a line): a runner's name, a runner label or a runner group, set as the organization's Actions variable CI_LARGE_RUNNER. Empty for GitHub's standard runner and no variable."
-  type        = string
-  default     = "ci-large"
-}
-
-variable "ci_large_runner_size" {
-  description = "The machine size of the larger runner when this layer creates it as a GitHub-hosted runner named var.ci_large_runner (4-core, 8-core and up, as GitHub's machine sizes list them). Empty when var.ci_large_runner names a runner or a runner group the organization already has, or is empty."
-  type        = string
-  default     = "8-core"
-}
-
-variable "ci_large_runner_maximum" {
-  description = "How many of the created larger runner run at once, the spend's ceiling (GitHub's maximum_runners); 0 leaves GitHub's default."
-  type        = number
-  default     = 10
-}
-
 variable "github_organization" {
   description = "The GitHub organization that holds the application repositories."
   type        = string
   default     = "imp-example"
+}
+
+variable "github_infrastructure_app_id" {
+  description = "App ID of the infrastructure GitHub App, which a run of the triggers acts on GitHub as and which bypasses the infrastructure repository's branch rules, written here; from placement.json (githubInfrastructureAppId), recorded by the root organization's bootstrap."
+  type        = number
+  default     = 5080700
 }
 
 variable "github_release_app_id" {
@@ -142,9 +141,10 @@ variable "layer_roles" {
     Keys map to the role_set field of each entry in var.projects.
 
     An entry is either a predefined role ("roles/...") or the bare ID of a
-    custom organization role created in custom-roles.tf (secretContainerAdmin,
+    custom role created in custom-roles.tf, in every project (secretContainerAdmin,
     storageBucketCreator). Custom roles are named by bare ID because a
-    variable default cannot reference a resource; locals.tf resolves them.
+    variable default cannot reference a resource; locals.tf resolves them,
+    in the project the identity is granted on.
   EOT
   type        = map(list(string))
   default = {
@@ -233,96 +233,13 @@ variable "layer_roles" {
   }
 }
 
-variable "org_policies" {
-  description = <<-EOT
-    Organization policy constraints applied to every folder this layer creates.
-    Each entry names a constraint and one shape:
-
-    enforce         boolean constraint; true enforces it
-    deny_all        list constraint with no permitted values
-    allowed_values  list constraint; the permitted values
-    denied_values   list constraint; the forbidden values
-
-    The default is the tf-gcp-setup baseline trimmed to constraints that cost
-    nothing operationally in this organization; the README lists what was
-    dropped and why. An organization trims or extends the list here without a
-    code change. essentialcontacts.managed.allowedContactDomains is set
-    separately, from var.allowed_contact_domains, because it takes parameters.
-  EOT
-  type = list(object({
-    constraint     = string
-    enforce        = optional(bool)
-    deny_all       = optional(bool)
-    allowed_values = optional(list(string))
-    denied_values  = optional(list(string))
-  }))
-  default = [
-    # Service account credentials. Keys are the one long-lived credential a
-    # service account can have; nothing in this organization needs one, and
-    # every runner authenticates as its service account directly.
-    { constraint = "iam.managed.disableServiceAccountKeyCreation", enforce = true },
-    { constraint = "iam.managed.disableServiceAccountKeyUpload", enforce = true },
-    { constraint = "iam.serviceAccountKeyExpiryHours", allowed_values = ["2160h"] },
-    { constraint = "iam.allowServiceAccountCredentialLifetimeExtension", deny_all = true },
-    { constraint = "iam.automaticIamGrantsForDefaultServiceAccounts", enforce = true },
-    { constraint = "iam.disableAuditLoggingExemption", enforce = true },
-
-    # Cloud Storage. Every bucket is uniform-access, private, and reached over
-    # TLS with an IAM identity rather than an HMAC key.
-    { constraint = "storage.publicAccessPrevention", enforce = true },
-    { constraint = "storage.secureHttpTransport", enforce = true },
-    { constraint = "storage.uniformBucketLevelAccess", enforce = true },
-    { constraint = "storage.restrictAuthTypes", denied_values = ["in:ALL_HMAC_SIGNED_REQUESTS"] },
-
-    # Compute. No VMs are planned, so these cost nothing; they keep any VM that
-    # does appear off the internet and off the serial console.
-    { constraint = "compute.disableGlobalSerialPortAccess", enforce = true },
-    { constraint = "compute.disableSerialPortAccess", enforce = true },
-    { constraint = "compute.requireOsLogin", enforce = true },
-    { constraint = "compute.requireShieldedVm", enforce = true },
-    { constraint = "compute.skipDefaultNetworkCreation", enforce = true },
-    { constraint = "compute.vmCanIpForward", deny_all = true },
-    { constraint = "compute.vmExternalIpAccess", deny_all = true },
-
-    # Ingress. Only the global external managed HTTP(S) load balancer, so every
-    # request path runs through the same TLS and Cloud Armor configuration, and
-    # Cloud Run is reachable only through it or from inside the VPC.
-    { constraint = "compute.restrictLoadBalancerCreationForTypes", allowed_values = ["GLOBAL_EXTERNAL_MANAGED_HTTP_HTTPS"] },
-    { constraint = "run.allowedIngress", allowed_values = ["internal-and-cloud-load-balancing"] },
-    { constraint = "gcp.restrictTLSVersion", denied_values = ["TLS_VERSION_1", "TLS_VERSION_1_1"] },
-
-    # Cloud Build. Builds run as an explicit service account (the legacy default
-    # one is never created), and source connections are GitHub only.
-    { constraint = "cloudbuild.disableCreateDefaultServiceAccount", enforce = true },
-    { constraint = "cloudbuild.allowedIntegrations", allowed_values = ["github.com"] },
-  ]
-
-  validation {
-    condition     = length(distinct([for p in var.org_policies : p.constraint])) == length(var.org_policies)
-    error_message = "Each constraint may appear only once in org_policies."
-  }
-
-  validation {
-    condition = alltrue([
-      for p in var.org_policies :
-      p.enforce != null || p.deny_all != null || p.allowed_values != null || p.denied_values != null
-    ])
-    error_message = "Every org_policies entry needs one of enforce, deny_all, allowed_values, or denied_values."
-  }
-}
-
-variable "organization_domain" {
-  description = "(Required) Domain name of the GCP Organization."
-  type        = string
-}
-
 variable "plan_roles" {
   description = <<-EOT
     Project-level roles granted to each plan identity on its own project: the
     reads a plan of the project's layer needs, and no bundle. Keys map to the
     role_set field of each entry in var.projects, as var.layer_roles' do.
 
-    Each set is the custom organization role of its kind from custom-roles.tf
+    Each set is the custom role of its kind from custom-roles.tf, in each project
     (named by bare ID; locals.tf resolves it), which reads the resource types
     the layer declares and nothing of their data, beside
     roles/iam.securityReviewer for the IAM policies the layer's grants are
@@ -431,8 +348,8 @@ variable "projects" {
 }
 
 variable "public_invokers" {
-  description = "Per application, the IAM members of its apply identities in every environment (2-env's), granted roles/resourcemanager.tagUser on the public-invoker tag value (tags.tf): an apply identity binds the tag to its own Cloud Run services, which is what lets it grant allUsers roles/run.invoker there. Rendered into public-invokers.auto.tfvars by bedrock org register and committed after 2-env has created the identities, since a grant on an identity that does not exist is refused."
-  type        = map(list(string))
+  description = "Per application, by environment, the IAM member of its apply identity there (2-env's), granted roles/resourcemanager.tagUser on that environment project's public-invoker tag value (tags.tf): an apply identity binds the tag to its own Cloud Run services, which is what lets it grant allUsers roles/run.invoker there. Rendered into public-invokers.auto.tfvars by bedrock org register and committed after 2-env has created the identities, since a grant on an identity that does not exist is refused."
+  type        = map(map(string))
   default     = {}
 }
 

@@ -75,7 +75,7 @@ resource "google_spanner_instance_iam_member" "database_creator" {
 
   project  = local.project_id
   instance = google_spanner_instance.shared.name
-  role     = local.org.spanner_database_creator_role
+  role     = local.org.spanner_database_creator_role[local.environment]
   member   = each.key
 }
 
@@ -187,7 +187,7 @@ resource "google_spanner_instance_iam_member" "plan_reader" {
 
   project  = local.project_id
   instance = google_spanner_instance.shared.name
-  role     = local.org.spanner_plan_reader_role
+  role     = local.org.spanner_plan_reader_role[local.environment]
   member   = each.value
 }
 

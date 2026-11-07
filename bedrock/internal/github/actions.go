@@ -25,3 +25,16 @@ func (c *Client) DispatchWorkflow(ctx context.Context, owner, repo, file, ref st
 
 	return c.do(ctx, http.MethodPost, "/repos/"+owner+"/"+repo+"/actions/workflows/"+url.PathEscape(file)+"/dispatches", body, nil)
 }
+
+// OrgMembership is the role the client's token's user holds in the organization (admin
+// for an owner, member), or NotFound when the user is not a member.
+func (c *Client) OrgMembership(ctx context.Context, org string) (string, error) {
+	var out struct {
+		Role string `json:"role"`
+	}
+	if err := c.do(ctx, http.MethodGet, "/user/memberships/orgs/"+org, nil, &out); err != nil {
+		return "", err
+	}
+
+	return out.Role, nil
+}

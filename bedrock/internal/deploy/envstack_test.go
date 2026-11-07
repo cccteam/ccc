@@ -1549,7 +1549,9 @@ func TestPlanEnvironments(t *testing.T) {
 		// objects are the records buckets' objects, by gs:// path: a rollback's generation note.
 		objects map[string]string
 		// unapplied names an environment whose stack has no state object yet.
-		unapplied  string
+		unapplied string
+		// placement is the stack's placement in the checkout; testPlacement("") when empty.
+		placement  string
 		badRequest bool
 		// tfvars is the stack's placement values in the checkout; every secret pinned in
 		// every environment when empty. generated declares the cookie key generated in the
@@ -1568,6 +1570,20 @@ func TestPlanEnvironments(t *testing.T) {
 		wantComment []string
 		wantErr     string
 	}{
+		{
+			name:      "an environment the application left (its placement lists tst alone, the triggers still name the three) is skipped with a note, not planned as an identity that is gone",
+			subs:      prSubs(),
+			pins:      enabledPins(),
+			deployer:  true,
+			placement: strings.Replace(testPlacement(""), `"environments": ["tst", "stg", "prd"]`, `"environments": ["tst"]`, 1),
+			wantOut: []string{
+				"tst: Plan: 2 to add, 1 to change, 1 to destroy.",
+				"stg: left the application's placement (environments in infrastructure/placement.json): nothing is planned there, and the stack's next apply drops it from the triggers.",
+				"prd: left the application's placement (environments in infrastructure/placement.json): nothing is planned there, and the stack's next apply drops it from the triggers.",
+			},
+			wantTofu:    []string{initOf("tst", "p-tst"), planOf("tst"), showOf("tst")},
+			wantComment: []string{"**stg**: left the application's placement: nothing is planned there, and the stack's next apply drops it from the triggers", "**prd**: left the application's placement"},
+		},
 		{
 			name:        "a plan that destroys a file store's bucket the state protects is refused in the first environment, said on the pull request with the retire step",
 			subs:        prSubs(),
@@ -1798,7 +1814,11 @@ func TestPlanEnvironments(t *testing.T) {
 			if tfvars == "" {
 				tfvars = pinnedTfvars(allPinned, allPinned, allPinned)
 			}
-			files := map[string]string{placementPath: testPlacement(""), tfvarsPath: tfvars}
+			placement := tt.placement
+			if placement == "" {
+				placement = testPlacement("")
+			}
+			files := map[string]string{placementPath: placement, tfvarsPath: tfvars}
 			if tt.generated {
 				files[configPath] = generatedConfig(t)
 			}

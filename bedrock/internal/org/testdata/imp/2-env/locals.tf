@@ -111,32 +111,37 @@ locals {
   # The Cloud Build GitHub authorization, from placement.json
   # (cloudBuildInstallationId, cloudBuildTokenSecretVersion): the Cloud Build
   # GitHub App's installation on the organization and the token secret's
-  # version in the boot project, which every connection names. Null until the
-  # browser step has run; the connection then exists (cloud-build.tf) and
-  # until then the environment applies without it.
+  # alias current in the root organization's root project, which every
+  # connection names. Null until the creation has recorded them; the
+  # connection then exists (cloud-build.tf) and until then the environment
+  # applies without it.
   cloud_build_installation_id      = 12345678
-  cloud_build_token_secret_version = "projects/imp-boot-gbl-core-a1b2/locations/us-central1/secrets/github-github-oauthtoken-abcdef/versions/1"
+  cloud_build_token_secret_version = "projects/imr-root-gbl-core-c3d4/secrets/imr-root-gbl-github-token/versions/current"
   connected                        = local.cloud_build_installation_id != null && local.cloud_build_token_secret_version != null
 
-  # The deployer GitHub App the pipelines talk back on a pull request as, from
-  # placement.json (githubDeployerAppId, githubDeployerKeyVersion): its App ID
-  # and the pinned version of its private key, in the container 0-bootstrap
-  # creates in the boot project, by resource name. Null until recorded; this
-  # layer's outputs carry both to the applications' pipelines.
+  # The GitHub Apps' keys live in the root organization imr's root
+  # project (placement.json, keys), one secret per app, and every reader
+  # names a secret's alias current, which that organization pins
+  # (github-apps.tf).
+  keys_project = "imr-root-gbl-core-c3d4"
+
+  # The deployer GitHub App the pipelines talk back on a pull request as: its
+  # App ID from placement.json (githubDeployerAppId; null until recorded) and
+  # its private key's alias, by resource name. This layer's outputs carry both
+  # to the applications' pipelines.
   github_deployer_app_id             = 5080800
-  github_deployer_key_secret         = "${local.prefix}-boot-gbl-github-deployer-key"
-  github_deployer_key_secret_version = "projects/imp-boot-gbl-core-a1b2/secrets/imp-boot-gbl-github-deployer-key/versions/1"
+  github_deployer_key_secret         = "imr-root-gbl-github-deployer-key"
+  github_deployer_key_secret_version = "projects/imr-root-gbl-core-c3d4/secrets/imr-root-gbl-github-deployer-key/versions/current"
 
   # The release GitHub App each application's release trigger cuts the
   # releases as (release-please, run in Cloud Build as the application's
   # release identity): its App ID, from placement.json (githubReleaseAppId),
-  # and the pinned version of its private key (githubReleaseKeyVersion), in
-  # the container 0-bootstrap creates in the boot project, by resource name.
-  # The version is null until pinned; this layer's outputs carry both to the
-  # applications' stacks, and in tst it grants each release identity the read.
+  # and its private key's alias, by resource name. This layer's outputs carry
+  # both to the applications' stacks, and in tst it grants each release
+  # identity the read.
   github_release_app_id             = 5080645
-  github_release_key_secret         = "${local.prefix}-boot-gbl-github-release-key"
-  github_release_key_secret_version = null
+  github_release_key_secret         = "imr-root-gbl-github-release-key"
+  github_release_key_secret_version = "projects/imr-root-gbl-core-c3d4/secrets/imr-root-gbl-github-release-key/versions/current"
 
   # Role sets. Project-level roles are the price of a shared environment
   # project; the design brief tests how far IAM conditions on
@@ -174,7 +179,7 @@ locals {
     "roles/logging.admin",
     "roles/monitoring.admin",
     "roles/resourcemanager.projectIamAdmin",
-    local.org.secret_container_admin_role,
+    local.org.secret_container_admin_role[var.environment],
   ]
 
   # The deploy identity runs every build and deploy and never writes
@@ -211,8 +216,8 @@ locals {
     "roles/cloudtrace.agent",
     "roles/telemetry.tracesWriter",
     "roles/monitoring.viewer",
-    local.org.run_job_policy_admin_role,
-    local.org.cloud_build_build_reader_role,
+    local.org.run_job_policy_admin_role[var.environment],
+    local.org.cloud_build_build_reader_role[var.environment],
   ]
 
   # The application plan identity plans the application's stack for this
@@ -227,7 +232,7 @@ locals {
   # the same as the apply identity.
   plan_project_roles = [
     "roles/serviceusage.serviceUsageConsumer",
-    local.org.application_plan_reader_role,
+    local.org.application_plan_reader_role[var.environment],
     "roles/iam.securityReviewer",
   ]
 

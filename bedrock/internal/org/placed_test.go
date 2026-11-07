@@ -198,7 +198,7 @@ func TestPlacedRender(t *testing.T) {
 	want := map[string][]string{
 		"1-org/applications.auto.tfvars":    {`  harbor = ["tst", "stg", "prd"]`, `  beacon = ["tst"]`, `applied_applications = ["harbor", "beacon"]`},
 		"2-env/applications.auto.tfvars":    {`  harbor = ["tst", "stg", "prd"]`, `  beacon = ["tst"]`},
-		"1-org/public-invokers.auto.tfvars": {`"serviceAccount:imp-tst-gbl-beacon-tofu@imp-tst-gbl-core-1a2b.iam.gserviceaccount.com",`, `"serviceAccount:imp-stg-gbl-harbor-tofu@imp-stg-gbl-core-3c4d.iam.gserviceaccount.com",`},
+		"1-org/public-invokers.auto.tfvars": {`tst = "serviceAccount:imp-tst-gbl-beacon-tofu@imp-tst-gbl-core-1a2b.iam.gserviceaccount.com"`, `stg = "serviceAccount:imp-stg-gbl-harbor-tofu@imp-stg-gbl-core-3c4d.iam.gserviceaccount.com"`},
 		"2-shr/applications.auto.tfvars":    {`"serviceAccount:imp-tst-gbl-beacon-deploy@imp-tst-gbl-core-1a2b.iam.gserviceaccount.com",`, `"serviceAccount:imp-prd-gbl-harbor-deploy@imp-prd-gbl-core-5e6f.iam.gserviceaccount.com",`},
 		"2-spn/applications.auto.tfvars":    {`application = "harbor", restore_from = "prd"`},
 		"2-net/applications.auto.tfvars":    {`"beacon-tst.apps.imp.example"`, `"harbor.apps.imp.example"`},
@@ -316,7 +316,7 @@ func TestPlace(t *testing.T) {
 	if err := p.Validate(); err != nil {
 		t.Fatalf("Validate() after the extension: %v", err)
 	}
-	refused([]string{"tst", "stg", "prd"}, "beacon's registration is at the identities step in stg: finish it (bedrock org register beacon --next) before placing it elsewhere")
+	refused([]string{"tst", "stg", "prd"}, "beacon's registration is at the identities step in stg: finish it (bedrock org register beacon --next) before placing it in more environments")
 	if step, err := p.Advance("beacon"); err != nil || step != RegistrationGrants {
 		t.Fatalf("Advance() = %q, %v, want grants", step, err)
 	}

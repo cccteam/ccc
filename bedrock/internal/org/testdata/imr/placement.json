@@ -1,0 +1,50 @@
+{
+  "kind": "root",
+  "prefix": "imr",
+  "organizationDomain": "imp.example",
+  "organizationId": "123456789012",
+  "directoryCustomerId": "C0a1b2c3d",
+  "billingAccount": "012345-6789AB-CDEF01",
+  "githubOrganization": "imp-example",
+  "githubBotAccount": "imp-bot",
+  "githubDefaultBranch": "master",
+  "githubInfrastructureAppId": "5080700",
+  "githubInfrastructureKeyVersion": "1",
+  "githubDeployerAppId": "5080800",
+  "githubDeployerKeyVersion": "1",
+  "githubReleaseAppId": "5080645",
+  "githubReleaseKeyVersion": "2",
+  "githubTokenVersion": "1",
+  "keyOperators": ["group:key-operators@imp.example"],
+  "hostingOrganizations": [{"prefix": "imp", "bootProject": "imp-boot-gbl-core-a1b2", "folder": "123456789012345"}, {"prefix": "rgb", "bootProject": "rgb-boot-gbl-core-e5f6"}],
+  "cloudBuildInstallationId": "12345678",
+  "cloudBuildTokenSecretVersion": "projects/imr-root-gbl-core-c3d4/secrets/imr-root-gbl-github-token/versions/current",
+  "ciLargeRunner": "ci-large",
+  "ciLargeRunnerSize": "8-core",
+  "ciLargeRunnerMaximum": 10,
+  "bedrockVersion": "v0.5.0",
+  "bedrockSha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+  "sourceRepo": "imr-root-infrastructure",
+  "stateBucket": "imr-root-gbl-state-c3d4",
+  "breakGlassAccount": "seed@imp.example",
+  "regions": [
+    {"name": "us-central1", "code": "uc1"}
+  ],
+  "domains": {
+    "clientbay.example": {
+      "labels": {
+        "harbor": {"organization": "imp", "nameServers": ["ns-cloud-c1.googledomains.com.", "ns-cloud-c2.googledomains.com.", "ns-cloud-c3.googledomains.com.", "ns-cloud-c4.googledomains.com."]},
+        "beacon": {"organization": "rgb", "nameServers": ["ns-cloud-d1.googledomains.com.", "ns-cloud-d2.googledomains.com.", "ns-cloud-d3.googledomains.com.", "ns-cloud-d4.googledomains.com."]}
+      }
+    },
+    "impapps.example": {
+      "labels": {
+        "a": {"organization": "imp", "nameServers": ["ns-cloud-e1.googledomains.com.", "ns-cloud-e2.googledomains.com.", "ns-cloud-e3.googledomains.com.", "ns-cloud-e4.googledomains.com."]}
+      }
+    },
+    "zones.imp.example": {}
+  },
+  "projects": {"root": "imr-root-gbl-core-c3d4"},
+  "projectNumbers": {"root": "100000000011"},
+  "labels": {"bedrock-lab": "true"}
+}

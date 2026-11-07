@@ -1,11 +1,11 @@
 # 0-bootstrap
 
-The chicken-and-egg layer. It adopts the resources the seed step created by
-hand, {{if .Zones}}creates the dns layer identity, grants it the zones' administration in the
-boot project and the boot identity what it needs at the org node{{else}}creates the org layer identity, grants both identities what they need
-at the org node{{end}}, and makes the Cloud Build triggers that plan and apply every
-layer of this repository. Its first apply is the bootstrap administrator's,
-from their own computer, before any layer identity can run; from then on the
+The chicken-and-egg layer. It adopts the resources the creation made, creates the org layer identity, grants both identities what they need
+on the organization's folder, and makes the Cloud Build triggers that plan and apply every
+layer of this repository. Nothing is granted at the organization node: the folder is the whole of this
+organization's reach. Its first apply is the root organization's
+creating identity's, in the creation, before any layer identity can run
+("Created by the root organization" below); from then on the
 apply trigger applies it as the boot identity, like every layer ("The Cloud
 Build triggers" below).
 
@@ -16,472 +16,207 @@ Build triggers" below).
   boot project `{{.Prefix}}-boot-gbl-core-<suffix>` inside it, and the boot layer
   identity `{{.Prefix}}-boot-gbl-tofu`. From the first apply on they are ordinary
   managed resources.
-{{- if .Zones}}
-- The boot project's API set (Cloud Build, resource manager, Cloud DNS, IAM,
-  IAM credentials, logging, Secret Manager, service usage, storage), its
-  labels, and the deletion of its default compute service account.
-- Org-level role bindings for the boot layer identity (`var.boot_layer_roles`),
-  and `roles/dns.admin` on the boot project alone for the dns layer identity,
-  whose zones live there (`1-dns`).
-- The dns layer identity `{{.Prefix}}-dns-gbl-tofu`, in the boot project.
-- The two boot layers' plan identities `{{.Prefix}}-boot-gbl-plan` and
-  `{{.Prefix}}-dns-gbl-plan`, in the boot project, with the organization-level
-  reads of `var.boot_plan_roles`, the boot project as their quota project, the
-  planner's right to become them (`cloud-build.tf`), for the boot one the
-  reads of the connection, the repository link and the triggers on the boot
-  project (`roles/cloudbuild.connectionViewer`, `roles/cloudbuild.builds.viewer`,
-  `cloud-build.tf`) and, for the dns one, the read of the infrastructure
-  GitHub App's key (`github.tf`) and of the zones (`roles/dns.reader` on the
-  boot project): a pull request plans each boot layer as its own read-only
-  identity. A binding at the organization node is this layer's to make; the
-  dns layer identity holds no role there.
-- The custom organization role `{{.Prefix}}GblOrgProjectUpdater`
-  (`resourcemanager.projects.update`), granted to the boot identity.
-- `roles/billing.user` on the billing account for the boot identity, only when
-  `manage_billing_iam` is true. See step 5.
-- The Cloud Build side (`cloud-build.tf`): the GitHub connection
-  `{{.ConnectionName}}` in the boot project, from the Cloud Build GitHub App's
-  installation and the token secret's version `placement.json` records
-  (`cloudBuildInstallationId`, `cloudBuildTokenSecretVersion`; "The Cloud
-  Build GitHub authorization" below); the link of this repository
-  ({{.InfrastructureRepository}}) under it; the read of the token secret for
-  the boot project's Cloud Build service agent; the two runner identities
-  `{{.Prefix}}-org-gbl-planner` and `{{.Prefix}}-org-gbl-applier` with their
-  grants; and the two triggers, `{{.PlanTriggerName}}` on a pull request into
-  `{{.GithubDefaultBranch}}` and `{{.ApplyTriggerName}}` on a push to it, whose
-  steps are the trigger's own ("The Cloud Build triggers").
-- The two GitHub Apps' key containers in the boot project (`github.tf`):
-  `{{.InfrastructureKeySecret}}` for the infrastructure app, whose token
-  `1-dns`'s GitHub provider needs, and `{{.DeployerKeySecret}}` for the
-  deployer app, which the plan trigger posts the plans as; the dns identity
-  administers both.
-- The state bucket's grants for the four identities (`state-bucket.tf`): the
-  list, each apply identity's own prefix (`0-bootstrap/`, `1-dns/`), each plan
-  identity's read of the prefixes its layer's plan reads, and the custom
-  organization role `{{.Prefix}}GblStateBucketPolicyAdmin` (reads and sets a
-  bucket's IAM policy, nothing else) on the bucket for the boot identity,
-  which applies this layer through the triggers; and for the applier, the
-  markers under `applied/` that record each layer's last successful apply
-  (`cloud-build.tf`).
-{{- else}}
 - The boot project's API set (billing, Cloud Build, resource manager,
   Essential Contacts, IAM, IAM credentials, logging, org policy, Privileged
   Access Manager, service usage, storage), its labels, and the deletion of its
   default compute service account.
-- Org-level role bindings for the boot layer identity (`var.boot_layer_roles`)
-  and for the org layer identity (`var.org_layer_roles`), and
-  `roles/privilegedaccessmanager.admin` on the boot project alone for the org
+- Role bindings on the organization's folder for the boot layer identity
+  (`var.boot_layer_roles`) and for the org layer identity
+  (`var.org_layer_roles`), the boot layer identity's roles on the boot project
+  alone (`var.boot_project_roles`), the org layer identity's on the boot
+  project alone (`var.org_project_roles`: Custom Roles Administrator, for the
+  custom role `1-org` creates there), and `roles/privilegedaccessmanager.admin` on the
+  boot project alone for the org
   layer identity: `1-org` declares there each environment's layer state
   entitlement, the environment layer identity's slot in the state bucket for a
   recovery of `2-env` by hand (`2-env/README.md`, "Applying").
 - The org layer identity `{{.Prefix}}-org-gbl-tofu`, in the boot project.
 - The two boot layers' plan identities `{{.Prefix}}-boot-gbl-plan` and
-  `{{.Prefix}}-org-gbl-plan`, in the boot project, with the organization-level
-  reads of `var.boot_plan_roles`, the boot project as their quota project, the
+  `{{.Prefix}}-org-gbl-plan`, in the boot project, with the reads on the
+  organization's folder of `var.boot_plan_roles`, the boot project as their quota project, the
   planner's right to become them (`cloud-build.tf`), for the boot one the
   reads of the connection, the repository link and the triggers on the boot
   project (`roles/cloudbuild.connectionViewer`, `roles/cloudbuild.builds.viewer`,
   `cloud-build.tf`) and, for the org one, the
   read of the infrastructure GitHub App's key (`github.tf`) and of the
   entitlements `1-org` declares on the boot project: a pull request plans each
-  boot layer as its own read-only identity. A binding at the organization
-  node is this layer's to make; the org layer identity sets no policy there.
-- The custom organization role `{{.Prefix}}GblOrgProjectUpdater`
-  (`resourcemanager.projects.update`), granted to both identities.
+  boot layer as its own read-only identity. A binding on the organization's
+  folder is this layer's to make; nothing of the organization's is bound at
+  the organization node.
+- The custom role `projectUpdater` in the boot project
+  (`resourcemanager.projects.update`), granted to the boot identity on it;
+  `1-org` makes the same role in each project it creates, for its identity.
 - `roles/billing.user` on the billing account for both identities, only when
-  `manage_billing_iam` is true. See step 5.
+  `manage_billing_iam` is true ("The spend budget" below).
 - The Cloud Build side (`cloud-build.tf`): the GitHub connection
   `{{.ConnectionName}}` in the boot project, from the Cloud Build GitHub App's
-  installation and the token secret's version `placement.json` records
-  (`cloudBuildInstallationId`, `cloudBuildTokenSecretVersion`; "The Cloud
-  Build GitHub authorization" below); the link of this repository
+  installation and the token secret's alias `placement.json` records
+  (`cloudBuildInstallationId`, `cloudBuildTokenSecretVersion`; "Created by
+  the root organization" below); the link of this repository
   ({{.InfrastructureRepository}}) under it; the read of the token secret for
   the boot project's Cloud Build service agent and for each environment
   project's, by the numbers `placement.json` records (`projectNumbers`), since
-  the environments' connections (`2-env`) name the same version; the two
+  the environments' connections (`2-env`) name the same alias; the two
   runner identities `{{.Prefix}}-org-gbl-planner` and `{{.Prefix}}-org-gbl-applier`
   with their grants; and the two triggers, `{{.PlanTriggerName}}` on a pull
   request into `{{.GithubDefaultBranch}}` and `{{.ApplyTriggerName}}` on a push
   to it, whose steps are the trigger's own ("The Cloud Build triggers").
-- The two GitHub Apps' key containers in the boot project (`github.tf`):
-  `{{.InfrastructureKeySecret}}` for the infrastructure app, whose token
-  `1-org`'s GitHub provider needs, and `{{.DeployerKeySecret}}` for the
-  deployer app, which the plan trigger posts the plans as and every
-  application's pipeline talks back as; the org identity administers both.
+- The grants on the three GitHub Apps' key secrets, which live in the root
+  organization `{{.RootOrganization}}`'s root project (`root` in
+  `placement.json`; `github.tf`): the org identity's policy administration of
+  the deployer and release secrets, the org plan identity's read of the
+  infrastructure key, and both boot plan identities' read of the three
+  secrets' policies. This layer makes no secret: every reader here names a
+  secret's alias `current`, which that organization pins ("The GitHub Apps'
+  keys").
 - The state bucket's grants for the four identities (`state-bucket.tf`): the
   list, each apply identity's own prefix (`0-bootstrap/`, `1-org/`), the org
   identity's read of `0-bootstrap/`, each plan identity's read of the prefixes
-  its layer's plan reads, and the custom organization role
-  `{{.Prefix}}GblStateBucketPolicyAdmin` (reads and sets a bucket's IAM policy,
-  nothing else) on the bucket for the two apply identities, so each layer can
-  grant for the identities it creates; and for the applier, the markers under `applied/`
-  that record each layer's last successful apply (`cloud-build.tf`).
-{{- end}}
+  its layer's plan reads, and the custom role `stateBucketPolicyAdmin` in
+  the boot project (reads and sets a bucket's IAM policy, nothing else) on
+  the bucket for the two apply identities, so each layer can
+  grant for the identities it creates; for both runners, the read of the organization's
+  folder, its projects and their IAM policies for the check's leftover report; and for the
+  applier, the markers under `applied/` that record each layer's last successful apply
+  (`cloud-build.tf`).
 
 Not created here, on purpose: the state bucket. It is seeded and left outside
 OpenTofu because this layer's own state lives in it.
 
-## First-time setup
+## Created by the root organization
 
-Steps 1, 2 and 5 happen once, by hand. Everything step 1 creates is adopted by
-an `import` block in step 3, so nothing stays outside OpenTofu except the
-bucket, the spend budget (step 5) and, while `manage_billing_iam` is false,
-the two billing grants.
+Nothing here was seeded or applied by hand. The root organization
+`{{.RootOrganization}}` (`root` in `placement.json`) created this
+organization from a pull request in its repository (`bedrock org create
+{{.Prefix}}` there, then the merge), as its creating identity
+`{{.RootOrganization}}-create-gbl-tofu`, which holds Folder Creator at the
+organization node and Billing Account Administrator on the billing account,
+granted by that organization's bootstrap (its `README.md`, "Bootstrapped by one
+command"). The creation did under a new folder what a hand seed and the first
+applies would, and left no person with a grant to trim:
 
-The person who runs them is left with what Google gives a creator: Owner on
-the boot project, and Folder Admin and Folder Editor on the `terraform`
-folder{{if .Zones}}; `1-dns`'s first apply creates no folder and no project, so it leaves
-nothing more. Those grants are temporary. The layers run as their identities;
-once the apply trigger applies the layers, a hand step removes them{{else}}; `1-org`'s first apply leaves the same on every folder and project it
-creates. Those grants are temporary. The layers run as their identities, and
-a person's access to an environment comes from its team group; once the
-apply trigger applies the layers, a hand step removes them
-(`1-org/README.md`, "Applying"), and `bedrock org check` lists each person
-still holding `roles/owner` on an environment project until then{{end}}. The roles
-step 1 lists stay with the bootstrap administrator for recovery ("Recovery,
-by hand", below).
+1. **The seed, by API.** The organization's folder at the organization root,
+   named `{{.Prefix}}`, which made the creating identity its administrator, as
+   Google makes a folder's creator, with Project Creator and Tag Administrator
+   for the identity itself, for the first applies; the `terraform` folder
+   under it; the boot project
+   `{{.BootProject}}` in it, linked to the billing account with its APIs
+   enabled; the boot layer identity `{{.Prefix}}-boot-gbl-tofu` with the roles
+   of `var.boot_layer_roles` on the organization's folder and of
+   `var.boot_project_roles` on the boot project; Folder Admin on the
+   folder for the break-glass account (`{{.BreakGlassAccount}}`), its one
+   standing grant; the state bucket `{{.StateBucket}}`; and, in the root
+   organization's root project, the boot identity's `secretPolicyAdmin` on
+   the three GitHub Apps' key secrets and the Cloud Build token secret ("The
+   GitHub Apps' keys" below).
+2. **The first apply of this layer**, against the bucket (`tofu init` at the
+   prefix `0-bootstrap`; no local state, nothing to migrate), as the creation
+   identity: the folders, the project and the boot identity adopted through
+   the `import` blocks (`terraform.tfvars` carries their ids, seeded by the
+   creation), and the rest made: the org layer identity, the plan identities,
+   the custom roles, the key grants, the connection from the Cloud Build
+   authorization the root organization recorded (`cloudBuildInstallationId`
+   and `cloudBuildTokenSecretVersion`, which name the Bot Account's token
+   in that organization's root project by its alias `current`, so a rotation
+   there reaches every connection: one authorization serves every
+   organization in the Google Cloud organization), the link of this
+   repository under it, the two triggers, and the bucket's grants. Then the
+   creating identity granted the boot identity and the org identity Billing
+   Account User on the billing account, which this organization's own applies
+   need the day `1-org` links a project it creates.
+3. **The first apply of `1-org`**, the same way, with the infrastructure
+   GitHub App's token for its GitHub provider: the folders, the six projects
+   with their liens, identities, custom roles and org policies. Its
+   `project_ids` and `project_numbers` outputs went into `placement.json`
+   (`projects`, `projectNumbers`) and the layers were rendered again, so every
+   identity is named by its project before anything was pushed.
+4. **This repository**, made private in the `{{.GithubOrganization}}`
+   organization with the rendered foundation as its first push, which the
+   apply trigger of step 2 ran on: every layer, as its own identity, in layer
+   order, since none had a marker yet ("The Cloud Build triggers" below).
+   Each layer's `.terraform.lock.hcl` came with the push, from the first
+   applies' inits.
+5. **The withdrawal.** The creating identity took its own grants off
+   everything it made: Owner on each project, Folder Admin and Folder Editor
+   on each folder, and its three roles on the organization's folder. It holds
+   nothing here now; a marker in the root organization's state bucket says the
+   creation is done, and a pull request there recorded the folder
+   (`hostingOrganizations`), from which that organization keeps the boot
+   identity's grants on the shared secrets rendered.
 
-### 1. Seed with gcloud
+One thing stays by hand, by a billing administrator, after the creation: the
+spend budget ("The spend budget" below). The consent screen of each environment
+project and the role groups follow as the root `README.md` says ("Created by
+the root organization" there).
 
-In a terminal, as the bootstrap administrator (`{{.Operator}}`). The seed,
-the first apply of this layer and the first apply of `{{.SecondLayer}}` run as that
-person, before any layer identity exists, so the person holds these roles:
+`bedrock org check`, run with Google credentials that read the projects' and
+folders' IAM policies, lists each grant of a person's it finds (a person's
+Owner on a project, a person's Folder Admin or Folder Editor on a folder
+under the organization's, a role of the break-glass account's beyond its
+Folder Admin) and each grant on the organization's folder to a principal
+outside the organization: neither the break-glass account nor an identity in
+one of this organization's projects. After a creation there is none; one
+means the creating identity's withdrawal did not finish, or somebody granted
+by hand.
 
-| Role | Granted on | Needed for |
-|---|---|---|
-{{range .BootstrapRoles}}| {{.Title}} (`{{.Role}}`) | the {{.On}} | {{.Needs}} |
-{{end}}
-Sign in, then check the roles before anything is created: `bedrock org
-preflight`, run at this repository's root, asks Google which of the permissions
-behind each role these credentials hold, on the organization and the billing
-account `placement.json` names. It prints one line per role, `holds` or
-`missing` with the permissions tested, and exits 1 naming each missing role
-and who grants it. Seed only once it passes:
+### The spend budget, by a billing administrator
 
-```bash
-gcloud auth login
-gcloud auth application-default login
-bedrock org preflight
+The two layer identities, `{{.Prefix}}-boot-gbl-tofu` and `{{.Prefix}}-org-gbl-tofu`,
+hold `roles/billing.user` on the billing account `{{.BillingAccount}}` since the
+creation, which granted it as the root organization's creating identity, a
+Billing Account Administrator. `1-org` needs it the day it links a project it
+creates; the creation linked the six. `manage_billing_iam = false` in
+`terraform.tfvars` keeps this layer from asserting the same two members itself,
+which the identity applying it may not do; set it to `true` once that identity
+is a billing administrator, and the two `google_billing_account_iam_member`
+resources assert them.
 
-export ORG_ID={{.OrganizationID}}
-export BILLING_ACCOUNT_ID={{.BillingAccount}}
-export PREFIX={{.Prefix}}
-export REGION={{.Primary.Name}}
-```
-
-Create the organization's folder at the org root, named after the prefix,
-and the `terraform` folder under it. The organization's folder is the one
-tree this bedrock organization keeps in the GCP organization: another
-bedrock organization beside it keeps its own, since sibling folders must
-differ in name.
-
-```bash
-gcloud resource-manager folders create \
-  --display-name="${PREFIX}" \
-  --organization="${ORG_ID}"
-
-export ORGANIZATION_FOLDER_ID=$(gcloud resource-manager folders list \
-  --organization="${ORG_ID}" --filter="displayName=${PREFIX}" \
-  --format='value(name)' | sed 's|folders/||')
-
-gcloud resource-manager folders create \
-  --display-name=terraform \
-  --folder="${ORGANIZATION_FOLDER_ID}"
-
-export TERRAFORM_FOLDER_ID=$(gcloud resource-manager folders list \
-  --folder="${ORGANIZATION_FOLDER_ID}" --filter="displayName=terraform" \
-  --format='value(name)' | sed 's|folders/||')
-```
-
-Create the boot project. The four-hex suffix is what the project factory would
-have generated, and the ID can never be changed afterwards. Cloud Build and
-Secret Manager are enabled here because step 2's browser authorization uses
-both before this layer's first apply:
-
-```bash
-export BOOT_PROJECT_ID="${PREFIX}-boot-gbl-core-$(od -An -tx1 -N2 /dev/urandom | tr -d ' \n')"
-
-gcloud projects create "${BOOT_PROJECT_ID}" \
-  --folder="${TERRAFORM_FOLDER_ID}" \
-  --labels={{.SeedLabels}}
-
-gcloud billing projects link "${BOOT_PROJECT_ID}" --billing-account="${BILLING_ACCOUNT_ID}"
-
-gcloud services enable \
-  cloudbilling.googleapis.com cloudbuild.googleapis.com cloudresourcemanager.googleapis.com \
-  iam.googleapis.com iamcredentials.googleapis.com secretmanager.googleapis.com \
-  serviceusage.googleapis.com storage.googleapis.com \
-  --project="${BOOT_PROJECT_ID}"
-```
-
-Stop here for a minute or two. The owner binding a project creator receives is
-not immediately visible to the IAM service, and the next command fails with
-`PERMISSION_DENIED` on a permission you genuinely hold. This works as a poll:
-
-```bash
-until gcloud iam service-accounts list \
-  --project="${BOOT_PROJECT_ID}" >/dev/null 2>&1; do sleep 10; done
-```
-
-Create the boot layer identity and grant it the org roles. This list is the
-same one in `var.boot_layer_roles`; change both together:
-
-```bash
-export SA_EMAIL="${PREFIX}-boot-gbl-tofu@${BOOT_PROJECT_ID}.iam.gserviceaccount.com"
-
-gcloud iam service-accounts create "${PREFIX}-boot-gbl-tofu" \
-  --project="${BOOT_PROJECT_ID}" \
-  --display-name="OpenTofu SA - ${PREFIX}-boot-gbl" \
-  --description="Layer identity for ${PREFIX}-boot-gbl. Applies the 0-bootstrap layer from the infrastructure repository's apply trigger."
-
-for role in \
-  roles/cloudbuild.builds.editor \
-  roles/cloudbuild.connectionAdmin \
-  roles/iam.organizationRoleAdmin \
-  roles/iam.serviceAccountAdmin \
-  roles/resourcemanager.folderAdmin \
-  roles/resourcemanager.organizationAdmin \
-  roles/resourcemanager.projectCreator \
-  roles/resourcemanager.projectDeleter \
-  roles/resourcemanager.projectIamAdmin \
-  roles/serviceusage.serviceUsageAdmin
-do
-  gcloud organizations add-iam-policy-binding "${ORG_ID}" \
-    --member="serviceAccount:${SA_EMAIL}" --role="${role}" --condition=None
-done
-```
-
-Create the state bucket. It reuses the boot project's suffix because bucket
-names are globally unique too. Versioning keeps every prior state file:
-
-```bash
-export STATE_BUCKET="${PREFIX}-boot-gbl-state-${BOOT_PROJECT_ID##*-}"
-
-gcloud storage buckets create "gs://${STATE_BUCKET}" \
-  --project="${BOOT_PROJECT_ID}" \
-  --location="${REGION}" \
-  --uniform-bucket-level-access \
-  --public-access-prevention
-
-gcloud storage buckets update "gs://${STATE_BUCKET}" \
-  --versioning \
-  --update-labels={{.SeedLabels}}
-```
-
-Keep `BOOT_PROJECT_ID`, `ORGANIZATION_FOLDER_ID`, `TERRAFORM_FOLDER_ID`, and `STATE_BUCKET`. Steps 2 to
-4 need them, and so does `placement.json`.
-
-### 2. The Cloud Build GitHub authorization
-
-{{if .Zones}}The boot project's Cloud Build connection, the layers', authorizes{{else}}Every Cloud Build connection in the organization, the boot project's for the
-layers and each environment's for the applications, authorizes{{end}} with a GitHub
-token that only a browser can produce, once per organization, here, before
-this layer's first apply. The person at the browser is the bootstrap
-administrator, who is Owner on the boot project from step 1; the GitHub
-account signed in is the organization's machine account,
-`{{.GithubMachineAccount}}` (`githubMachineAccount` in `placement.json`): a GitHub
-user that acts for no person, belongs to the `{{.GithubOrganization}}`
-organization and is an owner of it, since installing a GitHub App on an
-organization takes an owner, and the connection's token is that account's,
-so a person leaving the organization breaks nothing.
-
-1. In the Google Cloud console, in the boot project `BOOT_PROJECT_ID`, as the
-   bootstrap administrator: Cloud Build, Repositories (2nd gen), Create host
-   connection, GitHub, in the region `{{.Primary.Name}}`, named
-   `{{.ConnectionName}}`, the name this layer gives it. Sign in to GitHub as
-   the machine account `{{.GithubMachineAccount}}`, install or select the Google
-   Cloud Build GitHub App on the `{{.GithubOrganization}}` organization with
-   access to all repositories, and finish. The console stores the token as a
-   regional secret in the boot project.
-2. Read the installation ID from the app's settings page on GitHub
-   (`https://github.com/organizations/{{.GithubOrganization}}/settings/installations/<id>`)
-   and the token secret's version name from Secret Manager in the boot
-   project (`projects/<boot project>/locations/{{.Primary.Name}}/secrets/<name>/versions/<n>`).
-   Record both in `placement.json`, as `cloudBuildInstallationId` and
-   `cloudBuildTokenSecretVersion`; `bedrock org render` writes them into this
-   layer's connection and triggers{{if not .Zones}} and into every environment's connection
-   (`2-env`){{end}}. This layer's first apply then adopts the console's connection
-   (step 3).
-
-An alternative that skips the console is a classic personal access token of
-`{{.GithubMachineAccount}}` with the `repo`, `read:user` and `read:org` scopes
-(Cloud Build accepts no fine-grained token), added by hand as a version of a
-secret in the boot project, with `cloudBuildTokenSecretVersion` naming it; the
-installation is still made on GitHub, on the app's page. A classic token
-expires on the schedule its creator set, while the console's authorization
-does not; and GitHub revokes either kind after a year unused. The token is
-exercised when a repository link is made, at an application's registration,
-so an organization that registers nothing for a year may find it revoked at
-the next registration. The remedy, either way, is the browser step again,
-signed in as the machine account `{{.GithubMachineAccount}}`, or a new classic
-token pinned as a new version.
-
-### 3. Apply with local state
-
-In a terminal, in this directory. Fill in `terraform.tfvars` first:
-`boot_project_id`, `organization_folder_id` and `terraform_folder_id` from step 1. Then record the
-seed's values in `placement.json` at the repository root (`stateBucket`,
-`projects.boot` and `projectNumbers.boot`, the number from
-`gcloud projects describe "${BOOT_PROJECT_ID}" --format='value(projectNumber)'`),
-and the bedrock the triggers run: `bedrock upgrade`, in this repository,
-which records the release (or a commit, `bedrock upgrade <commit>`) as
-`bedrockVersion` and `bedrockSha256` and runs `bedrock org render`: the
-backend blocks, this layer's bucket grants and the triggers all name the
-seed's values.
-
-The first apply runs on local state, so the `backend "gcs"` block in
-`initialize.tf` has to be commented out for it. A configuration that declares
-a backend refuses to plan until that backend is initialized, and the bucket
-name is not in the block yet. The connection the console made in step 2 is
-adopted rather than made again:
-
-```bash
-cd 0-bootstrap
-# comment out the backend "gcs" { ... } block in initialize.tf
-tofu init
-tofu import 'google_cloudbuildv2_connection.github[0]' "projects/${BOOT_PROJECT_ID}/locations/${REGION}/connections/{{.ConnectionName}}"
-tofu plan
-```
-
-The plan should show the folder, project, boot service account and the
-connection as imports rather than creates, and the rest as creates: the {{.SecondIdentity}}
-identity and its grants, the custom roles, the key containers, the runner
-identities, the repository link and the two triggers, and the bucket's
-grants. If any of the imports shows as a create, the ID in `boot_project_id`
-or `terraform_folder_id`, or the connection's name, is wrong. Stop and fix it
-before applying; creating a second boot project is a mess to unwind.
-
-```bash
-tofu apply
-```
-
-This writes `terraform.tfstate` in the directory (ignored by git). `init` also
-writes `.terraform.lock.hcl`, which is committed: it cannot be generated
-without an `init`, so this first one produces it.
-
-### 4. Migrate the state into the bucket
-
-Restore the `backend "gcs"` block, which names the bucket since the render in
-step 3. Then:
-
-```bash
-tofu init -migrate-state
-```
-
-Answer yes to copying the local state into the bucket, confirm with
-`tofu plan` (no changes), and delete the local `terraform.tfstate` and its
-backup. From here on every run inits against the bucket directly.
-
-{{if .Zones}}Record `boot_project_id` in `1-dns/terraform.tfvars` (a seeded file, which a
-render never rewrites: a repository rendered again on a new seed still
-carries the old value), and add a line to `JOURNAL.md`.{{else}}Record `boot_project_id` in `1-org/terraform.tfvars` and in
-`2-env/terraform.tfvars`, where `state_bucket` must name the bucket too (both
-are seeded files, which a render never rewrites: a repository rendered again
-on a new seed still carries the old values), and add a line to `JOURNAL.md`.{{end}}
-
-### 5. Billing grants and the budget, by a billing administrator
-
-{{- if .Zones}}
-
-The bootstrap administrator holds Billing Account User on the billing account. That role
-links projects to the account but cannot change the account's IAM policy, so
-the `google_billing_account_iam_member` resource in this layer cannot be
-applied as the bootstrap administrator. `manage_billing_iam = false` in `terraform.tfvars`
-skips it. Instead, in a terminal, a Billing Account Administrator makes the
-grant by hand:
-
-```bash
-export BILLING_ACCOUNT_ID={{.BillingAccount}}
-export BOOT_PROJECT_ID=<from step 1>
-
-gcloud billing accounts add-iam-policy-binding "${BILLING_ACCOUNT_ID}" \
-  --member="serviceAccount:{{.Prefix}}-boot-gbl-tofu@${BOOT_PROJECT_ID}.iam.gserviceaccount.com" \
-  --role=roles/billing.user
-```
-
-Nothing depends on the grant until the apply trigger runs this layer as the
-boot identity, which keeps the boot project linked to the account; the
-bootstrap administrator's own Billing Account User role covers the first
-apply. Set `manage_billing_iam = true` once the identity applying this layer
-can manage billing IAM; the resource then asserts the same member. The dns
-identity links nothing and needs no grant.
-{{- else}}
-
-The bootstrap administrator holds Billing Account User on the billing account. That role
-links projects to the account but cannot change the account's IAM policy, so
-the two `google_billing_account_iam_member` resources in this layer cannot be
-applied as the bootstrap administrator. `manage_billing_iam = false` in `terraform.tfvars`
-skips them. Instead, in a terminal, a Billing Account Administrator makes
-the grants by hand once step 3 has created the org layer identity:
-
-```bash
-export BILLING_ACCOUNT_ID={{.BillingAccount}}
-export BOOT_PROJECT_ID=<from step 1>
-
-for sa in {{.Prefix}}-boot-gbl-tofu {{.Prefix}}-org-gbl-tofu; do
-  gcloud billing accounts add-iam-policy-binding "${BILLING_ACCOUNT_ID}" \
-    --member="serviceAccount:${sa}@${BOOT_PROJECT_ID}.iam.gserviceaccount.com" \
-    --role=roles/billing.user
-done
-```
-
-Nothing depends on these grants until the apply trigger runs 1-org as its
-identity, which links the projects it creates to the account; the bootstrap
-administrator's own Billing Account User role covers the first apply of
-1-org. Set `manage_billing_iam = true` once the identity applying this layer
-can manage billing IAM; the resources then assert the same two members.
-{{- end}}
-
-In the Billing console, as the same billing administrator, set the spend
-budget: Billing, the billing account `{{.BillingAccount}}`, Budgets & alerts,
-Create budget. Scope it to every project of the billing account, give it a
-monthly amount, and keep the alert thresholds (50%, 90% and 100% of the actual
-spend) and the email to the billing account's administrators and users. A
-budget sends alerts and stops nothing. Nothing in the layers renders it: it
-belongs to the billing account, where no layer identity holds a role that
-manages budgets.
+In the Billing console, as a billing administrator, set the spend budget:
+Billing, the billing account `{{.BillingAccount}}`, Budgets & alerts, Create
+budget. Scope it to every project of the billing account, give it a monthly
+amount, and keep the alert thresholds (50%, 90% and 100% of the actual spend)
+and the email to the billing account's administrators and users. A budget
+sends alerts and stops nothing. Nothing in the layers renders it: it belongs to
+the billing account, where no layer identity holds a role that manages budgets.
 
 ## Inputs
 
 | Name | Description | Type | Default | Required |
 |---|---|---|---|:---:|
 | `billing_account_id` | Billing account ID to link projects to. | `string` | n/a | yes |
-| `boot_layer_roles` | Org-level roles granted to the boot layer identity. The seed grants the same list; change both together. | `list(string)` | ten roles, see `variables.tf` | no |
-| `boot_plan_roles` | Organization-level reads of the two boot layers' plan identities. | `list(string)` | eight roles, see `variables.tf` | no |
+| `boot_layer_roles` | Roles granted to the boot layer identity on the organization's folder. The seed grants the same list; change both together. | `list(string)` | eight roles, see `variables.tf` | no |
+| `boot_plan_roles` | Reads on the organization's folder of the two boot layers' plan identities. | `list(string)` | eight roles, see `variables.tf` | no |
 | `boot_project_id` | Project ID of the seeded boot project, suffix included. Adopted, not created. | `string` | n/a | yes |
+| `boot_project_roles` | Roles granted to the boot layer identity on the boot project alone, the ones Google never binds on a folder. The seed grants the same list; change both together. | `list(string)` | one role, see `variables.tf` | no |
+| `org_project_roles` | Roles granted to the org layer identity on the boot project alone, the ones Google never binds on a folder: Custom Roles Administrator, for the custom role `1-org` creates there. | `list(string)` | one role, see `variables.tf` | no |
 | `github_default_branch` | The infrastructure repository's default branch: the plan trigger runs on a pull request into it, the apply trigger on a push to it. | `string` | `"{{.GithubDefaultBranch}}"` | no |
 | `github_organization` | The GitHub organization of the infrastructure and application repositories. | `string` | `"{{.GithubOrganization}}"` | no |
 | `infrastructure_repository` | This repository's name, the one the connection links and the triggers watch. | `string` | `"{{.SourceRepo}}"` | no |
-| `manage_billing_iam` | Whether this layer manages the {{if .Zones}}`roles/billing.user` grant{{else}}two `roles/billing.user` grants{{end}}. Needs Billing Account Administrator to apply. | `bool` | `true` | no |
-{{- if not .Zones}}
-| `org_layer_roles` | Org-level roles granted to the org layer identity. | `list(string)` | twelve roles, see `variables.tf` | no |
-{{- end}}
-| `organization_domain` | Domain of the GCP organization. | `string` | n/a | yes |
+| `manage_billing_iam` | Whether this layer manages the two `roles/billing.user` grants. Needs Billing Account Administrator to apply. | `bool` | `true` | no |
+| `org_layer_roles` | Roles granted to the org layer identity on the organization's folder. | `list(string)` | eleven roles, see `variables.tf` | no |
 | `prefix` | Short org-wide prefix used in resource names. | `string` | `"imp"` | no |
 | `state_bucket` | The seeded state bucket, granted on here for the four identities and the applier. | `string` | the placement's `stateBucket` | no |
-| `organization_folder_id` | Numeric ID of the seeded organization folder, named after the prefix, without `folders/`. Adopted, not created{{if not .Zones}}; 1-org creates the environment folders under it{{end}}. |
+| `organization_folder_id` | Numeric ID of the seeded organization folder, named after the prefix, without `folders/`. Adopted, not created; 1-org creates the environment folders under it. |
 | `terraform_folder_id` | Numeric ID of the seeded `terraform` folder, under the organization folder, without `folders/`. Adopted, not created. | `string` | n/a | yes |
 
 `terraform.tfvars` sets the required ones and `manage_billing_iam = false`;
 the rest are rendered from `placement.json`, the Cloud Build GitHub
-authorization{{if not .Zones}} and the environment projects' numbers{{end}} among them.
+authorization and the environment projects' numbers among them.
 
 ## Outputs
 
 | Name | Description |
 |---|---|
 | `apply_trigger_name`, `plan_trigger_name` | The two triggers; `null` until the authorization is recorded. |
-| `applier_member`, `planner_member` | The two runner identities as IAM members{{if .Zones}}, which impersonate the two layers' identities{{else}}, which `1-org` lets impersonate the identities it creates{{end}}. |
-| `boot_plan_service_accounts` | The two boot layers' plan identities' emails (boot, {{.SecondIdentity}}). |
+| `applier_member`, `planner_member` | The two runner identities as IAM members, which `1-org` lets impersonate the identities it creates. |
+| `boot_plan_service_accounts` | The two boot layers' plan identities' emails (boot, org). |
 | `boot_project_id` | The boot project, quota and billing project for every downstream layer. |
 | `boot_project_number` | The boot project's number, recorded in `placement.json` as `projectNumbers.boot`. |
 | `boot_service_account_email` | The boot layer identity. |
 | `connection_name` | The boot project's Cloud Build GitHub connection; `null` until the authorization is recorded. |
-| `github_deployer_key_secret` | The container of the deployer GitHub App's private key. |
-| `github_infrastructure_key_secret` | The container of the infrastructure GitHub App's private key. |
 | `org_id` | Numeric organization ID. |
-| `org_service_account_email` | The {{.SecondIdentity}} layer identity. |
-| `state_bucket_policy_admin_role` | The custom role that sets a bucket's IAM policy. |
+| `org_service_account_email` | The org layer identity. |
+| `state_bucket_policy_admin_role` | The custom role in the boot project that sets a bucket's IAM policy. |
 | `terraform_folder_id` | The folder holding the automation plane. |
 
 ## The Cloud Build triggers
@@ -537,12 +272,14 @@ previous release's steps. Both triggers pass `_BEDROCK_STEPS`, the shape of
 their steps and the kind of pin they were rendered for, and `bedrock org
 plan` and `apply` say in the run's log when they run under another shape.
 
-To apply one layer again with no change to it{{if .Zones}}, start the apply trigger by hand
-on the default branch with the layer{{else}}, which a registration's second
-pass of `2-env` needs, start the apply trigger by hand on the default branch
-with the layer, and for `2-env` the environment (without one, the three in
-order){{end}}; in a terminal, as a person holding `roles/cloudbuild.builds.editor`
-on the boot project:
+A push's apply runs `2-env` once more at its end, each environment in order,
+while an application stands at the identities step of its registration: each
+environment but the last grants the next environment's deploy identity read
+on its records bucket, from state the first pass did not have. To apply one
+layer again with no change to it otherwise, start the apply trigger by hand on
+the default branch with the layer, and for `2-env` the environment (without
+one, the three in order); in a terminal, as a person holding
+`roles/cloudbuild.builds.editor` on the boot project:
 
 ```bash
 gcloud builds triggers run {{.ApplyTriggerName}} --region={{.Primary.Name}} --project=<boot project> --branch={{.GithubDefaultBranch}} --substitutions={{.RerunExample}}
@@ -554,40 +291,6 @@ fails on it, so start a run by hand when none is running.
 
 Who runs what, and why the first time works in order:
 
-{{- if .Zones}}
-
-- The plan trigger's builds run as the planner (`{{.Prefix}}-org-gbl-planner`),
-  the apply trigger's as the applier (`{{.Prefix}}-org-gbl-applier`). Neither
-  holds a layer's roles: each impersonates the layer identity of its kind for
-  that layer's tofu (`roles/iam.serviceAccountTokenCreator` on each identity:
-  this layer grants it on its four identities, every identity a zones
-  organization has), so a plan runs with a plan identity's reads and an apply
-  with the apply identity's writes. What each holds itself: the build logs,
-  the read of its own build (its substitutions, the pull request, the
-  commit), the connection's read token (the changed files are read through
-  it), the two apps' keys, and, for the applier, the markers under `applied/`
-  in the state bucket.
-- IAM refuses a binding for a service account that does not exist, so each
-  layer grants for the identities it creates. This layer grants for the boot
-  identity, the dns identity and the two boot layers' plan identities
-  (`{{.Prefix}}-boot-gbl-plan`, `{{.Prefix}}-dns-gbl-plan`), all of which exist
-  when its grants apply; `1-dns` creates no identity.
-- The first apply of this layer and the first apply of `1-dns` are the
-  bootstrap administrator's (steps 3 and 4 above, and `1-dns/README.md`),
-  with the roles step 1 lists. The bucket exists from step 1, so this layer's
-  grants on it apply in step 3; `1-dns` grants nothing on it.
-- From the first apply of this layer on, a push to `{{.GithubDefaultBranch}}`
-  can apply this layer and `1-dns` through the apply trigger, and a pull
-  request can plan them (their four identities and the runners' grants on
-  them exist). Nothing follows: a zones organization has no other layer.
-
-Each identity's role set is completed by refusal: a layer applied as its
-identity that is refused a permission gets the role that carries it, in
-`var.boot_layer_roles` or, for the dns identity, `bootstrap.tf`'s grant on
-the boot project; a plan of a boot layer, in `var.boot_plan_roles` or the dns
-plan identity's grant there.
-{{- else}}
-
 - The plan trigger's builds run as the planner (`{{.Prefix}}-org-gbl-planner`),
   the apply trigger's as the applier (`{{.Prefix}}-org-gbl-applier`). Neither
   holds a layer's roles: each impersonates the layer identity of its kind for
@@ -597,8 +300,9 @@ plan identity's grant there.
   apply with the apply identity's writes. What each holds itself: the build
   logs, the read of its own build (its substitutions, the pull request, the
   commit), the connection's read token (the changed files are read through
-  it), the two apps' keys, and, for the applier, the markers under
-  `applied/` in the state bucket.
+  it), the two apps' keys, the read of the folder, the projects and their IAM
+  policies for the check's leftover report, and, for the applier, the markers
+  under `applied/` in the state bucket.
 - IAM refuses a binding for a service account that does not exist, so each
   layer grants for the identities it creates. This layer grants for the boot
   identity, the org identity and the two boot layers' plan identities
@@ -607,167 +311,115 @@ plan identity's grant there.
   projects. `2-env` grants for the application identities it creates, with
   the bucket's policy authority `1-org` gives each environment layer identity.
 - The first apply of this layer and the first apply of `1-org` are the
-  bootstrap administrator's (steps 3 and 4 above, and `1-org/README.md`),
-  with the roles step 1 lists. The bucket exists from step 1, so this layer's
-  grants on it apply in step 3; `1-org`'s grants apply in its first apply as
-  the same person, and from then on as the org identity, which holds the
-  bucket's policy authority from here.
-- From the first apply of this layer on, a push to `{{.GithubDefaultBranch}}`
-  can apply this layer and `1-org` through the apply trigger, and a pull
-  request can plan them (their four identities and the runners' grants on
-  them exist). The project layers follow from the first apply of `1-org`.
-  Before that, a run that touches a layer says which identity it cannot
-  become, and stops.
+  root organization's creating identity's, in the creation ("Created by the
+  root organization" above, and `1-org/README.md`), as the organization
+  folder's administrator and with the roles it granted itself there. The
+  bucket exists from the seed, so this layer's grants on it apply in that
+  first apply; `1-org`'s grants apply in its first apply as the same identity,
+  and from then on as the org identity, which holds the bucket's policy
+  authority from here.
+- From the first push on, a push to `{{.GithubDefaultBranch}}` applies every
+  layer through the apply trigger, and a pull request plans them: every
+  identity exists and `placement.json` names every project before the push.
+  A run that touches a layer whose identity's project the placement does not
+  record (`REPLACEME`) says so and stops.
 
 Each identity's role set is completed by refusal: a layer applied as its
 identity that is refused a permission gets the role that carries it, in
-`var.boot_layer_roles`, `var.org_layer_roles` or `1-org`'s `layer_roles`; a
+`var.boot_layer_roles` (or `var.boot_project_roles`, for a role Google binds on
+a project and never on a folder), `var.org_layer_roles` (or
+`var.org_project_roles`, the same for the org layer identity on the boot
+project) or `1-org`'s `layer_roles`; a
 plan of a boot layer, in `var.boot_plan_roles`.
-{{- end}}
 
 ## The infrastructure GitHub App
 
-{{- if .Zones}}
-
-`1-dns` rules this repository's default branch with the GitHub provider,
-which needs a token with an organization owner's rights. In a run of the
-triggers that token is an installation token of the infrastructure GitHub
-App, minted in the run from its private key. An app beside the deployer app,
-because widening the deployer app would give the plan comments those rights.
-One GitHub organization holds one such app, shared by every bedrock
-organization in it: where a hosting organization has it already, this
-organization records the same App ID and installs nothing new. Once, by a
-person:
-
-1. On GitHub, as an owner of the `{{.GithubOrganization}}` organization: the
-   organization's Settings, Developer settings, GitHub Apps, New GitHub App.
-   Name it `{{.GithubOrganization}}-infrastructure`, give it any homepage URL,
-   turn Webhook off. Repository permissions: Administration (read and write),
-   Metadata (read); the provider adopts this repository and writes its
-   ruleset on Administration. Where can this app be installed: only this
-   account. Create it, and note the App ID on its settings page. A permission
-   added later is accepted on the installation: the organization's Settings,
-   Third-party Access, GitHub Apps, the app.
-{{- else}}
-
 `1-org` configures the applications' repositories with the GitHub provider,
 which needs a token with an organization owner's rights. In a run of the
-triggers that token is an installation token of the infrastructure GitHub
-App, minted in the run from its private key. A third app beside the release
-and deployer apps, because widening the deployer app would give every
-application pipeline those rights. Once, by a person:
+triggers that token is an installation token of the infrastructure GitHub App,
+minted in the run from its private key. A third app beside the release and
+deployer apps, because widening the deployer app would give every application
+pipeline those rights. The app is the root organization's: its bootstrap made
+it from bedrock's declaration (the root `README.md`, "Bootstrapped by one
+command") with the repository permissions Actions (read), Administration (read
+and write), Contents (read and write), Metadata (read) and Pull requests
+(read and write), and the
+organization permissions Administration, Variables and Self-hosted runners
+(read and write), installed on the organization for all repositories, and this
+organization records the same App ID (`githubInfrastructureAppId` in
+`placement.json`, filled in by the creation). The provider reads a repository's
+environments and their branch policies on the Actions permission and writes
+them on Administration; with Contents the creation pushes a new organization's
+rendered repository, and with Pull requests it opens the hand-off pull request
+in the root organization's repository; the organization permissions are for the
+`CI_LARGE_RUNNER` variable, the runner and its runner group, which the root
+organization's apply sets and makes when its placement names a larger runner
+(`ciLargeRunner`, `ciLargeRunnerSize`). The app bypasses the branch rules it
+writes, here as in the root organization's repository (`1-org/github.tf`).
 
-1. On GitHub, as an owner of the `{{.GithubOrganization}}` organization: the
-   organization's Settings, Developer settings, GitHub Apps, New GitHub App.
-   Name it `{{.GithubOrganization}}-infrastructure`, give it any homepage URL,
-   turn Webhook off. Repository permissions: Actions (read), Administration
-   (read and write), Metadata (read); the provider reads a repository's
-   environments and their branch policies on the Actions permission and
-   writes them on Administration. Organization permissions: Administration
-   (read and write), Variables (read and write) and Self-hosted runners (read
-   and write); the second is for the organization's `CI_LARGE_RUNNER`
-   variable, which 1-org sets when the placement names a larger runner
-   (`ciLargeRunner`), and the third for the runner and its runner group, which
-   1-org creates when the placement sizes it (`ciLargeRunnerSize`); without
-   them that apply is refused 403. Where can this app be installed: only this account. Create it, and note the App ID on its settings page. A
-   permission added later is accepted on the installation: the
-   organization's Settings, Third-party Access, GitHub Apps, the app.
-{{- end}}
-2. On the app's settings page: Private keys, Generate a private key. The
-   browser downloads a `.pem` file.
-3. On the same page: Install App, on the organization, for all repositories.
-4. In a terminal, in this repository, as the bootstrap administrator, once
-   this layer has made the container: record the App ID in `placement.json`
-   as `githubInfrastructureAppId`, then add the key to the container and pin
-   the version `add` prints (1 for the first):
+The key itself lives in the root organization `{{.RootOrganization}}`'s root
+project (`root` in `placement.json`), added, proven and pinned there by its key
+operators; a run of the triggers here reads the alias `current` of
+`{{.InfrastructureKeySecret}}`, which that organization pins, and nothing is
+added in this repository. Until the alias names a version, a run of the
+triggers that plans or applies `1-org` says so and stops; the Google side of
+the layer is unaffected. A person applying `1-org` by hand keeps using their
+own token (`1-org/README.md`).
 
-   ```bash
-   bedrock secret add github-infrastructure-key --from-file <the .pem file>
-   bedrock secret pin github-infrastructure-key <version>
-   ```
+## The GitHub Apps' keys
 
-   `add` puts the key into `{{.InfrastructureKeySecret}}` in the boot project.
-   `pin` checks with Secret Manager that the version is enabled, records it as
-   `githubInfrastructureKeyVersion` in `placement.json` and runs `bedrock org
-   render`. Commit what they changed and delete the `.pem` file. Pinned, never
-   `latest`: a new key is a new version and a new pin, and nobody edits the
-   version in `placement.json` by hand.
+The three GitHub Apps' private keys live in the root organization
+`{{.RootOrganization}}`'s root project (`{{.RootProject}}`; `root` in
+`placement.json`), one secret per app for every bedrock organization in the
+Google Cloud organization: `{{.InfrastructureKeySecret}}`,
+`{{.DeployerKeySecret}}` and `{{.ReleaseKeySecret}}`. Every reader here names
+a secret's alias `current`, which that organization's placement pins and its
+apply moves; nothing is added or pinned in this repository, `bedrock secret
+add` and `pin` refuse here and name that organization, and a rotation there
+switches every reader at once (that organization's `README.md`, "The GitHub
+Apps' keys"). No key reaches GitHub.
 
-Until both values are recorded, a run of the triggers that plans or applies
-`{{.SecondLayer}}` says so and stops; the Google side of the layer is unaffected. A
-person applying `{{.SecondLayer}}` by hand keeps using their own token
-(`{{.SecondLayer}}/README.md`).
-{{- if .Zones}}
+What this organization records is the apps' App IDs, which are not secrets:
+`githubInfrastructureAppId` for the infrastructure app, `githubDeployerAppId`
+for the deployer app, which the plan trigger's run posts each layer's plan on
+the pull request as and every application's pipeline talks back on its pull
+requests as (a deployment carrying the environment's URL, a comment, the
+guard's refusals), and `githubReleaseAppId` for the release app, which each
+application's release trigger cuts the application's releases as
+(release-please, in Cloud Build as the application's release identity). The
+apps themselves, their permissions and their installations are the root
+organization's bootstrap's, made once from bedrock's declaration of each (the
+root `README.md`, "Bootstrapped by one command"); this organization records
+the same App IDs, filled in by the creation.
 
-## The deployer GitHub App's key
+How the reads are granted (`github.tf`): the root organization gives this
+organization's boot identity `secretPolicyAdmin` on the three secrets, a
+custom role of its project that reads and sets a secret's IAM policy and
+nothing else. This layer grants from it: the org identity's policy
+administration of the deployer and release secrets, which `1-org` hands to
+each environment layer identity so `2-env` can grant the applications'
+identities their read; the org plan identity's read of the infrastructure
+key; the runners' reads of the infrastructure and deployer keys
+(`cloud-build.tf`); and both boot plan identities' read of the three secrets'
+policies, which a plan of this layer or of `1-org` refreshes the grants
+through. That is the only reach this organization has into that one.
 
-The plan trigger's run posts each layer's plan on the pull request as the
-organization's deployer GitHub App. The app itself, its permissions and its
-installation are made once on GitHub (the root `README.md`, "The deployer
-GitHub App"); a GitHub organization that holds a hosting organization has it
-already, and this organization records the same App ID. What this layer needs
-from it, once, after its first apply has made the container:
-{{- else}}
+Both grants came with the creation ("Created by the root organization"
+above): `bedrock org create` listed this organization in the root
+organization's `placement.json` (`hostingOrganizations`: the prefix and the
+boot project, whose suffix the command chose) before the merge, and the
+creating identity, which holds the same role on the four shared secrets,
+granted the boot identity as the seed and then applied this layer with its
+own policy administration of them. The hand-off recorded the folder, from
+which that organization's `0-bootstrap` keeps the boot identity's grant
+rendered. Nothing was granted by hand.
 
-## The deployer and release GitHub Apps' keys
-
-The plan trigger's run posts each layer's plan on the pull request as the
-organization's deployer GitHub App, and every application's pipeline talks
-back on its pull requests as the same app (a deployment carrying the
-environment's URL, a comment, the guard's refusals). Each application's
-release trigger cuts the application's releases as the organization's
-release GitHub App (release-please, in Cloud Build as the application's
-release identity). The apps themselves, their permissions and their
-installations are made once on GitHub (the root `README.md`, "The two GitHub
-Apps"). What this layer needs from the deployer app, once, after its first
-apply has made the container (and the same for the release app, with
-`github-release-key`, `githubReleaseKeyVersion` and `{{.ReleaseKeySecret}}`;
-its App ID, `githubReleaseAppId`, is in `placement.json` from the start):
-{{- end}}
-
-1. In `placement.json`: the app's App ID, from its settings page, as
-   `githubDeployerAppId`.
-2. In a terminal, in this repository, as the bootstrap administrator:
-
-   ```bash
-   bedrock secret add github-deployer-key --from-file <the .pem file>
-   bedrock secret pin github-deployer-key <version>
-   ```
-
-   `add` puts the key into `{{.DeployerKeySecret}}` in the boot project and
-   prints the version; `pin` checks with Secret Manager that the version is
-   enabled, records it as `githubDeployerKeyVersion` in `placement.json` and
-   runs `bedrock org render`{{if not .Zones}}, which writes the version's resource name into
-   `2-env`'s output `github_deployer_key_secret_version`{{end}}. Commit what they
-   changed and delete the `.pem` file. Pinned, never `latest`, and never
-   edited by hand.
-{{- if not .Zones}}
-3. On GitHub, the pull request that carries the two values: its merge applies
-   `2-env` in every environment through the apply trigger, and each
-   application's stack passes the key to its pipeline at its next apply. The
-   applications' identities read the container through the grant `2-env`
-   makes, with the administration `1-org` gives each environment layer
-   identity on it.
-{{- end}}
-
-{{if .Zones}}Until both values are recorded, the plans are in the runs' logs alone;
-nothing else is affected.{{else}}Until both values are recorded, the plans are in the runs' logs alone and
-the pipelines talk back through nothing; nothing else is affected. Until the
-release key is pinned, no application's stack makes its release trigger, and
-no push cuts a release.{{end}}
+Until the App IDs are recorded, the plans are in the runs' logs alone and
+the pipelines talk back through nothing; until the root organization has
+pinned a key, the pipelines that read it say so and wait. Nothing else is
+affected.
 
 ## Recovery, by hand
-
-{{- if .Zones}}
-
-When the triggers cannot run (the connection broken, the repository
-unreachable, a change that must be applied before it can merge), a person
-applies from their own computer: the bootstrap administrator, with the roles
-step 1 lists and their own sign-in, the way the first applies ran (step 3
-above, without the local state; `1-dns/README.md`, "Applying"). An apply by
-hand leaves the layer's marker as it was, so the next push applies the layer
-again: the plan is empty when the hand apply was complete.
-{{- else}}
 
 When the triggers cannot run (the connection broken, the repository
 unreachable, a change that must be applied before it can merge), a person
@@ -778,69 +430,39 @@ project, and the layer state entitlement, the identity's slot in the state
 bucket and the boot project as its quota project. The person then runs the
 layer as themselves, with the identity's roles, on the same code as the
 triggers, and the audit log names the person (`2-env/README.md`). This layer
-and `1-org` have no entitlement: their recovery is the bootstrap
-administrator's, with the roles step 1 lists and their own sign-in, the way
-the first applies ran (step 3 above, without the local state). An apply by
-hand leaves the layer's marker as it was, so the next push applies the layer
-again: the plan is empty when the hand apply was complete.
-{{- end}}
+and `1-org` have no entitlement: their recovery is the break-glass account's,
+which grants itself, for the run, the roles the layer's identity holds on the
+organization's folder (`variables.tf`) with the Folder Admin the creation
+gave it there, applies from the layer's directory against the bucket as the
+creation's first applies ran (`tofu init`, then `tofu apply`, with its own
+sign-in and, for `1-org`, their own GitHub token), and takes the grants off
+after. An apply by hand leaves the layer's marker as it was, so the next
+push applies the layer again: the plan is empty when the hand apply was
+complete.
 
 ## Destroying the organization
-
-{{- if .Zones}}
-
-`bedrock org destroy` deletes the boot project, and with it everything the
-layers made: the layer identities, the state bucket with both layers' states,
-the connection and the triggers, the GitHub Apps' keys, and the zones with
-their record sets. The folders and the custom roles go with it, and on GitHub
-this repository's ruleset. The repository stays, with its code and pull
-requests. Every domain delegated to this organization then points at servers
-that answer nothing, so a zones organization is destroyed once no domain is
-delegated to it (`1-dns/README.md`). Google keeps a deleted project for 30
-days, in which the console can restore it; its id never returns after.
-{{- else}}
 
 `bedrock org destroy` deletes every project of the organization, and with them
 everything the layers and the applications made: the layer identities, the
 state bucket with every layer's and every application's state and records, the
-connection and the triggers, the GitHub Apps' keys, the registry and its
-images, the Spanner instances and databases, the load balancer and the zone,
+connection and the triggers, the registry and its images, the Spanner
+instances and databases, the load balancer and the zone,
 every environment's services, jobs, secrets, records and files. The folders,
-the custom roles and the tag, the org policies, the entitlements and the audit
+the custom roles and the tags, the org policies, the entitlements and the audit
 log sink go with them, and on GitHub the rulesets, the operations environments,
 the runner group and the organization variable. The repositories stay, with
 their code, pull requests and releases. Google keeps a deleted project for 30
 days, in which the console can restore it; its id never returns after.
-{{- end}}
 
-It runs by hand, at a person's computer: an owner of the GCP organization
-(deleting projects and folders, organization roles and the tag is theirs),
-signed in with `gcloud auth application-default login`, with `GITHUB_TOKEN`
+It runs by hand, at a person's computer, signed in as the break-glass account
+(`gcloud auth application-default login`), holding Owner on the organization's
+folder for the run, which the Folder Admin it keeps there lets it grant itself
+and which goes with the folder; with `GITHUB_TOKEN`
 set to the infrastructure GitHub App's installation token or an organization
 owner's token (gh's token serves when gh is signed in as one). It says what
 goes, project by project, and asks for the prefix typed back before anything
 runs; `--yes` stands in for it where there is no terminal, as in a disposable
 organization's scripts.
-
-{{- if .Zones}}
-
-Then it destroys `1-dns` and `0-bootstrap`, in that order. `1-dns` first: this
-repository and the zones with their record sets are taken out of its state
-(the repository stays on GitHub; the zones go with the boot project, which
-their `prevent_destroy` would otherwise refuse), then the destroy, which
-deletes the ruleset. `0-bootstrap` in two steps: an apply with `destroy=true`,
-the variable it declares for this command alone, records the boot project's
-deletion policy as DELETE, records that no API is disabled on the destroy, and
-lifts the folders' deletion protection, all three read by the provider from
-the state and not from the configuration; then the destroy, tried again after
-a pause while it fails, since a folder refuses for a while after its last
-project's deletion. Its state lives in the bucket the boot project holds, so
-the destroy runs on a copy of the layer with a local copy of the state,
-pulled before the project goes. A layer whose state holds nothing is skipped,
-so the command also finishes an organization whose first applies stopped
-halfway. The command refuses a checkout rendered by an earlier bedrock, which
-declares no `destroy` variable: `bedrock org render` first.
-{{- else}}
 
 Then it destroys `1-org` and `0-bootstrap`, in that order, each in two steps.
 An apply with `destroy=true`, the variable both layers declare for this command
@@ -851,10 +473,12 @@ Compute Engine's for `2-env`'s pull-request backend, refuses; the project's
 deletion takes everything regardless), and lifts the folders' deletion
 protection, all three read by the provider from the state and not from the
 configuration. Then the destroy, tried again after a pause while it fails: a
-folder refuses for a while after its last project's deletion, and a tag value
-while a binding in a project being deleted still holds it, and the next attempt
-gets past both. `1-org`'s GitHub repositories are taken out of its state
-first. `0-bootstrap`'s state lives in the bucket the boot project holds, so its
+folder refuses for a while after its last project's deletion, and the next
+attempt gets past it. `1-org`'s GitHub repositories are taken out of its state
+first, and so are its tag keys, values and bindings, which go with the
+projects that hold them (a tag value refuses to go while a binding still holds
+it, and the bindings go with the projects' deletion, not before).
+`0-bootstrap`'s state lives in the bucket the boot project holds, so its
 destroy runs on a copy of the layer with a local copy of the state, pulled
 before the project goes. A layer whose state holds nothing is skipped, so the
 command also finishes an organization whose first applies stopped halfway. The
@@ -868,9 +492,14 @@ registration cannot move to another project, and that project is a person's to
 deal with (`1-org/README.md`, "Removing a project"). The command refuses a
 checkout rendered by an earlier bedrock, which declares no `destroy` variable:
 `bedrock org render` first.
-{{- end}}
 
-It ends with a line in `JOURNAL.md`. Starting over is a new seed (step 1, with
-a new boot project), `bedrock org render` on its values, and the hand steps
-again; the GitHub side (the organization, its machine account
-`{{.GithubMachineAccount}}`, the apps and their installations) is as it was.
+It ends with a line in `JOURNAL.md`. Starting over is a new record in the root
+organization's repository (`bedrock org create {{.Prefix}}` there, which
+chooses a new boot project suffix, and its pull request), after this
+organization's entry is taken out of that placement; the GitHub side (the
+organization, its Bot Account `{{.GithubBotAccount}}`, the apps and their
+installations) is as it was, and this repository stays with its history: the
+new creation pushes its foundation on it, as its placement names another
+state bucket, and the earlier creation's merged hand-off pull request in the
+root organization's repository stays as history too: the new creation opens
+its own, from the same branch.

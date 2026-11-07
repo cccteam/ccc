@@ -205,6 +205,7 @@ func DefaultClients(out io.Writer) *Clients {
 		Storage: NewStorage, StorageAs: NewStorageAs, StorageAsWriter: NewStorageAsWriter, Builds: NewCloudBuild, Comments: GitHubComments, GitHub: PublicGitHub,
 		Registry: NewArtifactRegistry(out), Run: NewCloudRun(out), Secrets: NewSecretManager, Exec: OSRunner{}, Grants: NewGrants(out), Versions: NewVersions(out),
 		SecretsAs: NewSecretManagerAs, Tasks: NewCloudTasks(out), Metrics: NewCloudMonitoring(out), HTTP: &http.Client{Timeout: 30 * time.Second}, IDToken: GoogleIDToken, FirestoreAs: NewFirestoreAs(out), SpannerAs: NewSpannerAs(out), Spanner: NewSpanner(out),
+		Sleep: Sleep,
 	}
 }
 

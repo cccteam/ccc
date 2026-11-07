@@ -43,10 +43,11 @@ func Plan(ctx context.Context, clients *Clients, req *Request, out io.Writer) er
 	if err != nil {
 		return err
 	}
+	var posts []post
 	if len(runs) == 0 {
 		fmt.Fprintln(out, "No layer changes in this pull request: nothing to plan.")
 
-		return nil
+		return r.comment(ctx, number, posts)
 	}
 	if err := r.recorded(runs); err != nil {
 		return err
@@ -60,7 +61,10 @@ func Plan(ctx context.Context, clients *Clients, req *Request, out io.Writer) er
 	for i, v := range verdicts {
 		fmt.Fprintf(out, "%s: %s\n", results[i].run.Name, v.summary)
 	}
-	if err := r.comment(ctx, number, results, verdicts); err != nil {
+	for i, res := range results {
+		posts = append(posts, post{marker: markerOf(res.run.Name), body: commentBody(res, verdicts[i].summary, r.subs[commitSub])})
+	}
+	if err := r.comment(ctx, number, posts); err != nil {
 		return err
 	}
 	var failed []string
@@ -129,13 +133,24 @@ func (r *run) namedRuns() (runs []org.LayerRun, named bool, err error) {
 	return runs, true, nil
 }
 
-// tokenFor mints the GitHub token of the layer with the GitHub provider (1-org, or 1-dns
-// in a zones organization) when that layer is among the runs.
+// tokenFor mints the GitHub token of the layer with the GitHub provider (1-org) when that
+// layer is among the runs and has a state: a run that
+// has never applied is not planned (planOne), and before an organization's first apply
+// the key's alias the token is minted from is not set yet.
 func (r *run) tokenFor(ctx context.Context, runs []org.LayerRun) (string, error) {
 	for _, lr := range runs {
-		if lr.Layer == r.p.SecondLayer() {
-			return r.infrastructureToken(ctx)
+		if lr.Layer != orgLayer {
+			continue
 		}
+		absent, err := r.stateAbsent(ctx, lr)
+		if err != nil {
+			return "", err
+		}
+		if absent {
+			return "", nil
+		}
+
+		return r.infrastructureToken(ctx)
 	}
 
 	return "", nil
@@ -186,13 +201,16 @@ func (r *run) planOne(ctx context.Context, lr org.LayerRun, githubToken string) 
 
 		return res
 	}
-	t, err := newTofu(r.clients.Exec, r.req.Dir, lr, lr.Plan, r.p.SecondLayer(), githubToken, &log)
+	t, err := newTofu(r.clients.Exec, r.req.Dir, lr, lr.Plan, &log)
 	if err != nil {
 		res.err = err
 
 		return res
 	}
 	defer t.close()
+	if lr.Layer == orgLayer {
+		t.withGitHub(githubToken)
+	}
 	if err := t.init(ctx); err != nil {
 		fmt.Fprintf(&log, "%v\n", err)
 
@@ -233,10 +251,19 @@ func (r *run) stateAbsent(ctx context.Context, lr org.LayerRun) (bool, error) {
 	return false, nil
 }
 
-// comment posts each plan on the pull request as the deployer app: one comment per
-// run, found by its marker line and updated when it is there, created when not. The
+// post is one comment on the pull request: the marker line it starts with, by which a
+// later push finds and updates it, and its body.
+type post struct {
+	marker, body string
+}
+
+// comment posts the plans on the pull request as the deployer app: one comment per run,
+// each found by its marker line and updated when it is there, created when not. The
 // plans stay in the log when the deployer app is not recorded.
-func (r *run) comment(ctx context.Context, number int, results []*planResult, verdicts []verdict) error {
+func (r *run) comment(ctx context.Context, number int, posts []post) error {
+	if len(posts) == 0 {
+		return nil
+	}
 	token, reason, err := r.deployerToken(ctx)
 	if err != nil {
 		return err
@@ -251,16 +278,15 @@ func (r *run) comment(ctx context.Context, number int, results []*planResult, ve
 	if err != nil {
 		return err
 	}
-	for i, res := range results {
-		body := commentBody(res, verdicts[i].summary, r.subs[commitSub])
-		if id, ok := findComment(existing, markerOf(res.run.Name)); ok {
-			if err := gh.UpdateComment(ctx, r.owner, r.repo, id, body); err != nil {
+	for _, p := range posts {
+		if id, ok := findComment(existing, p.marker); ok {
+			if err := gh.UpdateComment(ctx, r.owner, r.repo, id, p.body); err != nil {
 				return err
 			}
 
 			continue
 		}
-		if err := gh.CreateComment(ctx, r.owner, r.repo, number, body); err != nil {
+		if err := gh.CreateComment(ctx, r.owner, r.repo, number, p.body); err != nil {
 			return err
 		}
 	}

@@ -1,7 +1,7 @@
 // Package org renders an organization foundation: the six layers of the CCC provisioning
 // model (the bootstrap, the organization, the shared registry, the shared Spanner
 // instance, the network, and the environments) from an organization placement, the way
-// the application stack is rendered from an application; or, for a zones organization
+// the application stack is rendered from an application; or, for a root organization
 // (zones.go), the bootstrap and the one layer that holds its DNS zones. The layers' .tf
 // files and their READMEs are owned and rewritten on every render; each layer's
 // terraform.tfvars, the journal and the ignore rules are seeded once and then a person's.
@@ -45,6 +45,9 @@ var (
 	repositoryRE    = regexp.MustCompile(`^[A-Za-z0-9_.-]{1,100}$`)
 	labelRE         = regexp.MustCompile(`^[a-z][a-z0-9_-]{0,62}$`)
 	projectNumberRE = regexp.MustCompile(`^\d+$`)
+	// projectIDRE is a project id: 6 to 30 lowercase letters, digits and hyphens,
+	// starting with a letter and not ending with a hyphen.
+	projectIDRE = regexp.MustCompile(`^[a-z][a-z0-9-]{4,28}[a-z0-9]$`)
 	// groupAddressRE is a group's address as the Workspace Admin console names it: a
 	// mailbox at a domain, with no member prefix in front.
 	groupAddressRE = regexp.MustCompile(`^[^@\s:/]+@[^@\s:/]+\.[^@\s:/]+$`)
@@ -54,7 +57,7 @@ var (
 	appSlugRE = regexp.MustCompile(`^[a-z0-9]+(-[a-z0-9]+)*$`)
 	// secretVersionNameRE is a Secret Manager version by its resource name, regional or
 	// global, numbered and never latest.
-	secretVersionNameRE = regexp.MustCompile(`^projects/[^/]+(/locations/[^/]+)?/secrets/[^/]+/versions/[1-9][0-9]*$`)
+	secretVersionNameRE = regexp.MustCompile(`^projects/[^/]+(/locations/[^/]+)?/secrets/[^/]+/versions/([1-9][0-9]*|` + KeyAlias + `)$`)
 	// sha256RE is a SHA-256 checksum as sha256sum prints it.
 	sha256RE = regexp.MustCompile(`^[0-9a-f]{64}$`)
 )
@@ -88,16 +91,17 @@ var entitlementDefaults = map[string]time.Duration{
 	EntitlementLayerAdministrator: 4 * time.Hour,
 }
 
-// Placement is what the organization decided before any layer exists: its naming
+// Placement is what the organization decided before anything of it exists: its naming
 // prefix, its domains, its billing account, its regions, its GitHub organization, and the
-// few constants the layers restate. Values the seed step chooses (the boot project's
+// few constants the layers restate. Values the creation chooses (the boot project's
 // suffix, the state bucket) are not here until it has run.
 type Placement struct {
 	// Kind is the kind of organization: hosting, the default when left out, which holds
-	// applications in its environments and renders the six layers; or zones, which holds
-	// DNS zones alone in its boot project and renders the bootstrap and 1-dns (zones.go).
-	// A zones organization names its domains (Domains) and none of the fields that
-	// describe applications or environments.
+	// applications in its environments and renders the six layers; or root, which holds
+	// the GitHub Apps' keys, the zones of the domains delegated to it and the hosting
+	// organizations' records in its root project, without a layer (root.go). A root
+	// organization names its domains (Domains) and none of the fields that describe
+	// applications or environments.
 	Kind string `json:"kind,omitempty"`
 	// Prefix is the organization's naming prefix: every resource name starts with
 	// <prefix>-<env>.
@@ -107,18 +111,25 @@ type Placement struct {
 	OrganizationDomain string `json:"organizationDomain"`
 	// OrganizationID is the organization's numeric ID, for the seed steps.
 	OrganizationID string `json:"organizationId"`
+	// DirectoryCustomerID is the Google Cloud organization's Cloud Identity customer (C and
+	// eight lowercase alphanumerics), which 1-org names in the domain-restricted sharing
+	// policy: recorded with the seed's values in a root organization (gcloud organizations
+	// describe, owner.directoryCustomerId) and copied into each hosting organization's
+	// record by bedrock org create, since an identity of an organization holds no read at
+	// the organization node to look the organization up with.
+	DirectoryCustomerID string `json:"directoryCustomerId,omitempty"`
 	// BillingAccount is the billing account projects are linked to.
 	BillingAccount string `json:"billingAccount"`
 	// AppsDomain is the domain the applications' hostnames hang under, never the
-	// identity domain. A zones organization has none.
+	// identity domain. A root organization has none.
 	AppsDomain string `json:"appsDomain,omitempty"`
-	// Domains are the domains a zones organization holds a zone for, by domain, each with
+	// Domains are the domains a root organization holds a zone for, by domain, each with
 	// the labels of it handed onward to the hosting organizations' zones (Domain). A
 	// customer delegates the domain to this organization's zone once, at its registrar or
 	// at the DNS provider that serves the domain above it (bedrock domain check prints
 	// the records); each application's name under it is then one label here, named at
 	// the application's registration with the four name servers of its zone in the
-	// hosting organization. 1-dns renders one zone per domain and one NS record set per
+	// hosting organization. The apply makes one zone per domain and one NS record set per
 	// label. None for a hosting organization.
 	Domains map[string]Domain `json:"domains,omitempty"`
 	// VanityDomains are the domains delegated whole to the network project beside the
@@ -144,17 +155,25 @@ type Placement struct {
 	// GithubOrganization is the GitHub organization holding the application
 	// repositories and this one.
 	GithubOrganization string `json:"githubOrganization"`
-	// GithubMachineAccount is the GitHub login of the organization's machine account: a
-	// GitHub user that belongs to the organization as an owner and acts for no person. It
-	// signs in to GitHub in the browser step that authorizes the Cloud Build GitHub
-	// connection, and owns the personal access token that can stand in for that step.
-	GithubMachineAccount string `json:"githubMachineAccount"`
+	// GithubBotAccount is the login of the organization's GitHub Bot Account: a GitHub
+	// user with no person behind it, an owner of the organization, whose classic personal
+	// access token the Cloud Build connections authorize as (Cloud Build takes a GitHub
+	// user's token, never an App's). The bootstrap stores that token as the root
+	// organization's Cloud Build token secret, which every connection names.
+	GithubBotAccount string `json:"githubBotAccount"`
+	// GithubAppPrefix is the word the three GitHub Apps' names start with
+	// (<word>-infrastructure, <word>-deployer, <word>-release), when it is not the GitHub
+	// organization's login: for a login that would make a name longer than GitHub's 34
+	// characters, or names that are taken. A root organization's, which makes the apps;
+	// left out otherwise.
+	GithubAppPrefix string `json:"githubAppPrefix,omitempty"`
 	// GithubReleaseAppID is the App ID of the release GitHub App, the only actor that
 	// creates, moves or deletes a release tag of an application's repository: digits,
 	// from the app's settings page. The id, not the slug: a private app cannot be
 	// read by its slug with the operator's token.
 	GithubReleaseAppID string `json:"githubReleaseAppId"`
-	// GithubReleaseAppSlug is the same app's slug, the name in its page's address
+	// GithubReleaseAppSlug is the same app's slug, the name in its page's address, which
+	// the root organization records when the app is made and a hosting organization copies;
 	// (github.com/apps/<slug>): the releases it cuts carry <slug>[bot] as their author,
 	// and an application's pipeline accepts a release from that author alone, so each
 	// application's placement records it (releaseApp), from here.
@@ -169,9 +188,11 @@ type Placement struct {
 	// applies 1-org refuses until it is recorded.
 	GithubInfrastructureAppID string `json:"githubInfrastructureAppId,omitempty"`
 	// GithubInfrastructureKeyVersion is the number of the Secret Manager version holding
-	// the infrastructure app's private key, in the container 0-bootstrap creates in the
-	// boot project (<prefix>-boot-gbl-github-infrastructure-key): pinned, never latest.
-	// Empty until a version was added.
+	// the infrastructure app's private key, in the secret a root organization holds in
+	// its root project (<prefix>-root-gbl-github-infrastructure-key): the version its
+	// alias current points at, which the root organization's apply moves and every
+	// reader names, never latest. A root organization's; a hosting organization records none (Keys).
+	// Empty until a version was pinned.
 	GithubInfrastructureKeyVersion string `json:"githubInfrastructureKeyVersion,omitempty"`
 	// GithubDeployerAppID is the App ID of the deployer GitHub App, which the
 	// applications' pipelines talk back on a pull request as and the plan trigger's run
@@ -179,29 +200,67 @@ type Placement struct {
 	// app exists; until then the plans are in the run's log alone.
 	GithubDeployerAppID string `json:"githubDeployerAppId,omitempty"`
 	// GithubDeployerKeyVersion is the number of the Secret Manager version holding the
-	// deployer app's private key, in the container 0-bootstrap creates in the boot
-	// project (<prefix>-boot-gbl-github-deployer-key): pinned, never latest. Empty until
-	// a version was added.
+	// deployer app's private key, in the secret a root organization holds in its root
+	// project (<prefix>-root-gbl-github-deployer-key): the version its alias current
+	// points at. A root organization's; empty until a version was pinned.
 	GithubDeployerKeyVersion string `json:"githubDeployerKeyVersion,omitempty"`
 	// GithubReleaseKeyVersion is the number of the Secret Manager version holding the
-	// release GitHub App's private key, in the container 0-bootstrap creates in the boot
-	// project (<prefix>-boot-gbl-github-release-key): pinned, never latest. Empty until
-	// pinned; 2-env then carries the version to each application's release trigger, which
-	// mints the token release-please cuts the releases with.
+	// release GitHub App's private key, in the secret a root organization holds in its
+	// root project (<prefix>-root-gbl-github-release-key): the version its alias current
+	// points at, from which each application's release trigger in the hosting
+	// organizations mints the token release-please cuts the releases with. A root
+	// organization's; empty until a version was pinned.
 	GithubReleaseKeyVersion string `json:"githubReleaseKeyVersion,omitempty"`
+	// GithubTokenVersion is the number of the Secret Manager version holding the GitHub
+	// Bot Account's token, in the secret a root organization holds in its root project
+	// (<prefix>-root-gbl-github-token): the version its alias current points at, which
+	// the root organization's apply moves and every Cloud Build connection in every
+	// organization names (cloudBuildTokenSecretVersion). A root organization's; the
+	// bootstrap pins the first, bedrock secret pin github-token the next; empty until a
+	// version was pinned.
+	GithubTokenVersion string `json:"githubTokenVersion,omitempty"`
+	// Root is the root organization a hosting organization stands under: the one that
+	// holds, for every organization in the Google Cloud organization, the GitHub Apps'
+	// private keys and the Cloud Build GitHub authorization's token, by its prefix
+	// (root.organization) and its root project (root.project), where those secrets live.
+	// Every reader of a key names the alias current of its secret, which that
+	// organization's placement pins, and every connection names that organization's
+	// token (cloudBuildTokenSecretVersion, the same value as in its placement); nothing
+	// about either is recorded here beyond that. A root organization has none: they are
+	// its own.
+	Root *RootPlace `json:"root,omitempty"`
+	// KeyOperators are the members (user:..., group:...) a root organization grants the
+	// adding of a version of a GitHub App's key, and the read that proves one, for the
+	// rotation (README.md, "The GitHub Apps' keys"). None for a hosting
+	// organization.
+	KeyOperators []string `json:"keyOperators,omitempty"`
+	// HostingOrganizations are the hosting organizations under a root organization,
+	// each by its prefix and its boot project, and its folder once created: the ones
+	// the root organization creates by pull request (bedrock org create, whose record is
+	// the organization's own placement under organizations/<prefix>/), and the ones that
+	// stood before it, recorded as they are. For each created one, the root
+	// organization's apply grants the boot identity the administration of the shared
+	// secrets' policies (secretPolicyAdmin: the three keys and the token), which that
+	// organization's layers hand down to the identities that read them. None for a
+	// hosting organization.
+	HostingOrganizations []HostingOrganization `json:"hostingOrganizations,omitempty"`
 	// CloudBuildInstallationID is the installation id of the Google Cloud Build GitHub
 	// App on the GitHub organization (digits, from the installation's settings page),
-	// which every Cloud Build connection names: the boot project's for the layers and
-	// each environment's for the applications. Recorded after the browser authorization
-	// in the boot project's Cloud Build console (0-bootstrap/README.md); empty until
-	// then, and the connections, the repository links and the triggers wait.
+	// which every Cloud Build connection names: the root organization's for its runs, a
+	// hosting organization's boot project's for the layers and each environment's for
+	// the applications. The bootstrap reads it from GitHub with the Bot Account's token
+	// and records it in the root organization's placement, from which a hosting
+	// organization's record fills it in.
 	CloudBuildInstallationID string `json:"cloudBuildInstallationId,omitempty"`
 	// CloudBuildTokenSecretVersion is the resource name of the Secret Manager version
-	// holding the GitHub token the connections authorize with, which the same browser
-	// step writes into the boot project: projects/<boot project>/locations/<region>/
-	// secrets/<name>/versions/<n> as the console writes it (a regional secret in the
-	// connection's region), or projects/<boot project>/secrets/<name>/versions/<n> for a
-	// global one. A numbered version, never latest. Empty with CloudBuildInstallationID.
+	// holding the Bot Account's token the connections authorize with: the alias current
+	// of the secret the bootstrap writes into the root project (projects/<root
+	// project>/secrets/<prefix>-root-gbl-github-token/versions/current), which the root
+	// organization's apply points at the version githubTokenVersion pins, so a rotation
+	// there switches every connection at once; a numbered version is taken too (a
+	// regional one reads projects/<project>/locations/<region>/secrets/<name>/versions/<n>),
+	// never latest. The same value in every organization's placement, filled in from the
+	// root organization's.
 	CloudBuildTokenSecretVersion string `json:"cloudBuildTokenSecretVersion,omitempty"`
 	// BedrockVersion is the bedrock the triggers' runs fetch at their first step and run
 	// (bedrock upgrade moves it): a release (v0.5.0), whose linux/amd64 binary
@@ -224,14 +283,17 @@ type Placement struct {
 	ApprovingReviews *int `json:"approvingReviews,omitempty"`
 	// CiLargeRunner names the larger runner the applications' CI runs the jobs its
 	// //impulse:ci line chooses on (the two test legs and the image build without a
-	// line): a runner's name, a runner label or a runner group of the organization, set
-	// once as the organization's Actions variable CI_LARGE_RUNNER, which every
-	// application's workflow reads. Empty for GitHub's standard runner, and no variable.
+	// line): a runner's name, a runner label or a runner group of the GitHub
+	// organization, set once as the organization's Actions variable CI_LARGE_RUNNER,
+	// which every application's workflow reads. The GitHub organization's own setting,
+	// so a root organization's (its apply sets the variable), declared once for every
+	// hosting organization in it; a hosting organization's placement refuses it. Empty
+	// for GitHub's standard runner, and no variable.
 	CiLargeRunner string `json:"ciLargeRunner,omitempty"`
-	// CiLargeRunnerSize, when set, has 1-org create the larger runner itself: a
+	// CiLargeRunnerSize, when set, has the apply create the larger runner itself: a
 	// GitHub-hosted runner named CiLargeRunner, of this machine size as GitHub lists them
 	// (4-core, 8-core, 16-core, 32-core, 64-core, 96-core, or an arm- size), on GitHub's
-	// current Ubuntu, in a runner group of the application repositories alone. Empty
+	// current Ubuntu, in a runner group open to the organization's repositories. Empty
 	// when CiLargeRunner names a runner or a group the organization already has.
 	CiLargeRunnerSize string `json:"ciLargeRunnerSize,omitempty"`
 	// CiLargeRunnerMaximum caps how many of the created runner run at once (GitHub's
@@ -242,24 +304,29 @@ type Placement struct {
 	// StateBucket is the seeded state bucket every backend block names; empty until the
 	// seed has run, and REPLACEME is rendered in its place.
 	StateBucket string `json:"stateBucket,omitempty"`
-	// Operator is the bootstrap administrator's account, who seeds and applies by hand.
-	Operator string `json:"operator"`
+	// BreakGlassAccount is the organization's break-glass account: a Google account in
+	// the Workspace directory with no person behind it, which runs the root organization's
+	// bootstrap and keeps Folder Admin on each organization's folder, and after that is
+	// signed into only when the pipeline cannot act (0-bootstrap/README.md, "Recovery, by
+	// hand"). One per Google Cloud organization; several organizations in it name the same
+	// one.
+	BreakGlassAccount string `json:"breakGlassAccount"`
 	// TeamGroups are the environments' team groups by environment, each a group's
 	// address (team-tst@example.com, with no member prefix: the layers write group: in
 	// front). Each person's access to an environment comes from its group: the group
 	// holds the release approval where a release waits for one, and its members ask for
 	// the environment's entitlements. One per environment; the same address may serve
-	// several, but production's group is not the first environment's. A zones
+	// several, but production's group is not the first environment's. A root
 	// organization has none.
 	TeamGroups map[string]string `json:"teamGroups,omitempty"`
 	// EntitlementDurations are the longest grants of the environments' entitlements, by
 	// entitlement (Entitlements) as a duration (1h, 90m); an entitlement not named takes
 	// its default. Between 30 minutes and 7 days.
 	EntitlementDurations map[string]string `json:"entitlementDurations,omitempty"`
-	// Regions are the two Cloud Run regions, the primary first; a zones organization's
+	// Regions are the two Cloud Run regions, the primary first; a root organization's
 	// one region, where its connection, its triggers and its state bucket are.
 	Regions []Region `json:"regions"`
-	// Spanner is the shared instance's configuration. A zones organization has none.
+	// Spanner is the shared instance's configuration. A root organization has none.
 	Spanner Spanner `json:"spanner,omitzero"`
 	// OutlierDetection is the outlier detection thresholds of the backend service 2-env
 	// renders for the pull-request environments, and those an application's first
@@ -334,6 +401,27 @@ type Placement struct {
 	// its first placement, org render prints the block), for the operations workflow
 	// that starts a restore from GitHub.
 	ProjectNumbers map[string]string `json:"projectNumbers,omitempty"`
+	// Folders are the folders 1-org made under the organization's folder, by key (shared,
+	// tst, stg, prd), as numeric ids; PublicInvokerTags are the public-invoker tag key and
+	// its value true in each environment project, by environment, as resource names
+	// (tagKeys/N, tagValues/N). Both are recorded by the creation from 1-org's first
+	// apply (its outputs folder_ids, public_invoker_tag_key and public_invoker_tag_value):
+	// the root organization sets the organization-policy baseline on the folders, with the
+	// tags as the public-invoker exception of domain-restricted sharing (the root's
+	// README, "The organization-policy baseline"). A hosting organization holds no role
+	// at the organization node, where Google grants Organization Policy Administrator and
+	// nowhere lower.
+	Folders           map[string]string           `json:"folders,omitempty"`
+	PublicInvokerTags map[string]PublicInvokerTag `json:"publicInvokerTags,omitempty"`
+	// AppsZone is the apps domain's public zone, made by the creation in the net project
+	// as the creating identity and adopted by 2-net (an import block): Cloud DNS asks
+	// whoever makes a zone to own the domain, or a parent, in Google's webmaster
+	// verification, which the root organization's apply verifies the creating identity
+	// as, by its token in the domain's zone, where the net identity of each organization
+	// would be made an owner by hand. Its name servers,
+	// which Cloud DNS assigns, go into the root placement by the hand-off, as the label of
+	// the apps domain handed onward. Recorded by the creation alone.
+	AppsZone *ZoneRecord `json:"appsZone,omitempty"`
 	// Labels are the labels every project and bucket carries beyond the model's own.
 	Labels map[string]string `json:"labels"`
 }
@@ -359,7 +447,7 @@ const (
 
 // HostingProjectKeys are the hosting model's projects by key, in layer order: the boot
 // project (the seed's, 0-bootstrap's and 1-org's layers run there), the shared projects,
-// then the environment projects. A zones organization has the boot project alone
+// then the environment projects. A root organization has the boot project alone
 // (Placement.ProjectKeys).
 var HostingProjectKeys = []string{bootProject, shrProject, netProject, spnProject, tstEnvironment, stgEnvironment, prdEnvironment}
 
@@ -387,12 +475,58 @@ func ReadPlacement(path string) (*Placement, error) {
 	if err := json.Unmarshal(data, &p); err != nil {
 		return nil, errors.Wrapf(err, "json.Unmarshal(): %s", path)
 	}
+	if err := refuseRenamedKeys(data); err != nil {
+		return nil, errors.Wrapf(err, "%s", path)
+	}
 	p.normalizeRegistration()
 	if err := p.Validate(); err != nil {
 		return nil, errors.Wrapf(err, "%s", path)
 	}
 
 	return &p, nil
+}
+
+// ReadPlacementUnchecked reads a placement without validating it: a record a
+// person is still writing, which bedrock org create fills and then validates.
+func ReadPlacementUnchecked(path string) (*Placement, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, errors.Wrap(err, "os.ReadFile()")
+	}
+	var p Placement
+	if err := json.Unmarshal(data, &p); err != nil {
+		return nil, errors.Wrapf(err, "json.Unmarshal(): %s", path)
+	}
+	if err := refuseRenamedKeys(data); err != nil {
+		return nil, errors.Wrapf(err, "%s", path)
+	}
+	p.normalizeRegistration()
+
+	return &p, nil
+}
+
+// refuseRenamedKeys refuses a placement written with a key that has since been renamed,
+// naming the new one: a key the struct does not know is otherwise dropped in silence,
+// and the refusal that follows ("breakGlassAccount is empty") would not say why.
+func refuseRenamedKeys(data []byte) error {
+	var keys map[string]json.RawMessage
+	if err := json.Unmarshal(data, &keys); err != nil {
+		return errors.Wrap(err, "json.Unmarshal()")
+	}
+	for old, now := range renamedKeys {
+		if _, ok := keys[old]; ok {
+			return errors.Newf("%s is now %s: rename the key", old, now)
+		}
+	}
+
+	return nil
+}
+
+// renamedKeys are the placement keys renamed since they were first written, each with
+// its name now and what it is.
+var renamedKeys = map[string]string{
+	"operator": "breakGlassAccount (the same account, the organization's break-glass account)",
+	"keys":     "root (the same organization, the root organization that holds the GitHub Apps' keys and the Cloud Build token)",
 }
 
 // normalizeRegistration spreads a step read in the older form, one for the application,
@@ -423,7 +557,7 @@ func (p *Placement) Validate() error {
 	for name, value := range map[string]string{
 		"organizationDomain": p.OrganizationDomain, "organizationId": p.OrganizationID, "billingAccount": p.BillingAccount,
 		"githubOrganization": p.GithubOrganization, "sourceRepo": p.SourceRepo, "githubDefaultBranch": p.GithubDefaultBranch,
-		"operator": p.Operator,
+		"breakGlassAccount": p.BreakGlassAccount,
 	} {
 		if strings.TrimSpace(value) == "" {
 			return errors.Newf("%s is empty", name)
@@ -435,7 +569,7 @@ func (p *Placement) Validate() error {
 		}
 	}
 	for _, validate := range []func() error{
-		p.validateMachineAccount, p.validateGithubApps, p.validateApprovingReviews, p.validateCloudBuild,
+		p.validateDirectoryCustomer, p.validateBotAccount, p.validateGithubApps, p.validateAppNames, p.validateApprovingReviews, p.validateCloudBuild,
 		p.validateBedrockPin, p.validateProjects,
 	} {
 		if err := validate(); err != nil {
@@ -452,8 +586,8 @@ func (p *Placement) Validate() error {
 			return errors.Newf("label %q = %q is not a lowercase key with a value", k, v)
 		}
 	}
-	if p.Zones() {
-		return p.validateZones()
+	if p.IsRoot() {
+		return p.validateRoot()
 	}
 
 	return p.validateHosting()
@@ -474,7 +608,7 @@ func (p *Placement) validateHosting() error {
 		return errors.Newf("regions has %d entries; the model runs in two, the primary first", len(p.Regions))
 	}
 	if len(p.Domains) > 0 {
-		return errors.New("domains is set, and a hosting organization holds no zone but the apps domain's and the vanity domains': a zones organization (kind) holds the zones that hand names onward")
+		return errors.New("domains is set, and a hosting organization holds no zone but the apps domain's and the vanity domains': a root organization (kind) holds the zones that hand names onward")
 	}
 	if err := p.validateSpanner(); err != nil {
 		return err
@@ -486,7 +620,7 @@ func (p *Placement) validateHosting() error {
 		return err
 	}
 	for _, validate := range []func() error{
-		p.validateReleaseApp, p.validateCiLargeRunner, p.validateTeamGroups, p.validateEntitlementDurations,
+		p.validateReleaseApp, p.validateKeys, p.validateTeamGroups, p.validateEntitlementDurations,
 		p.validateApplications, p.validateOutOfService, p.validateVanityDomains, p.validateHostnames,
 	} {
 		if err := validate(); err != nil {
@@ -497,14 +631,35 @@ func (p *Placement) validateHosting() error {
 	return nil
 }
 
-// validateMachineAccount refuses a machine account that is not named or not a GitHub
-// login.
-func (p *Placement) validateMachineAccount() error {
-	if strings.TrimSpace(p.GithubMachineAccount) == "" {
-		return errors.New("githubMachineAccount is empty: the GitHub login of the organization's machine account, an owner of the organization, which authorizes the Cloud Build GitHub connection in the browser and owns the personal access token that can stand in for it")
+// directoryCustomerRE is the shape of a Cloud Identity customer id: C and lowercase
+// alphanumerics (C0a1b2c3d).
+var directoryCustomerRE = regexp.MustCompile(`^C[0-9a-z]{6,12}$`)
+
+// validateDirectoryCustomer requires the organization's Cloud Identity customer id in a
+// hosting organization, whose 1-org names it in the domain-restricted sharing policy, and
+// checks its shape wherever it is recorded.
+func (p *Placement) validateDirectoryCustomer() error {
+	if p.DirectoryCustomerID == "" {
+		if p.IsRoot() {
+			return nil
+		}
+
+		return errors.New("directoryCustomerId is empty: the Google Cloud organization's Cloud Identity customer (C and eight lowercase alphanumerics), which 1-org names in the domain-restricted sharing policy; bedrock org create copies it from the root organization's placement, where it is recorded with the seed's values (gcloud organizations describe <id> --format='value(owner.directoryCustomerId)')")
 	}
-	if len(p.GithubMachineAccount) > githubLoginLength || !githubLoginRE.MatchString(p.GithubMachineAccount) {
-		return errors.Newf("githubMachineAccount %q is not a GitHub login (letters, digits and single hyphens, at most %d characters)", p.GithubMachineAccount, githubLoginLength)
+	if !directoryCustomerRE.MatchString(p.DirectoryCustomerID) {
+		return errors.Newf("directoryCustomerId %q is not a Cloud Identity customer id (C and lowercase alphanumerics, C0a1b2c3d for one)", p.DirectoryCustomerID)
+	}
+
+	return nil
+}
+
+// validateBotAccount refuses a Bot Account that is not named or not a GitHub login.
+func (p *Placement) validateBotAccount() error {
+	if strings.TrimSpace(p.GithubBotAccount) == "" {
+		return errors.New("githubBotAccount is empty: the login of the organization's GitHub Bot Account, a GitHub user with no person behind it and an owner of the organization, whose classic personal access token the Cloud Build connections authorize as")
+	}
+	if len(p.GithubBotAccount) > githubLoginLength || !githubLoginRE.MatchString(p.GithubBotAccount) {
+		return errors.Newf("githubBotAccount %q is not a GitHub login (letters, digits and single hyphens, at most %d characters)", p.GithubBotAccount, githubLoginLength)
 	}
 
 	return nil
@@ -541,6 +696,9 @@ func (p *Placement) validateGithubApps() error {
 	if p.GithubReleaseKeyVersion != "" && !projectNumberRE.MatchString(p.GithubReleaseKeyVersion) {
 		return errors.Newf("githubReleaseKeyVersion %q is not a secret version's number (digits, never latest)", p.GithubReleaseKeyVersion)
 	}
+	if p.GithubTokenVersion != "" && !projectNumberRE.MatchString(p.GithubTokenVersion) {
+		return errors.Newf("githubTokenVersion %q is not a secret version's number (digits, never latest)", p.GithubTokenVersion)
+	}
 
 	return nil
 }
@@ -568,17 +726,21 @@ func (p *Placement) ApprovingReviewCount() int {
 }
 
 // validateCloudBuild refuses an installation id that is not one, a token secret version
-// that is not a version's resource name or is latest, and one of the two recorded without
-// the other: the browser authorization produces both at once.
+// that is not a version's resource name (a number or the alias current; never latest),
+// one of the two recorded without the other (the bootstrap records both at once), and, in
+// a root organization, the alias named with no version pinned for it.
 func (p *Placement) validateCloudBuild() error {
 	if p.CloudBuildInstallationID != "" && !projectNumberRE.MatchString(p.CloudBuildInstallationID) {
 		return errors.Newf("cloudBuildInstallationId %q is not an installation id (digits, from the installation's settings page)", p.CloudBuildInstallationID)
 	}
 	if p.CloudBuildTokenSecretVersion != "" && !secretVersionNameRE.MatchString(p.CloudBuildTokenSecretVersion) {
-		return errors.Newf("cloudBuildTokenSecretVersion %q is not a secret version's resource name (projects/<project>[/locations/<region>]/secrets/<secret>/versions/<number>, a number and never latest)", p.CloudBuildTokenSecretVersion)
+		return errors.Newf("cloudBuildTokenSecretVersion %q is not a secret version's resource name (projects/<project>[/locations/<region>]/secrets/<secret>/versions/<number or %s>, never latest)", p.CloudBuildTokenSecretVersion, KeyAlias)
 	}
 	if (p.CloudBuildInstallationID == "") != (p.CloudBuildTokenSecretVersion == "") {
-		return errors.New("cloudBuildInstallationId and cloudBuildTokenSecretVersion are recorded together: the browser authorization in the boot project's Cloud Build console gives both (0-bootstrap/README.md, \"The Cloud Build GitHub authorization\")")
+		return errors.New("cloudBuildInstallationId and cloudBuildTokenSecretVersion are recorded together: the root organization's bootstrap records both, the Cloud Build GitHub App's installation it finds and the Bot Account's token secret it makes (README.md, \"Bootstrapped by one command\"), and the creation copies them into a hosting organization's placement")
+	}
+	if p.IsRoot() && strings.HasSuffix(p.CloudBuildTokenSecretVersion, "/versions/"+KeyAlias) && p.GithubTokenVersion == "" {
+		return errors.Newf("cloudBuildTokenSecretVersion names the alias %s of the token secret, and githubTokenVersion pins no version for it: the bootstrap records both; pin one (bedrock secret pin %s <version>)", KeyAlias, Token)
 	}
 
 	return nil
@@ -630,7 +792,7 @@ var (
 func (p *Placement) validateCiLargeRunner() error {
 	if p.CiLargeRunnerSize == "" {
 		if p.CiLargeRunnerMaximum != 0 {
-			return errors.Newf("ciLargeRunnerMaximum %d caps the runner 1-org creates, and ciLargeRunnerSize is empty: set the size, or drop the cap", p.CiLargeRunnerMaximum)
+			return errors.Newf("ciLargeRunnerMaximum %d caps the runner the root organization's apply creates, and ciLargeRunnerSize is empty: set the size, or drop the cap", p.CiLargeRunnerMaximum)
 		}
 
 		return nil
@@ -639,7 +801,7 @@ func (p *Placement) validateCiLargeRunner() error {
 		return errors.Newf("ciLargeRunnerSize %q is not a GitHub machine size (4-core, 8-core, 16-core, 32-core, 64-core, 96-core, or arm-4-core and up; GET /orgs/<org>/actions/hosted-runners/machine-sizes lists them)", p.CiLargeRunnerSize)
 	}
 	if p.CiLargeRunner == "" {
-		return errors.Newf("ciLargeRunnerSize %s names the runner 1-org creates, and ciLargeRunner, its name, is empty", p.CiLargeRunnerSize)
+		return errors.Newf("ciLargeRunnerSize %s names the runner the root organization's apply creates, and ciLargeRunner, its name, is empty", p.CiLargeRunnerSize)
 	}
 	if !hostedRunnerNameRE.MatchString(p.CiLargeRunner) {
 		return errors.Newf("ciLargeRunner %q cannot name a GitHub-hosted runner (1 to 64 of letters, digits, '.', '-' and '_')", p.CiLargeRunner)
@@ -783,7 +945,18 @@ func (p *Placement) Bucket() string {
 		return p.StateBucket
 	}
 
-	return p.Prefix + "-boot-gbl-state-" + replaceMe
+	return p.Prefix + "-" + p.pipelineProject() + "-gbl-state-" + replaceMe
+}
+
+// pipelineProject is the key of the project the organization's connection, triggers and
+// state bucket live in: the boot project of a hosting organization, the root project of
+// a root organization.
+func (p *Placement) pipelineProject() string {
+	if p.IsRoot() {
+		return RootProjectKey
+	}
+
+	return bootProject
 }
 
 // labelKeys lists the placement's label keys, sorted.
@@ -807,20 +980,20 @@ func (p *Placement) Project(key string) string {
 	return p.Prefix + "-" + key + "-gbl-core-" + replaceMe
 }
 
-// BootProject is the boot project's id, or its REPLACEME form until the seed's values
-// are recorded.
+// BootProject is the id of the project the pipeline runs from (the boot project; a root
+// organization's root project), or its REPLACEME form until the placement records it.
 func (p *Placement) BootProject() string {
-	return p.Project(bootProject)
+	return p.Project(p.pipelineProject())
 }
 
-// AppsZone is where the apps domain's zone is: the network project, empty until the
+// AppsZoneName is where the apps domain's zone is: the network project, empty until the
 // placement records 1-org's project_ids (projects.net), and the name 2-net's dns.tf gives
 // the zone, <prefix>-net-gbl-dns-apps.
-func (p *Placement) AppsZone() (project, zone string) {
+func (p *Placement) AppsZoneName() (project, zone string) {
 	return p.Projects[netProject], p.Prefix + "-" + netProject + "-gbl-dns-apps"
 }
 
-// VanityZone is where a vanity domain's zone is: the network project, as AppsZone, and
+// VanityZone is where a vanity domain's zone is: the network project, as AppsZoneName, and
 // the name 2-net's dns.tf gives the zone, <prefix>-net-gbl-dns-<the domain with hyphens
 // for its dots>, the name a parked zone of the same domain has (domains.tf), so a domain
 // registered here before it was declared keeps its zone.
@@ -842,23 +1015,23 @@ func (p *Placement) VanityNames(domain string) string {
 }
 
 // validateVanityDomains refuses a vanity domain that is not a bare lowercase domain, the
-// apps domain or the organization's domain (whose mail is on it) or a name under or
-// above either, one listed twice or under another listed (one zone serves a domain and
-// everything under it), and one whose names in 2-net would not fit.
+// apps domain or a name under or above it, one listed twice or under another listed (one
+// zone serves a domain and everything under it), and one whose names in 2-net would not
+// fit. The organization's own domain is a vanity domain like any other: whether it is
+// delegated whole or by a label is the live domain check's call, from what its apex
+// answers, not the placement's.
 func (p *Placement) validateVanityDomains() error {
 	for i, d := range p.VanityDomains {
 		if !derive.HostnameOK(d) {
 			return errors.Newf("vanityDomains names %q, which is not a bare lowercase domain such as example.com", d)
 		}
-		for _, other := range []struct{ name, what string }{{p.AppsDomain, "the apps domain"}, {p.OrganizationDomain, "the organization's domain, whose mail is on it"}} {
-			switch {
-			case d == other.name:
-				return errors.Newf("vanityDomains names %q, which is %s: a vanity domain is a client's own domain, delegated whole to the network project beside it", d, other.what)
-			case strings.HasSuffix(d, "."+other.name):
-				return errors.Newf("vanityDomains names %q, which is under %s %s: its zone already serves every name under it", d, other.what, other.name)
-			case strings.HasSuffix(other.name, "."+d):
-				return errors.Newf("vanityDomains names %q, which is above %s %s: one zone would serve both", d, other.what, other.name)
-			}
+		switch {
+		case d == p.AppsDomain:
+			return errors.Newf("vanityDomains names %q, which is the apps domain: a vanity domain is a client's own domain, delegated whole to the network project beside it", d)
+		case strings.HasSuffix(d, "."+p.AppsDomain):
+			return errors.Newf("vanityDomains names %q, which is under the apps domain %s: its zone already serves every name under it", d, p.AppsDomain)
+		case strings.HasSuffix(p.AppsDomain, "."+d):
+			return errors.Newf("vanityDomains names %q, which is above the apps domain %s: one zone would serve both", d, p.AppsDomain)
 		}
 		for _, earlier := range p.VanityDomains[:i] {
 			switch {
@@ -966,25 +1139,36 @@ const (
 	MarkerPrefix = "applied"
 )
 
-// ConnectionName is the boot project's Cloud Build connection, as 0-bootstrap names it:
-// regional, in the primary region.
+// ConnectionName is the pipeline project's Cloud Build connection, as 0-bootstrap names
+// it (the bootstrap, for a root organization): regional, in the primary region.
 func (p *Placement) ConnectionName() string {
-	return p.Prefix + "-boot-" + p.Primary().Code + "-github"
+	return p.Prefix + "-" + p.pipelineProject() + "-" + p.Primary().Code + "-github"
 }
 
 // RepositoryLinkName is the infrastructure repository's link under the connection, which
 // the triggers watch.
 func (p *Placement) RepositoryLinkName() string {
-	return p.Prefix + "-boot-" + p.Primary().Code + "-infrastructure-repo"
+	return p.Prefix + "-" + p.pipelineProject() + "-" + p.Primary().Code + "-infrastructure-repo"
 }
 
-// PlanTriggerName is the plan trigger, as 0-bootstrap names it.
+// PlanTriggerName is the plan trigger, as 0-bootstrap names it
+// (<prefix>-boot-<code>-layers-plan); a root organization's is <prefix>-root-<code>-plan,
+// since it plans no layer.
 func (p *Placement) PlanTriggerName() string {
+	if p.IsRoot() {
+		return p.Prefix + "-" + RootProjectKey + "-" + p.Primary().Code + "-plan"
+	}
+
 	return p.Prefix + "-boot-" + p.Primary().Code + "-layers-plan"
 }
 
-// ApplyTriggerName is the apply trigger, as 0-bootstrap names it.
+// ApplyTriggerName is the apply trigger, as 0-bootstrap names it; a root organization's
+// is <prefix>-root-<code>-apply.
 func (p *Placement) ApplyTriggerName() string {
+	if p.IsRoot() {
+		return p.Prefix + "-" + RootProjectKey + "-" + p.Primary().Code + "-apply"
+	}
+
 	return p.Prefix + "-boot-" + p.Primary().Code + "-layers-apply"
 }
 
@@ -995,16 +1179,26 @@ func (p *Placement) StackTriggerName(env, code string) string {
 	return p.Prefix + "-" + env + "-" + p.Primary().Code + "-" + code + "-stack"
 }
 
-// PlannerIdentity is the email of the plan trigger's runner identity, in the boot
-// project.
+// PlannerIdentity is the email of the plan trigger's runner identity, in the pipeline
+// project (<prefix>-org-gbl-planner; a root organization's <prefix>-root-gbl-planner).
 func (p *Placement) PlannerIdentity() string {
-	return p.identityEmail("org", bootProject, plannerSuffix)
+	return p.identityEmail(p.runnerName(), p.pipelineProject(), plannerSuffix)
 }
 
-// ApplierIdentity is the email of the apply trigger's runner identity, in the boot
+// ApplierIdentity is the email of the apply trigger's runner identity, in the pipeline
 // project.
 func (p *Placement) ApplierIdentity() string {
-	return p.identityEmail("org", bootProject, applierSuffix)
+	return p.identityEmail(p.runnerName(), p.pipelineProject(), applierSuffix)
+}
+
+// runnerName is the name part of the runner identities' ids: org in a hosting
+// organization (they run the layers' identities), root in a root organization.
+func (p *Placement) runnerName() string {
+	if p.IsRoot() {
+		return RootProjectKey
+	}
+
+	return orgIdentity
 }
 
 // identityEmail is a layer identity's email: <prefix>-<name>-gbl-<suffix> in the project
@@ -1043,8 +1237,8 @@ func (r LayerRun) Unrecorded() bool {
 }
 
 // LayerRuns is every run of the triggers in layer order: the five single-run layers,
-// then 2-env once per environment in promotion order; for a zones organization, the
-// bootstrap and 1-dns. An identity under a project the placement does not record carries
+// then 2-env once per environment in promotion order; none for a root organization,
+// which has no layer. An identity under a project the placement does not record carries
 // REPLACEME, which the commands refuse to run.
 func (p *Placement) LayerRuns() []LayerRun {
 	layers := p.Layers()
@@ -1234,6 +1428,11 @@ type Application struct {
 	// placement written before this field reads as it did; bedrock org register
 	// --environments writes a prefix and bedrock org place changes it.
 	Environments []string `json:"environments,omitempty"`
+	// Adopted says the repository existed on GitHub before the application was
+	// registered (one made by hand, or left by an organization that was destroyed), so
+	// 1-org adopts it on its first apply through an import block instead of making a
+	// second one and failing on the name. bedrock org register records it from GitHub.
+	Adopted bool `json:"adopted,omitempty"`
 }
 
 // UnmarshalJSON reads an entry as written, or as a placement before the repository was
@@ -1336,6 +1535,32 @@ func (p *Placement) Register(code, repository string, environments []string) err
 	p.startRegistration(code, p.PlacedEnvironments(code))
 
 	return nil
+}
+
+// Adopt records that the application's repository exists on GitHub already, so 1-org
+// adopts it on its first apply instead of making it; an application not registered is
+// an error.
+func (p *Placement) Adopt(code string) error {
+	i := slices.IndexFunc(p.Applications, func(a Application) bool { return a.Code == code })
+	if i < 0 {
+		return errors.Newf("application %q is not registered", code)
+	}
+	p.Applications[i].Adopted = true
+
+	return nil
+}
+
+// Adopted are the codes of the applications whose repositories 1-org adopts rather than
+// makes, in placement order.
+func (p *Placement) Adopted() []string {
+	var codes []string
+	for _, a := range p.Applications {
+		if a.Adopted {
+			codes = append(codes, a.Code)
+		}
+	}
+
+	return codes
 }
 
 // placedPrefix is the environments an application's entry records: nil for every
@@ -1519,9 +1744,6 @@ func (p *Placement) Place(code string, environments []string) (added, dropped []
 	if i < 0 {
 		return nil, nil, errors.Newf("application %q is not registered (bedrock org register %s)", code, code)
 	}
-	if under := p.UnderWay(code); len(under) > 0 {
-		return nil, nil, errors.Newf("%s's registration is at the %s step in %s: finish it (bedrock org register %s --next) before placing it elsewhere", p.Repository(code), p.Step(code), strings.Join(under, ", "), code)
-	}
 	if err := validatePlacedEnvironments(code, environments); err != nil {
 		return nil, nil, err
 	}
@@ -1539,9 +1761,14 @@ func (p *Placement) Place(code string, environments []string) (added, dropped []
 	if len(added) == 0 && len(dropped) == 0 {
 		return nil, nil, errors.Newf("%s is placed in %s already", p.Repository(code), strings.Join(current, ", "))
 	}
+	if under := p.UnderWay(code); len(under) > 0 && len(added) > 0 {
+		return nil, nil, errors.Newf("%s's registration is at the %s step in %s: finish it (bedrock org register %s --next) before placing it in more environments", p.Repository(code), p.Step(code), strings.Join(under, ", "), code)
+	}
+	// An environment whose registration is under way has no stack and nothing in service:
+	// it leaves the list as it stands, and the apply deletes what the layers made there.
 	var standing []string
 	for _, env := range dropped {
-		if !slices.Contains(p.OutOfService[code], env) {
+		if p.StepIn(code, env) == "" && !slices.Contains(p.OutOfService[code], env) {
 			standing = append(standing, env)
 		}
 	}
@@ -1555,8 +1782,17 @@ func (p *Placement) Place(code string, environments []string) (added, dropped []
 	p.Applications[i].Environments = placed
 	p.startRegistration(code, added)
 	for _, env := range dropped {
-		p.OutOfService[code] = slices.DeleteFunc(p.OutOfService[code], func(e string) bool { return e == env })
+		if _, out := p.OutOfService[code]; out {
+			p.OutOfService[code] = slices.DeleteFunc(p.OutOfService[code], func(e string) bool { return e == env })
+		}
 		delete(p.Hostnames[code], env)
+		delete(p.Registration[code], env)
+	}
+	if len(p.Registration[code]) == 0 {
+		delete(p.Registration, code)
+		if len(p.Registration) == 0 {
+			p.Registration = nil
+		}
 	}
 	if len(p.OutOfService[code]) == 0 {
 		delete(p.OutOfService, code)
@@ -1959,15 +2195,42 @@ func inPromotionOrder(envs []string) []string {
 	return ordered
 }
 
-// Write puts the placement back in its file, indented the way a person reads it.
-func (p *Placement) Write(path string) error {
+// JSON is the placement as its file holds it, indented the way a person reads it.
+func (p *Placement) JSON() ([]byte, error) {
 	data, err := json.MarshalIndent(p, "", "  ")
 	if err != nil {
-		return errors.Wrap(err, "json.MarshalIndent()")
+		return nil, errors.Wrap(err, "json.MarshalIndent()")
 	}
-	if err := os.WriteFile(path, append(data, '\n'), 0o600); err != nil {
+
+	return append(data, '\n'), nil
+}
+
+// Write puts the placement back in its file, indented the way a person reads it.
+func (p *Placement) Write(path string) error {
+	data, err := p.JSON()
+	if err != nil {
+		return err
+	}
+	if err := os.WriteFile(path, data, 0o600); err != nil {
 		return errors.Wrapf(err, "os.WriteFile(): %s", path)
 	}
 
 	return nil
+}
+
+// PublicInvokerTag is an environment project's public-invoker tag: the key and its value
+// true, as resource names (tagKeys/N, tagValues/N), which the domain-restricted sharing
+// policy on the environment's folder names in its exception, and an application stack
+// binds to a Cloud Run service before granting allUsers.
+type PublicInvokerTag struct {
+	Key   string `json:"key"`
+	Value string `json:"value"`
+}
+
+// ZoneRecord is the apps domain's zone as the creation recorded it: its name in the net
+// project (<prefix>-net-gbl-dns-apps, as AppsZoneName names it) and the name servers Cloud DNS
+// assigned it, as Cloud DNS spells them (with the trailing dot).
+type ZoneRecord struct {
+	Name        string   `json:"name"`
+	NameServers []string `json:"nameServers"`
 }

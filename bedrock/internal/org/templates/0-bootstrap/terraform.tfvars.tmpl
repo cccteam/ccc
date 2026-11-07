@@ -4,16 +4,15 @@
 # folders.
 
 billing_account_id = "{{.BillingAccount}}"
-# boot_project_id is the ID the seed step chose, suffix included; organization_domain
-# is organization {{.OrganizationID}}; organization_folder_id and terraform_folder_id
-# are the bare numeric folder IDs from the seed step.
-boot_project_id        = "{{.Prefix}}-boot-gbl-core-REPLACEME"
-organization_domain    = "{{.OrganizationDomain}}"
-organization_folder_id = "REPLACEME"
-terraform_folder_id    = "REPLACEME"
+# boot_project_id is the ID the seed step chose, suffix included;
+# organization_folder_id and terraform_folder_id are the bare numeric folder
+# IDs from the seed step, under organization {{.OrganizationID}}.
+boot_project_id        = "{{.BootProjectID}}"
+organization_folder_id = "{{.OrganizationFolderID}}"
+terraform_folder_id    = "{{.TerraformFolderID}}"
 
 # The two roles/billing.user grants need Billing Account Administrator. A
-# bootstrap administrator who holds only Billing Account User leaves this
+# break-glass account that holds only Billing Account User leaves this
 # false and a billing administrator makes the grants by hand (README.md,
 # step 4); set it true once the identity applying this layer can manage
 # billing IAM.

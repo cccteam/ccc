@@ -1,6 +1,5 @@
-# Read by hand when substituting values into 1-org/terraform.tfvars and
-# placement.json, and by 1-org through data "terraform_remote_state" on the
-# state bucket (prefix 0-bootstrap). Nothing here is a secret; keep it that way.
+# Read by the creation, which records them in placement.json, and by 1-org
+# through data "terraform_remote_state" on the state bucket (prefix 0-bootstrap). Nothing here is a secret; keep it that way.
 
 output "boot_project_id" {
   description = "Project ID of the boot project, used as the quota and billing project by every downstream layer."
@@ -20,21 +19,6 @@ output "boot_service_account_email" {
 output "boot_plan_service_accounts" {
   description = "Read-only plan identity email of the two boot layers (boot for 0-bootstrap, org for 1-org), in the boot project; a pull request plans those layers as them."
   value       = { for k, sa in google_service_account.boot_plan : k => sa.email }
-}
-
-output "github_infrastructure_key_secret" {
-  description = "Secret Manager container in the boot project holding the infrastructure GitHub App's private key; the org plan identity reads it for a plan of 1-org."
-  value       = google_secret_manager_secret.github_infrastructure_key.secret_id
-}
-
-output "github_deployer_key_secret" {
-  description = "Secret Manager container in the boot project holding the deployer GitHub App's private key; 1-org grants each environment layer identity its administration, so 2-env can grant the applications' identities the read."
-  value       = google_secret_manager_secret.github_deployer_key.secret_id
-}
-
-output "github_release_key_secret" {
-  description = "Secret Manager container in the boot project holding the release GitHub App's private key; 1-org grants each environment layer identity its administration, so 2-env can grant the applications' release identities its read."
-  value       = google_secret_manager_secret.github_release_key.secret_id
 }
 
 output "planner_member" {
@@ -73,8 +57,8 @@ output "org_service_account_email" {
 }
 
 output "state_bucket_policy_admin_role" {
-  description = "Full name of the custom organization role that reads and sets a bucket's IAM policy; 1-org grants it on the state bucket to the environment layer identities, which grant the application identities their slots."
-  value       = google_organization_iam_custom_role.state_bucket_policy_admin.id
+  description = "Full name of the custom role in the boot project that reads and sets a bucket's IAM policy; 1-org grants it on the state bucket to the environment layer identities, which grant the application identities their slots."
+  value       = google_project_iam_custom_role.state_bucket_policy_admin.id
 }
 
 output "terraform_folder_id" {
@@ -85,9 +69,4 @@ output "terraform_folder_id" {
 output "organization_folder_id" {
   description = "Folder ID of the organization's folder, named after the prefix, under which 1-org creates the environment folders."
   value       = google_folder.organization.folder_id
-}
-
-output "organization_suffix" {
-  description = "The organization's suffix (bootstrap.tf): the random value every name at the organization node ends with, the custom roles and the public-invoker tag key among them."
-  value       = random_id.organization.hex
 }

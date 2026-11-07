@@ -11,6 +11,12 @@ applications = {{.ApplicationsList}}
 # creates the repository with (its module path's last segment).
 application_repositories = {{.ApplicationRepositoriesHCL}}
 
+# The applications whose repositories existed on GitHub before they were registered
+# (adopted in placement.json, which bedrock org register records from GitHub): this layer
+# adopts each on its first apply through an import block (github.tf) instead of making
+# it, and keeps it as any other after.
+adopted_applications = {{.AdoptedList}}
+
 # The environments each application is placed in, by code, a prefix of the promotion
 # order: the repository's GitHub Environments are made for those alone (github.tf). An
 # application placed in every environment lists them all.

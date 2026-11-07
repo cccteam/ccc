@@ -24,7 +24,7 @@ locals {
 
   # The certificate covers the apex and one level below it, which is every
   # hostname the convention produces: app.domain, app-stg.domain,
-  # app-tst.domain, prN-app-tst.domain.
+  # app-tst.domain, app-pr<N>.domain.
   wildcard = "*.${var.apps_domain}"
 
   # The vanity domains (var.vanity_domains), each served like the apps domain by a

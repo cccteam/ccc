@@ -26,8 +26,8 @@ import (
 const (
 	// DefaultBase is the public API host.
 	DefaultBase = "https://api.github.com"
-	// tokenEnv is the variable a token is read from before gh is asked.
-	tokenEnv = "GITHUB_TOKEN"
+	// TokenEnv is the variable a token is read from before gh is asked.
+	TokenEnv = "GITHUB_TOKEN"
 	// apiVersion pins the REST API's shape.
 	apiVersion = "2022-11-28"
 	// maxBody bounds what one answer may carry.
@@ -60,8 +60,9 @@ type WaitFunc func(ctx context.Context, d time.Duration) error
 // ClientFunc opens the client: the CLI wires Open, tests a client over a test server.
 type ClientFunc func(ctx context.Context) (*Client, error)
 
-// New is a client over the API at base, authenticated with the token. It carries a
-// transport of its own, a copy of the default one, so nothing that closes the default
+// New is a client over the API at base, authenticated with the token; with none (""),
+// its requests carry no credential, which the conversion of an app manifest alone takes
+// (ConvertManifest). It carries a transport of its own, a copy of the default one, so nothing that closes the default
 // transport's idle connections (a test server's close does) touches a request of its
 // in flight.
 func New(base, token string) *Client {
@@ -71,7 +72,7 @@ func New(base, token string) *Client {
 		own = transport.Clone()
 	}
 
-	return &Client{base: strings.TrimRight(base, "/"), token: token, http: &http.Client{Timeout: requestTimeout, Transport: own}, wait: waitFor}
+	return &Client{base: strings.TrimRight(base, "/"), token: token, http: &http.Client{Timeout: requestTimeout, Transport: own, CheckRedirect: noRedirect}, wait: waitFor}
 }
 
 // waitFor waits for d.
@@ -103,13 +104,13 @@ type TokenFunc func(ctx context.Context) (string, error)
 // Token is the token the account has: GITHUB_TOKEN when set, else the token gh holds for
 // its signed-in account. With neither it refuses.
 func Token(ctx context.Context) (string, error) {
-	if token := os.Getenv(tokenEnv); token != "" {
+	if token := os.Getenv(TokenEnv); token != "" {
 		return token, nil
 	}
 	out, err := exec.CommandContext(ctx, "gh", "auth", "token").Output()
 	token := strings.TrimSpace(string(out))
 	if err != nil || token == "" {
-		return "", errors.Newf("no GitHub token: set %s, or sign in with gh (gh auth login) so that gh auth token prints one", tokenEnv)
+		return "", errors.Newf("no GitHub token: set %s, or sign in with gh (gh auth login) so that gh auth token prints one", TokenEnv)
 	}
 
 	return token, nil
@@ -135,6 +136,25 @@ func NotFound(err error) bool {
 	}
 
 	return false
+}
+
+// Moved reports whether the error is the API's redirect (301 for a repository renamed
+// away from the name asked for, whose old name GitHub forwards until a new repository
+// takes it). The client follows no redirect, so a renamed repository is never mistaken for
+// the one named (the lab, 2026-11-05: the bootstrap read the renamed hand-built root's
+// repository under the new root's name).
+func Moved(err error) bool {
+	var apiErr *Error
+	if errors.As(err, &apiErr) {
+		return apiErr.Status >= http.StatusMultipleChoices && apiErr.Status <= 399
+	}
+
+	return false
+}
+
+// noRedirect makes the client answer a redirect as it came, for Moved.
+func noRedirect(*http.Request, []*http.Request) error {
+	return http.ErrUseLastResponse
 }
 
 // do sends the request with the JSON body in (nil for none) and decodes the answer into
@@ -177,7 +197,9 @@ func (c *Client) send(ctx context.Context, method, path string, data []byte, has
 	if err != nil {
 		return errors.Wrap(err, "http.NewRequestWithContext()")
 	}
-	req.Header.Set("Authorization", "Bearer "+c.token)
+	if c.token != "" {
+		req.Header.Set("Authorization", "Bearer "+c.token)
+	}
 	req.Header.Set("Accept", "application/vnd.github+json")
 	req.Header.Set("X-GitHub-Api-Version", apiVersion)
 	if hasBody {
@@ -191,6 +213,9 @@ func (c *Client) send(ctx context.Context, method, path string, data []byte, has
 	answer, err := io.ReadAll(io.LimitReader(resp.Body, maxBody))
 	if err != nil {
 		return errors.Wrap(err, "io.ReadAll()")
+	}
+	if resp.StatusCode >= http.StatusMultipleChoices && resp.StatusCode <= 399 {
+		return errors.Wrap(&Error{Status: resp.StatusCode, Message: "moved to " + resp.Header.Get("Location"), Method: method, Path: path}, "github")
 	}
 	if resp.StatusCode < http.StatusOK || resp.StatusCode > 299 {
 		return errors.Wrap(&Error{Status: resp.StatusCode, Message: message(answer), Method: method, Path: path}, "github")
@@ -217,16 +242,36 @@ func transient(err error) bool {
 	return errors.As(err, &urlErr)
 }
 
-// message is the API's message field, or the raw answer when there is none.
+// message is the API's message field, with the details a validation failure (422) lists
+// in errors (the resource, the field and the code, or a message of their own), or the
+// raw answer when there is no message.
 func message(data []byte) string {
 	var m struct {
 		Message string `json:"message"`
+		Errors  []struct {
+			Resource string `json:"resource"`
+			Field    string `json:"field"`
+			Code     string `json:"code"`
+			Message  string `json:"message"`
+		} `json:"errors"`
 	}
-	if err := json.Unmarshal(data, &m); err == nil && m.Message != "" {
+	if err := json.Unmarshal(data, &m); err != nil || m.Message == "" {
+		return strings.TrimSpace(string(data))
+	}
+	details := make([]string, 0, len(m.Errors))
+	for _, e := range m.Errors {
+		switch {
+		case e.Message != "":
+			details = append(details, e.Message)
+		case e.Resource != "" || e.Field != "" || e.Code != "":
+			details = append(details, strings.TrimSpace(e.Resource+" "+e.Field+" "+e.Code))
+		}
+	}
+	if len(details) == 0 {
 		return m.Message
 	}
 
-	return strings.TrimSpace(string(data))
+	return m.Message + " (" + strings.Join(details, "; ") + ")"
 }
 
 // Ref is a git reference and the object it points at.
@@ -434,11 +479,12 @@ func (c *Client) CreateBlob(ctx context.Context, owner, repo string, content []b
 	return out.SHA, nil
 }
 
-// CreateTree makes a tree from the base tree with the entries changed, and returns its
-// SHA.
+// CreateTree makes a tree from the base tree with the entries changed, or from the entries
+// alone when baseTree is empty (the field is left out then: GitHub refuses an empty one as
+// not a tree id, 422), and returns its SHA.
 func (c *Client) CreateTree(ctx context.Context, owner, repo, baseTree string, entries []TreeEntry) (string, error) {
 	in := struct {
-		BaseTree string      `json:"base_tree"`
+		BaseTree string      `json:"base_tree,omitempty"`
 		Tree     []TreeEntry `json:"tree"`
 	}{BaseTree: baseTree, Tree: entries}
 	var out Object

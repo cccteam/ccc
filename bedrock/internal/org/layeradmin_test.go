@@ -238,7 +238,7 @@ func TestLayerAdministratorPlace(t *testing.T) {
 			path: "1-org/outputs.tf",
 			want: []string{
 				"output \"environment_layer_grants\" {",
-				"      roles                   = [for role in var.layer_roles[cfg.role_set] : lookup(local.custom_roles, role, role)]\n      storage_admin_condition = local.records_bucket_conditions[k]\n",
+				"      roles                   = [for role in var.layer_roles[cfg.role_set] : lookup(local.custom_roles[k], role, role)]\n      storage_admin_condition = local.records_bucket_conditions[k]\n",
 			},
 			absent: []string{"layer_service_account_unique_ids"},
 		},

@@ -66,9 +66,9 @@ zoneReplacement is set in placement.json (2-net's zones rendered without prevent
 for making a zone again), a check that passes on every domain says the value can be cleared
 now, and bedrock org render written.
 
-In a zones organization (kind in placement.json) the check reads each domain's zone in the
-boot project (1-dns's dns.tf, which holds the domain's delegation alone: no address, no
-certificate) and resolves the domain's delegation the same way, with the same steps printed
+In a root organization (kind in placement.json) the check reads each domain's zone in the
+root project (made by the organization's apply from domains in placement.json; it holds the
+domain's delegation alone: no address, no certificate) and resolves the domain's delegation the same way, with the same steps printed
 for a domain as registered (the registrar) and for a label of a domain served elsewhere
 (the NS records at its DNS provider); then, once the domain is delegated, it asks the world
 for each label handed onward (domains.<domain>.labels in placement.json) and says whether
@@ -125,11 +125,11 @@ is missing or refused on any domain.`,
 }
 
 // checkRequests is what domain check checks, by the organization's kind: the apps domain
-// and each vanity domain in the network project, or each domain of a zones organization
+// and each vanity domain in the network project, or each domain of a root organization
 // in the boot project with the labels its zone hands onward. It refuses a placement that
 // does not record the project yet.
 func checkRequests(p *org.Placement, dir string) ([]domain.CheckRequest, error) {
-	if p.Zones() {
+	if p.IsRoot() {
 		project := p.ZoneProject()
 		if project == "" {
 			return nil, errors.New("placement.json records no boot project (projects.boot): record the seed's value there, then check again")
@@ -146,7 +146,7 @@ func checkRequests(p *org.Placement, dir string) ([]domain.CheckRequest, error) 
 
 		return requests, nil
 	}
-	project, zone := p.AppsZone()
+	project, zone := p.AppsZoneName()
 	if project == "" {
 		return nil, errors.New("placement.json records no network project (projects.net): record 1-org's project_ids in placement.json (projects), then check again")
 	}

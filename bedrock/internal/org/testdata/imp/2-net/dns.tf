@@ -9,6 +9,16 @@
 # zone by hand, once; bedrock domain check prints the records and where they
 # go (README.md, "Delegating the domain").
 # ---------------------------------------------------------------------------
+# The zone is the creation's: the root organization made it in this project as the
+# creating identity, which its apply verified as an owner of the domain in Google's
+# webmaster verification (Cloud DNS asks that of whoever makes a zone), and recorded it in
+# placement.json (appsZone). Adopted here
+# by an import block, a no-op once the zone is in the state.
+import {
+  id = "projects/${local.project_id}/managedZones/imp-net-gbl-dns-apps"
+  to = google_dns_managed_zone.apps
+}
+
 
 resource "google_dns_managed_zone" "apps" {
   project     = local.project_id
@@ -136,6 +146,21 @@ resource "google_dns_record_set" "extra" {
   project      = local.project_id
   managed_zone = google_dns_managed_zone.apps.name
   name         = each.value.name == "@" ? "${var.apps_domain}." : "${each.value.name}.${var.apps_domain}."
+  type         = each.value.type
+  ttl          = each.value.ttl
+  rrdatas      = each.value.rrdatas
+}
+
+# What else a vanity domain's zone needs: the records a domain delegated whole
+# publishes to prove itself and to say it sends no mail (a null SPF, a DMARC
+# policy, a verification record, a CAA record). See var.vanity_extra_records;
+# never a mail-exchanger record.
+resource "google_dns_record_set" "vanity_extra" {
+  for_each = { for e in flatten([for d, rs in var.vanity_extra_records : [for r in rs : merge(r, { domain = d })]]) : "${e.domain}/${e.name}/${e.type}" => e }
+
+  project      = local.project_id
+  managed_zone = google_dns_managed_zone.vanity[each.value.domain].name
+  name         = each.value.name == "@" ? "${each.value.domain}." : "${each.value.name}.${each.value.domain}."
   type         = each.value.type
   ttl          = each.value.ttl
   rrdatas      = each.value.rrdatas

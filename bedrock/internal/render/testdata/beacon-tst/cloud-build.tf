@@ -36,7 +36,7 @@
 #
 #   release   every push to master or a patch line: release-please, pinned,
 #             as the release GitHub App, whose token the step mints from the
-#             key's pinned version in Secret Manager (2-env's output). It opens
+#             key's alias in Secret Manager (2-env's output). It opens
 #             or updates the release pull request and, on the push that merges
 #             it, makes the tag and the GitHub Release; the tag fires version.
 #             On master the merge-back guard runs first: no regular
@@ -158,7 +158,7 @@ locals {
 
   # The release identity's full resource name, from 2-env (null outside tst,
   # and on a 2-env before the identity), and the release app's key as 2-env
-  # names its pinned version (null until pinned): the release trigger exists
+  # names its alias (null on a 2-env before it): the release trigger exists
   # once both are there.
   release_identity_id = try(coalesce(local.identities.release_identity_id), null)
   release_key_secret  = try(coalesce(local.env.github_release_key_secret_version), null)

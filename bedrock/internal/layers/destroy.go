@@ -26,20 +26,22 @@ const (
 	// at the command is the approval.
 	autoApprove = "-auto-approve"
 	// destroyVar is the variable the layers that make projects and folders declare for
-	// this command alone (0-bootstrap and 1-org; 1-dns makes neither): on its own
+	// this command alone (0-bootstrap and 1-org): on its own
 	// runs the projects' deletion policy becomes DELETE and the folders' deletion
 	// protection comes off, recorded by an apply before the destroy, since the provider
 	// reads both from the state.
 	destroyVar = "destroy"
 	// repositoryType is the resource type of the GitHub repositories 1-org declares, taken
 	// out of the state before the destroy so that the repositories outlive the
-	// organization; everything else 1-org made on GitHub goes. zoneType and recordSetType
-	// are the zones and record sets 1-dns declares in the boot project, taken out of its
-	// state the same way: they go with the project, which their prevent_destroy would
-	// otherwise refuse.
+	// organization; everything else 1-org made on GitHub goes. The public-invoker tag
+	// keys and values, and the values' bindings, are taken out the same way: they live in
+	// the environment projects and go with them, and Google refuses to delete a value
+	// while a Cloud Run service in a project being deleted still binds it, a hold a
+	// deleted project keeps for its thirty days, which no number of tries outlasts.
 	repositoryType = "github_repository"
-	zoneType       = "google_dns_managed_zone"
-	recordSetType  = "google_dns_record_set"
+	tagKeyType     = "google_tags_tag_key"
+	tagValueType   = "google_tags_tag_value"
+	tagBindingType = "google_tags_tag_value_iam_member"
 	// netProjectAddress is the network project in 1-org's state, which the destroy
 	// excludes when the layer registers domains there (they cannot move to another
 	// project); organizationFolderAddress is the organization's folder in 0-bootstrap's
@@ -76,36 +78,29 @@ const (
 var layerFiles = []string{"*.tf", "*.tfvars", "*.tfvars.json", lockFile}
 
 // DestroyRequest is what org destroy runs with: the checkout, where the GitHub token for
-// the GitHub provider comes from (asked for only when that layer's state holds
-// something), whether the network project is kept (the layer registers domains there),
-// whether the organization is a zones one (1-dns in place of 1-org, its zones taken out
-// of the state since they go with the boot project), and the pause between two attempts
-// of a destroy.
+// the GitHub provider comes from (asked for only when 1-org's state holds something),
+// whether the network project is kept (the layer registers domains there), and the pause
+// between two attempts of a destroy. A root organization has no layers: bedrock org
+// destroy deletes it by API (internal/root).
 type DestroyRequest struct {
 	Dir         string
 	GithubToken func(ctx context.Context) (string, error)
 	KeepNet     bool
-	Zones       bool
 	Pause       time.Duration
 }
 
 // Destroy deletes the organization's projects, as the person running the command: 1-org
-// first (1-dns for a zones organization), its GitHub repositories taken out of the state,
-// then 0-bootstrap on a local copy of its state. In each layer an apply with destroy=true
-// records the projects' DELETE policy and lifts the folders' protection, then the destroy
-// runs, tried again after a pause while it fails. A layer whose state holds nothing is
-// skipped. With KeepNet the network project is excluded from 1-org's destroy and the
-// organization's folder from 0-bootstrap's, and both stay for a person.
+// first, its GitHub repositories and its tags taken out of the state, then 0-bootstrap on
+// a local copy of its state. In each layer an apply with destroy=true records the
+// projects' DELETE policy and lifts the folders' protection, then the destroy runs, tried
+// again after a pause while it fails. A layer whose state holds nothing is skipped. With
+// KeepNet the network project is excluded from 1-org's destroy and the organization's
+// folder from 0-bootstrap's, and both stay for a person.
 func Destroy(ctx context.Context, exec deploy.Runner, req *DestroyRequest, out io.Writer) error {
 	if exec == nil {
 		return errors.New("no program runner is wired")
 	}
-	// 1-dns declares no project and no folder, so it declares no destroy variable.
-	checked := []string{orgLayer, BootstrapLayer}
-	if req.Zones {
-		checked = []string{BootstrapLayer}
-	}
-	for _, layer := range checked {
+	for _, layer := range []string{orgLayer, BootstrapLayer} {
 		if err := checkDestroyVariable(req.Dir, layer); err != nil {
 			return err
 		}
@@ -115,39 +110,33 @@ func Destroy(ctx context.Context, exec deploy.Runner, req *DestroyRequest, out i
 		return errors.Wrap(err, "os.MkdirTemp()")
 	}
 	defer os.RemoveAll(work)
-	if err := destroySecondLayer(ctx, exec, req, work, out); err != nil {
+	if err := destroyOrgLayer(ctx, exec, req, work, out); err != nil {
 		return err
 	}
 
 	return destroyBootstrapLayer(ctx, exec, req, work, out)
 }
 
-// secondLayer is the layer after the bootstrap: 1-org, or 1-dns for a zones
-// organization.
-func (req *DestroyRequest) secondLayer() string {
-	if req.Zones {
-		return dnsLayer
-	}
-
-	return orgLayer
-}
-
-// keptOut reports whether a resource of the second layer's state is taken out of it
-// before the destroy, with what stays: the GitHub repositories (they outlive the
-// organization), and for a zones organization the zones and their record sets (they go
-// with the boot project, which their prevent_destroy would otherwise refuse).
-func (req *DestroyRequest) keptOut(address string) (string, bool) {
+// keptOut reports whether a resource of 1-org's state is taken out of it before the
+// destroy, with what becomes of it: the GitHub repositories outlive the organization,
+// and the tag keys, values and bindings go with the environment projects that hold them.
+func keptOut(address string) (string, bool) {
 	switch resourceType(address) {
 	case repositoryType:
 		return "the repository stays", true
-	case zoneType, recordSetType:
-		if req.Zones {
-			return "it goes with the boot project", true
-		}
+	case tagKeyType, tagValueType, tagBindingType:
+		return "it goes with the project that holds it", true
 	}
 
 	return "", false
 }
+
+// tagsNotice is said once when a tag resource was taken out of the state: the run cannot
+// tell from the address whether the key or value sits in an environment project, where
+// it goes with the project, or at the organization node, from a render before the tags
+// moved into the environment projects, where it goes with nothing, so it says what to
+// look for and what to do if one is there.
+const tagsNotice = "If a tag key or value stands at the organization node (gcloud resource-manager tags keys list --parent organizations/<id>), from a render before the tags moved into the environment projects, it stays behind: delete it by hand (gcloud resource-manager tags values delete, then keys delete) once the projects it was bound to are purged, 30 days after their deletion; a key in an environment project goes with the project.\n"
 
 // checkDestroyVariable refuses a layer that declares no destroy variable: a render of an
 // earlier bedrock, whose projects and folders the apply before the destroy could not
@@ -164,12 +153,12 @@ func checkDestroyVariable(dir, layer string) error {
 	return nil
 }
 
-// destroySecondLayer destroys 1-org (1-dns for a zones organization) in the checkout: its
-// state in the bucket, its GitHub repositories taken out of the state first (and a zones
-// organization's zones with them), the network project excluded when kept.
-func destroySecondLayer(ctx context.Context, exec deploy.Runner, req *DestroyRequest, work string, out io.Writer) error {
-	layer := req.secondLayer()
-	h := &handTofu{exec: exec, layer: layer, dir: filepath.Join(req.Dir, layer), data: filepath.Join(work, layer+".data"), out: out, declaresDestroy: !req.Zones}
+// destroyOrgLayer destroys 1-org in the checkout: its state in the bucket, its GitHub
+// repositories and its tags taken out of the state first, the network project excluded
+// when kept.
+func destroyOrgLayer(ctx context.Context, exec deploy.Runner, req *DestroyRequest, work string, out io.Writer) error {
+	layer := orgLayer
+	h := &handTofu{exec: exec, layer: layer, dir: filepath.Join(req.Dir, layer), data: filepath.Join(work, layer+".data"), out: out, declaresDestroy: true}
 	fmt.Fprintf(out, "=== destroy of %s ===\n", layer)
 	if err := h.init(ctx); err != nil {
 		return err
@@ -185,22 +174,23 @@ func destroySecondLayer(ctx context.Context, exec deploy.Runner, req *DestroyReq
 	}
 	token, err := req.GithubToken(ctx)
 	if err != nil {
-		if req.Zones {
-			return errors.Wrapf(err, "%s's GitHub provider needs a token for this repository's ruleset: the infrastructure GitHub App's installation token, or an organization owner's", layer)
-		}
-
 		return errors.Wrapf(err, "%s's GitHub provider needs a token for the organization's runner group, variable, rulesets and environments: the infrastructure GitHub App's installation token, or an organization owner's", layer)
 	}
 	h.env = append(h.env, githubEnv+"="+token)
+	tags := false
 	for _, address := range addresses {
-		stays, ok := req.keptOut(address)
+		becomes, ok := keptOut(address)
 		if !ok {
 			continue
 		}
 		if err := h.run(ctx, "state", "rm", address); err != nil {
 			return errors.Wrapf(err, "taking %s out of %s's state failed; the log says why", address, layer)
 		}
-		fmt.Fprintf(out, "Took %s out of %s's state: %s.\n", address, layer, stays)
+		fmt.Fprintf(out, "Took %s out of %s's state: %s.\n", address, layer, becomes)
+		tags = tags || resourceType(address) != repositoryType
+	}
+	if tags {
+		fmt.Fprint(out, tagsNotice)
 	}
 	var excluded []string
 	if req.KeepNet {

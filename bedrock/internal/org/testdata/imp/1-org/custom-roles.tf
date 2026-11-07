@@ -1,24 +1,44 @@
 # ---------------------------------------------------------------------------
-# Custom organization roles
+# Custom roles
 #
 # Roles granted to layer identities where no predefined role has the right
-# shape. Created at the org node so one definition serves every project, and
-# named in var.layer_roles by bare ID (see local.custom_roles). Each role's id
-# carries the organization's suffix (local.boot.organization_suffix,
-# 0-bootstrap's random_id.organization): a role's id is unique across the
-# Google Cloud organization, which may hold more than one bedrock
-# organization, and a deleted role's id stays taken for 37 days.
+# shape, and named in var.layer_roles by bare ID (see local.custom_roles).
+# Each is created in every project this layer makes (one definition per
+# project, the same permissions in each) and, where the boot project needs
+# it, there too: nothing is created at the organization node, whose names are
+# shared by every bedrock organization under it and held for 37 days after a
+# delete, and whose administration would be a role above this organization's
+# folder. A role's id is unique within its project, so it carries no suffix.
+#
+# Custom Roles Administrator (roles/iam.roleAdmin) binds on a project or at the
+# organization node, never on a folder, so this layer grants it to its own
+# identity on each project it makes, before the roles, and 0-bootstrap grants
+# it on the boot project (var.org_project_roles), where this layer makes
+# bucketPolicyReader; the creating identity's Owner covered the first apply,
+# which made the projects and the roles.
 # ---------------------------------------------------------------------------
 
-# Secret Manager without the payloads. A layer identity creates secrets as
+resource "google_project_iam_member" "org_tofu_role_admin" {
+  for_each = local.custom_role_projects
+
+  project = each.value
+  role    = "roles/iam.roleAdmin"
+  member  = "serviceAccount:${local.boot.org_service_account_email}"
+
+  depends_on = [time_sleep.apis_ready]
+}
+
+# Secret Manager without the payloads, in each project. A layer identity creates secrets as
 # containers and manages their IAM and the lifecycle of their versions, but
 # never reads or writes a version: values are added by the operator that owns
 # them (secretmanager.versions.add) and read by the workload that needs them
 # (secretmanager.versions.access). roles/secretmanager.admin carries both, which
 # would put every secret value within reach of the deploy pipeline.
-resource "google_organization_iam_custom_role" "secret_container_admin" {
-  org_id      = local.org_id
-  role_id     = "secretContainerAdmin_${local.boot.organization_suffix}"
+resource "google_project_iam_custom_role" "secret_container_admin" {
+  for_each = local.custom_role_projects
+
+  project     = each.value
+  role_id     = "secretContainerAdmin"
   title       = "Secret Container Admin"
   description = "Creates and manages Secret Manager secrets and the lifecycle of their versions, without access to any version payload."
   permissions = [
@@ -37,6 +57,8 @@ resource "google_organization_iam_custom_role" "secret_container_admin" {
     "secretmanager.versions.get",
     "secretmanager.versions.list",
   ]
+
+  depends_on = [google_project_iam_member.org_tofu_role_admin]
 }
 
 # Secret Manager for the person who owns the values. A member of the
@@ -49,9 +71,11 @@ resource "google_organization_iam_custom_role" "secret_container_admin" {
 # roles/secretmanager.secretVersionAdder adds versions to a container that
 # exists and creates none, which would put the container back with the
 # pipeline and its creation a release behind the value.
-resource "google_organization_iam_custom_role" "secret_operator" {
-  org_id      = local.org_id
-  role_id     = "secretOperator_${local.boot.organization_suffix}"
+resource "google_project_iam_custom_role" "secret_operator" {
+  for_each = local.custom_role_projects
+
+  project     = each.value
+  role_id     = "secretOperator"
   title       = "Secret Operator"
   description = "Creates Secret Manager secrets and adds versions to them, without access to any version payload."
   permissions = [
@@ -66,6 +90,8 @@ resource "google_organization_iam_custom_role" "secret_operator" {
     "secretmanager.versions.list",
     "serviceusage.services.use",
   ]
+
+  depends_on = [google_project_iam_member.org_tofu_role_admin]
 }
 
 # Cloud Run job policies for the deploy pipeline. bedrock deploy jobs makes a
@@ -76,15 +102,19 @@ resource "google_organization_iam_custom_role" "secret_operator" {
 # which the pipeline has no business setting. Read and set the policy of a job,
 # nothing else; 2-env grants it to each application's deploy identity beside
 # roles/run.developer.
-resource "google_organization_iam_custom_role" "run_job_policy_admin" {
-  org_id      = local.org_id
-  role_id     = "runJobPolicyAdmin_${local.boot.organization_suffix}"
+resource "google_project_iam_custom_role" "run_job_policy_admin" {
+  for_each = local.custom_role_projects
+
+  project     = each.value
+  role_id     = "runJobPolicyAdmin"
   title       = "Cloud Run Job Policy Admin"
   description = "Reads and sets the IAM policy of Cloud Run jobs, and nothing else about them."
   permissions = [
     "run.jobs.getIamPolicy",
     "run.jobs.setIamPolicy",
   ]
+
+  depends_on = [google_project_iam_member.org_tofu_role_admin]
 }
 
 # A pull-request build plans each environment's application stack as that
@@ -96,9 +126,11 @@ resource "google_organization_iam_custom_role" "run_job_policy_admin" {
 # or read the data (databaseReader), so a role of the reads alone, granted on
 # the instance to each application's plan identity by 2-spn (the shared
 # instance) and 2-env (an environment's own).
-resource "google_organization_iam_custom_role" "spanner_plan_reader" {
-  org_id      = local.org_id
-  role_id     = "spannerPlanReader_${local.boot.organization_suffix}"
+resource "google_project_iam_custom_role" "spanner_plan_reader" {
+  for_each = local.custom_role_projects
+
+  project     = each.value
+  role_id     = "spannerPlanReader"
   title       = "Spanner Plan Reader"
   description = "Reads an instance's databases, their IAM policies and their backup schedules, and nothing of their data."
   permissions = [
@@ -109,6 +141,8 @@ resource "google_organization_iam_custom_role" "spanner_plan_reader" {
     "spanner.backupSchedules.get",
     "spanner.backupSchedules.list",
   ]
+
+  depends_on = [google_project_iam_member.org_tofu_role_admin]
 }
 
 # Creating a database is checked on the instance (spanner.databases.create),
@@ -119,9 +153,11 @@ resource "google_organization_iam_custom_role" "spanner_plan_reader" {
 # and backups (2-spn for the shared instance, 2-env for an environment's
 # own), so an identity makes its own database and sees what else exists, and
 # changes nothing it did not make.
-resource "google_organization_iam_custom_role" "spanner_database_creator" {
-  org_id      = local.org_id
-  role_id     = "spannerDatabaseCreator_${local.boot.organization_suffix}"
+resource "google_project_iam_custom_role" "spanner_database_creator" {
+  for_each = local.custom_role_projects
+
+  project     = each.value
+  role_id     = "spannerDatabaseCreator"
   title       = "Spanner Database Creator"
   description = "Creates a database on an instance and lists the instance's databases, backups and operations; changes nothing that exists."
   permissions = [
@@ -132,6 +168,8 @@ resource "google_organization_iam_custom_role" "spanner_database_creator" {
     "spanner.databases.list",
     "spanner.instances.get",
   ]
+
+  depends_on = [google_project_iam_member.org_tofu_role_admin]
 }
 
 # Creating a bucket is checked on the project (storage.buckets.create: the
@@ -150,15 +188,19 @@ resource "google_organization_iam_custom_role" "spanner_database_creator" {
 # policy read, Storage Intelligence and storage batch operations) is not
 # granted: no stack asks for it, and the project reads come with the
 # identities' other roles.
-resource "google_organization_iam_custom_role" "storage_bucket_creator" {
-  org_id      = local.org_id
-  role_id     = "storageBucketCreator_${local.boot.organization_suffix}"
+resource "google_project_iam_custom_role" "storage_bucket_creator" {
+  for_each = local.custom_role_projects
+
+  project     = each.value
+  role_id     = "storageBucketCreator"
   title       = "Storage Bucket Creator"
   description = "Creates a bucket in a project and lists the project's buckets; changes nothing that exists."
   permissions = [
     "storage.buckets.create",
     "storage.buckets.list",
   ]
+
+  depends_on = [google_project_iam_member.org_tofu_role_admin]
 }
 
 # A restore of an environment to a release, and a release run again, are
@@ -177,9 +219,11 @@ resource "google_organization_iam_custom_role" "storage_bucket_creator" {
 # condition that would narrow the role to the version trigger: no person holds
 # it, and the operations identity's bound is who may become it
 # (2-env/operations.tf).
-resource "google_organization_iam_custom_role" "cloud_build_trigger_runner" {
-  org_id      = local.org_id
-  role_id     = "cloudBuildTriggerRunner_${local.boot.organization_suffix}"
+resource "google_project_iam_custom_role" "cloud_build_trigger_runner" {
+  for_each = local.custom_role_projects
+
+  project     = each.value
+  role_id     = "cloudBuildTriggerRunner"
   title       = "Cloud Build Trigger Runner"
   description = "Runs Cloud Build triggers, reads the builds they start and cancels one left waiting, and nothing else."
   permissions = [
@@ -190,6 +234,8 @@ resource "google_organization_iam_custom_role" "cloud_build_trigger_runner" {
     "cloudbuild.triggers.get",
     "cloudbuild.triggers.list",
   ]
+
+  depends_on = [google_project_iam_member.org_tofu_role_admin]
 }
 
 # The task queue operator: pauses, resumes and purges a Cloud Tasks queue, and
@@ -201,9 +247,11 @@ resource "google_organization_iam_custom_role" "cloud_build_trigger_runner" {
 # restore purges it too, since every queued task refers to rows that are about
 # to disappear. It is a custom role because the cloud's own
 # roles/cloudtasks.queueAdmin would also create, change and delete queues.
-resource "google_organization_iam_custom_role" "cloud_tasks_queue_operator" {
-  org_id      = local.org_id
-  role_id     = "cloudTasksQueueOperator_${local.boot.organization_suffix}"
+resource "google_project_iam_custom_role" "cloud_tasks_queue_operator" {
+  for_each = local.custom_role_projects
+
+  project     = each.value
+  role_id     = "cloudTasksQueueOperator"
   title       = "Cloud Tasks Queue Operator"
   description = "Pauses, resumes and purges a Cloud Tasks queue, and reads it, and nothing else."
   permissions = [
@@ -212,6 +260,8 @@ resource "google_organization_iam_custom_role" "cloud_tasks_queue_operator" {
     "cloudtasks.queues.resume",
     "cloudtasks.queues.purge",
   ]
+
+  depends_on = [google_project_iam_member.org_tofu_role_admin]
 }
 
 # The pipeline's first step reads the build it runs in (bedrock deploy resolve:
@@ -227,14 +277,18 @@ resource "google_organization_iam_custom_role" "cloud_tasks_queue_operator" {
 # (2-env: creator and viewer on the records bucket). In tst, where Cloud
 # Scheduler runs each application's sweep trigger as its deploy identity,
 # 2-env grants cloudBuildTriggerRunner beside it.
-resource "google_organization_iam_custom_role" "cloud_build_build_reader" {
-  org_id      = local.org_id
-  role_id     = "cloudBuildBuildReader_${local.boot.organization_suffix}"
+resource "google_project_iam_custom_role" "cloud_build_build_reader" {
+  for_each = local.custom_role_projects
+
+  project     = each.value
+  role_id     = "cloudBuildBuildReader"
   title       = "Cloud Build Build Reader"
   description = "Reads Cloud Build builds, and nothing else."
   permissions = [
     "cloudbuild.builds.get",
   ]
+
+  depends_on = [google_project_iam_member.org_tofu_role_admin]
 }
 
 # A pull-request build plans each environment's application stack as that
@@ -249,9 +303,11 @@ resource "google_organization_iam_custom_role" "cloud_build_build_reader" {
 # the lab from the plans' refusals, and nothing of what those resources hold.
 # The IAM policies the stack's grants are refreshed through are
 # roles/iam.securityReviewer's, granted beside it.
-resource "google_organization_iam_custom_role" "application_plan_reader" {
-  org_id      = local.org_id
-  role_id     = "applicationPlanReader_${local.boot.organization_suffix}"
+resource "google_project_iam_custom_role" "application_plan_reader" {
+  for_each = local.custom_role_projects
+
+  project     = each.value
+  role_id     = "applicationPlanReader"
   title       = "Application Plan Reader"
   description = "Reads the resources an application stack declares, for a plan, and nothing of their data."
   permissions = [
@@ -299,6 +355,8 @@ resource "google_organization_iam_custom_role" "application_plan_reader" {
     # Cloud Storage: the file stores' buckets, and not their objects.
     "storage.buckets.get",
   ]
+
+  depends_on = [google_project_iam_member.org_tofu_role_admin]
 }
 
 # ---------------------------------------------------------------------------
@@ -324,9 +382,11 @@ resource "google_organization_iam_custom_role" "application_plan_reader" {
 # ---------------------------------------------------------------------------
 
 # The environment layer (2-env, planned once per environment: tst, stg, prd).
-resource "google_organization_iam_custom_role" "environment_layer_plan_reader" {
-  org_id      = local.org_id
-  role_id     = "environmentLayerPlanReader_${local.boot.organization_suffix}"
+resource "google_project_iam_custom_role" "environment_layer_plan_reader" {
+  for_each = local.custom_role_projects
+
+  project     = each.value
+  role_id     = "environmentLayerPlanReader"
   title       = "Environment Layer Plan Reader"
   description = "Reads the resources an environment's layer declares, for a plan, and nothing of their data."
   permissions = [
@@ -358,12 +418,16 @@ resource "google_organization_iam_custom_role" "environment_layer_plan_reader" {
     # through, is bucketPolicyReader's, granted on that bucket (runners.tf).
     "storage.buckets.get",
   ]
+
+  depends_on = [google_project_iam_member.org_tofu_role_admin]
 }
 
 # The shared services layer (2-shr: the container registry).
-resource "google_organization_iam_custom_role" "services_layer_plan_reader" {
-  org_id      = local.org_id
-  role_id     = "servicesLayerPlanReader_${local.boot.organization_suffix}"
+resource "google_project_iam_custom_role" "services_layer_plan_reader" {
+  for_each = local.custom_role_projects
+
+  project     = each.value
+  role_id     = "servicesLayerPlanReader"
   title       = "Services Layer Plan Reader"
   description = "Reads the resources the shared services layer declares, for a plan, and nothing of their data."
   permissions = [
@@ -371,12 +435,16 @@ resource "google_organization_iam_custom_role" "services_layer_plan_reader" {
     # IAM policies come from securityReviewer, and nothing here reads an image.
     "artifactregistry.repositories.get",
   ]
+
+  depends_on = [google_project_iam_member.org_tofu_role_admin]
 }
 
 # The shared network layer (2-net: the load balancer, DNS and certificates).
-resource "google_organization_iam_custom_role" "network_layer_plan_reader" {
-  org_id      = local.org_id
-  role_id     = "networkLayerPlanReader_${local.boot.organization_suffix}"
+resource "google_project_iam_custom_role" "network_layer_plan_reader" {
+  for_each = local.custom_role_projects
+
+  project     = each.value
+  role_id     = "networkLayerPlanReader"
   title       = "Network Layer Plan Reader"
   description = "Reads the resources the shared network layer declares, for a plan, and nothing of their data."
   permissions = [
@@ -401,12 +469,16 @@ resource "google_organization_iam_custom_role" "network_layer_plan_reader" {
     # (var.plan_roles): Cloud Domains permissions are not supported in custom roles.
     "dns.managedZones.get",
   ]
+
+  depends_on = [google_project_iam_member.org_tofu_role_admin]
 }
 
 # The shared Spanner layer (2-spn: the instance stg and prd share).
-resource "google_organization_iam_custom_role" "spanner_layer_plan_reader" {
-  org_id      = local.org_id
-  role_id     = "spannerLayerPlanReader_${local.boot.organization_suffix}"
+resource "google_project_iam_custom_role" "spanner_layer_plan_reader" {
+  for_each = local.custom_role_projects
+
+  project     = each.value
+  role_id     = "spannerLayerPlanReader"
   title       = "Spanner Layer Plan Reader"
   description = "Reads the resources the shared Spanner layer declares, for a plan, and nothing of their data."
   permissions = [
@@ -417,6 +489,8 @@ resource "google_organization_iam_custom_role" "spanner_layer_plan_reader" {
     # and nothing here reads a database.
     "spanner.instances.get",
   ]
+
+  depends_on = [google_project_iam_member.org_tofu_role_admin]
 }
 
 # The state bucket's IAM policy, for the environment layers' plan identities.
@@ -428,14 +502,18 @@ resource "google_organization_iam_custom_role" "spanner_layer_plan_reader" {
 # every object (admin). 1-org grants this role on the state bucket to each
 # environment layer's plan identity (runners.tf), beside the list and the
 # conditioned reads of the state.
-resource "google_organization_iam_custom_role" "bucket_policy_reader" {
-  org_id      = local.org_id
-  role_id     = "bucketPolicyReader_${local.boot.organization_suffix}"
+resource "google_project_iam_custom_role" "bucket_policy_reader" {
+  for_each = { boot = var.boot_project_id }
+
+  project     = each.value
+  role_id     = "bucketPolicyReader"
   title       = "Bucket Policy Reader"
   description = "Reads a bucket's IAM policy, and nothing else about it."
   permissions = [
     "storage.buckets.getIamPolicy",
   ]
+
+  depends_on = [google_project_iam_member.org_tofu_role_admin]
 }
 
 # Firebase added to a project, which initializing Identity Platform does first
@@ -444,13 +522,43 @@ resource "google_organization_iam_custom_role" "bucket_policy_reader" {
 # others (roles/firebase.admin, roles/firebase.editor). The environment layer
 # identity holds it beside roles/identityplatform.admin, for 2-env's
 # google_identity_platform_config alone.
-resource "google_organization_iam_custom_role" "identity_platform_initializer" {
-  org_id      = local.org_id
-  role_id     = "identityPlatformInitializer_${local.boot.organization_suffix}"
+resource "google_project_iam_custom_role" "identity_platform_initializer" {
+  for_each = local.custom_role_projects
+
+  project     = each.value
+  role_id     = "identityPlatformInitializer"
   title       = "Identity Platform Initializer"
   description = "Adds Firebase to a project, which initializing Identity Platform does first; nothing else of Firebase."
   permissions = [
     "firebase.projects.get",
     "firebase.projects.update",
   ]
+
+  depends_on = [google_project_iam_member.org_tofu_role_admin]
+}
+
+# resourcemanager.projects.update is not carried by any narrow predefined
+# role, so a custom role is the only way to grant it short of owner: the same
+# role 0-bootstrap makes in the boot project, here in each project this layer
+# creates, so the org layer identity can manage the projects' labels and
+# metadata through the project module (the creating identity's Owner
+# covered the first apply, which created them).
+resource "google_project_iam_custom_role" "project_updater" {
+  for_each = local.custom_role_projects
+
+  project     = each.value
+  role_id     = "projectUpdater"
+  title       = "Project Updater"
+  description = "Grants resourcemanager.projects.update so a layer identity can manage the project's labels and metadata."
+  permissions = ["resourcemanager.projects.update"]
+
+  depends_on = [google_project_iam_member.org_tofu_role_admin]
+}
+
+resource "google_project_iam_member" "org_tofu_project_updater" {
+  for_each = local.custom_role_projects
+
+  project = each.value
+  role    = google_project_iam_custom_role.project_updater[each.key].id
+  member  = "serviceAccount:${local.boot.org_service_account_email}"
 }

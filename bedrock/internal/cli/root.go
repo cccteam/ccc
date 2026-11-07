@@ -13,6 +13,7 @@ import (
 	"github.com/go-playground/errors/v5"
 	"github.com/spf13/cobra"
 
+	"github.com/cccteam/ccc/bedrock/internal/create"
 	"github.com/cccteam/ccc/bedrock/internal/deploy"
 	"github.com/cccteam/ccc/bedrock/internal/derive"
 	"github.com/cccteam/ccc/bedrock/internal/domain"
@@ -20,6 +21,7 @@ import (
 	"github.com/cccteam/ccc/bedrock/internal/org"
 	"github.com/cccteam/ccc/bedrock/internal/prompt"
 	"github.com/cccteam/ccc/bedrock/internal/release"
+	rootorg "github.com/cccteam/ccc/bedrock/internal/root"
 	"github.com/cccteam/ccc/bedrock/internal/secret"
 	"github.com/cccteam/ccc/bedrock/internal/where"
 	"github.com/cccteam/ccc/impulse/app"
@@ -105,16 +107,37 @@ type orgClients struct {
 	registrations domain.RegistrationReaderFunc
 	permissions   org.PermissionTesterFunc
 	// keysAs opens the API Keys API as an impersonated identity, for org apply's
-	// restriction of Firebase's browser key as the environment's layer identity.
-	keysAs org.KeyClientAsFunc
+	// restriction of Firebase's browser key as the environment's layer identity;
+	// googleAs opens Google Cloud as the root organization's creating identity, for
+	// org apply's creation of a hosting organization.
+	keysAs   org.KeyClientAsFunc
+	googleAs create.GoogleAsFunc
+	// root is what a root organization's commands reach Google Cloud and GitHub through
+	// (org bootstrap; org check, plan, apply and destroy in a root organization's
+	// repository), and openURL opens a page in the person's browser (nil: the address is
+	// printed alone).
+	root    *rootorg.Clients
+	openURL func(ctx context.Context, url string) error
+}
+
+// rootOrg is the root organization's seams, or nil when none are wired.
+func (d deps) rootOrg() *rootorg.Clients {
+	if d.org == nil {
+		return nil
+	}
+
+	return d.org.root
 }
 
 func newRoot() *cobra.Command {
 	return newRootWith(deps{
-		domains:     domain.NewCloudDomains,
-		secrets:     secret.NewSecretManager,
-		projects:    where.NewProjects,
-		org:         &orgClients{policies: org.NewPolicyReader, keys: org.NewKeyLister, registrations: domain.NewRegistrationReader, permissions: org.NewPermissionTester, keysAs: org.NewKeyClientAs},
+		domains:  domain.NewCloudDomains,
+		secrets:  secret.NewSecretManager,
+		projects: where.NewProjects,
+		org: &orgClients{
+			policies: org.NewPolicyReader, keys: org.NewKeyLister, registrations: domain.NewRegistrationReader, permissions: org.NewPermissionTester, keysAs: org.NewKeyClientAs, googleAs: create.NewGoogleAs,
+			root: rootClients(), openURL: openBrowser,
+		},
 		github:      github.Open,
 		githubToken: github.Token,
 		interactive: stdinIsTerminal,
@@ -125,6 +148,20 @@ func newRoot() *cobra.Command {
 		lookups:     domain.DefaultLookups(),
 		principal:   deploy.Principal,
 	})
+}
+
+// rootClients are a root organization's seams, over the run's Application Default
+// Credentials: the break-glass account's at a terminal, a runner identity's in a trigger.
+func rootClients() *rootorg.Clients {
+	return &rootorg.Clients{
+		Google: func(ctx context.Context) (create.Google, error) {
+			return create.NewGoogle(ctx)
+		},
+		OrgPolicies: rootorg.NewOrgPolicies,
+		Secrets:     rootorg.NewSecrets, DNS: rootorg.NewDNS, DNSAs: rootorg.NewDNSAs, Verifier: rootorg.NewVerifierAs, Builds: rootorg.NewBuilds, IAM: rootorg.NewIAM, Locks: rootorg.NewLocks,
+		GitHub: rootorg.GitHubClient, Store: deploy.NewStorage, Discovery: rootorg.NewDiscovery, Permissions: org.NewPermissionTester, Sleep: deploy.Sleep,
+		Clone: rootorg.GitClone,
+	}
 }
 
 // newRootWith builds the command tree over the seams, so tests can pass fakes. The

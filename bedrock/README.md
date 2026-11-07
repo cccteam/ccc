@@ -78,13 +78,15 @@ again does not, because its pull request is already labeled as tagged.
   `2-env` (per environment: the application identities and their grants, the records
   bucket, the repository links, the team group's release approval and entitlements).
   Rendered by `bedrock org` from the organization's placement into the organization's
-  infrastructure repository. A **zones organization** (`"kind": "zones"` in its
-  placement) is a bedrock organization with no environments that holds DNS zones alone,
-  in two layers, `0-bootstrap` and `1-dns`: one public zone per domain a customer
-  delegated to it once, and one NS record set per application name under the domain,
-  handed onward to the zone of the hosting organization that serves the application
-  (bedrock org, below). One per Google Cloud organization that hosts applications;
-  rendered by `bedrock org` from the same placement file.
+  infrastructure repository. A **root organization** (`"kind": "root"` in its
+  placement) is a bedrock organization with no environments and no terraform that holds
+  DNS zones alone, in its root project: one public zone per domain a customer delegated
+  to it once, and one NS record set per application name under the domain, handed onward
+  to the zone of the hosting organization that serves the application (bedrock org,
+  below). One per Google Cloud organization that hosts applications: the one thing made
+  by hand, by `bedrock org bootstrap`, kept true from the same placement file by its two
+  Cloud Build triggers, and the place each hosting organization is created from, by pull
+  request.
 - **Application stack**: the OpenTofu root under the application repository's
   `infrastructure/` directory (or the one layer under `3-app/` of an infrastructure
   repository): the Cloud Run services (their port named `h2c` when the site's main
@@ -110,11 +112,11 @@ again does not, because its pull request is already labeled as tagged.
   (`cloudArmor`; absent, bedrock's defaults); for an organization it records the prefix,
   the domains, the organization and billing ids, the regions, the Spanner configuration,
   the outlier detection thresholds, the Cloud Armor policy its applications start with,
-  the GitHub organization and its machine account, the
+  the GitHub organization and its Bot Account, the
   applications, the environment projects and
   each environment's team group (`teamGroups`: the group whose members approve the
   environment's releases and ask for its entitlements, with `entitlementDurations` for
-  the longest grants); a zones organization's records its kind (`kind`), the fields every
+  the longest grants); a root organization's records its kind (`kind`), the fields every
   organization has, one region, and the domains it holds zones for with the labels handed
   onward (`domains`), and none of the applications' or the environments' fields.
 - **Environment**: `tst`, `stg` and `prd`, in promotion order. A pull request deploys to
@@ -735,8 +737,9 @@ It also refuses:
   the registration and the file.
 
 It also warns, without failing, about the maintenance windows (Maintenance windows,
-below): production with no maintenance setting in `placement.json`, so that the refusal
-of a breaking release at the start of its run is never the first sign; no release file
+below): production with no maintenance setting in `placement.json`, when the application
+is placed there, so that the refusal of a breaking release at the start of its run is never
+the first sign; no release file
 (`zz_gen_release.json`) in the router package, so that no release of the checkout is
 breaking and the window never holds a run; a release file that does not read; and a
 dated slot that has passed. A malformed setting (a time zone that does not load, a slot
@@ -824,7 +827,7 @@ pull request that moved the pin from a release to a commit could not be planned.
 `upgrade` says so before it moves anything, asks for `yes` typed back (`--yes` stands in
 for it where there is no terminal; without either the run is refused and nothing is
 moved), and after the render applies 0-bootstrap as the person running it, with their
-sign-in, the way the bootstrap administrator applies the layer by hand (`tofu init`,
+sign-in, the way the break-glass account applies the layer by hand (`tofu init`,
 `plan` and `apply` in `0-bootstrap`, at its backend). It prints the plan's summary line
 (the two triggers updated in place) and the apply's, then the usual closing line. A move
 that keeps the kind applies nothing and reads as before. A pull request that reaches the
@@ -1478,36 +1481,42 @@ declaration and the name together in the next release. `check` lists each retire
 refuses a name nothing declares; a build secret retires the same way by its name. The stack
 README says the rule in full ("Retiring a secret or a file store").
 
-In the organization's infrastructure repository (the one whose `placement.json` at the root
-names the organization, `organizationId`), the same two commands take one of the
-organization's secrets, the private keys of its GitHub Apps, in place of an environment and
-a variable:
+In the root organization's infrastructure repository (the one whose `placement.json` at
+the root names the organization, `organizationId`, with `"kind": "root"`), the same two
+commands take one of the four secrets that organization holds for every organization in
+the Google Cloud organization, the private keys of the GitHub Apps and the Bot Account's
+token, in place of an environment and a variable, with `org secrets check` between them:
 
 ```sh
-bedrock secret add github-infrastructure-key --from-file infrastructure.pem   # the boot project's container
-bedrock secret pin github-infrastructure-key 2                                # placement.json, then org render
-bedrock secret add github-deployer-key --from-file deployer.pem               # the boot project's other container
-bedrock secret pin github-deployer-key 1                                      # placement.json, then org render
+bedrock secret add github-deployer-key --from-file deployer.pem   # a new version of the secret in the root project
+bedrock org secrets check github-deployer-key 2                   # GitHub accepts a token signed with it as the app
+bedrock secret pin github-deployer-key 2                          # placement.json, then org render: the alias
+bedrock secret add github-token                                   # the Bot Account's new token, asked for without echo
+bedrock org secrets check github-token 2                          # GitHub says whose it is: the Bot Account, an owner
+bedrock secret pin github-token 2                                 # placement.json (githubTokenVersion), then org render
 ```
 
 `github-infrastructure-key` is the key of the infrastructure GitHub App, the app the
-triggers' runs act as when 1-org configures the applications' repositories. It lives in
-0-bootstrap's container `<prefix>-boot-gbl-github-infrastructure-key` in the boot project,
-and its pin is `githubInfrastructureKeyVersion` in `placement.json`: `pin` writes it and
-runs `org render`; from the merge on, a run of the triggers that plans or applies 1-org
-mints its token from that version. `github-deployer-key` is the key of the deployer GitHub
-App, the app the plan trigger's run posts each layer's plan as and the app every
-application's pipeline talks back on a pull request as. It lives in 0-bootstrap's other
-container, `<prefix>-boot-gbl-github-deployer-key`, in the boot project too, and its pin is
-`githubDeployerKeyVersion` in `placement.json`: `pin` writes it and runs `org render`, which
-carries the version's resource name into 2-env's output
-`github_deployer_key_secret_version`, from which the application stacks pass it to their
-pipelines. Both are pinned by number, never `latest`, after Secret Manager confirms the
-version is enabled. `add` refuses a project that lacks the container rather than creating
-it, because the container is 0-bootstrap's own and its apply makes it. The project comes
-from `placement.json` (`projects.boot`); `--project` and `--container` override. Neither
-takes an environment. In an application's repository these names are refused, and in the
-infrastructure repository an application's `[env] [VARIABLE]` is.
+triggers' runs act as when 1-org configures the applications' repositories (the root
+organization's apply rules its own repository with it); `github-deployer-key` the key of the
+deployer GitHub App, the app the plan trigger's run posts each layer's plan as and the app
+every application's pipeline talks back on a pull request as; `github-release-key` the key
+of the release GitHub App, which each application's release trigger cuts the releases as.
+Each lives in one secret in the root organization's root project
+(`<prefix>-root-gbl-github-<app>-key`), and every reader in every organization names the
+secret's alias `current`, never a number and never `latest`: `pin` writes the version the
+alias is to point at in `placement.json` (`githubInfrastructureKeyVersion`,
+`githubDeployerKeyVersion`, `githubReleaseKeyVersion`), after Secret Manager confirms the
+version is enabled, and runs `org render`; the pull request's apply points the alias at
+it, and every reader switches at once. `add` refuses a project that lacks the secret
+rather than creating it, because the secret is the bootstrap's and the apply keeps it. The
+project comes from `placement.json` (`projects.root`); `--project` and `--container`
+override. Neither takes an environment.
+A hosting organization's repository refuses both, naming the root organization its
+placement records (`root`); in an application's repository these names are refused, and in
+an infrastructure repository an application's `[env] [VARIABLE]` is. The rotation, in one
+place for every organization, is the root organization's `README.md`, "The GitHub Apps'
+keys".
 
 ## bedrock migration check
 
@@ -2071,7 +2080,7 @@ listing, `bedrock restore` takes `--before <release>`, `--backup <name>` or `--a
 
 `maintenance off <env>` takes an application out of the maintenance a failed run left it
 in: a run that put the maintenance page up and then stopped (a restore refused at its
-plan, a cancelled build) leaves every region's traffic on the maintenance revision and
+plan, a canceled build) leaves every region's traffic on the maintenance revision and
 the task queue paused. The command dispatches the workflow's `maintenance` action as the
 person signed in to gh; the job reads the environment's live release from its deployment
 records and runs its build with `_MAINTENANCE=off`, which the resolve step turns into the
@@ -2224,7 +2233,12 @@ so:
 - **Registered by 2-net, the default.** A new organization buys its apps domain through
   Cloud Domains in the network layer: one placement entry, registered and pointed at the
   zone by the next apply, with no registrar step. Cloud Domains accepts no transfer in, so
-  a domain the client already owns takes one of the next two shapes.
+  a domain the client already owns takes one of the next two shapes. A registration lives
+  and dies with its project: it cannot move to another project, and deleting the project
+  loses the domain past a thirty-day restore window. So the default suits a permanent
+  organization alone; an organization that will be torn down, a laboratory among them,
+  registers no domain and delegates one registered at the company's registrar, as the next
+  two shapes describe.
 - **Delegated at the apex.** A domain as it is registered (its apex, such as
   `example.com`) with nothing else on it, registered anywhere: its name servers at the
   registrar are set to the zone's, once.
@@ -2241,7 +2255,7 @@ not supported.
 A production application often serves on a domain of its own, the client's brand domain,
 beside its hostname under the apps domain. Such a domain is a vanity domain: the
 organization's placement lists it (`vanityDomains`, bare lowercase domains, none the apps
-domain or the organization's domain, whose mail is on it, nor under or above either or
+domain nor under or above it or
 one another; at most 38 characters, so the names 2-net derives fit), and it is delegated
 whole to the network project, the apex-delegation shape above applied to the application's
 domain, with the same hand step at the registrar, once. 2-net serves each with a zone of
@@ -2298,9 +2312,9 @@ domain, declared as the vanity domain in its place for a vanity domain. The chec
 resolves the record that proves the domain to Certificate Manager and says when the
 certificate is still waiting on it. It exits 1 when anything is missing or refused.
 
-In a zones organization (`"kind": "zones"` in the placement; bedrock org, below) `domain
-check` reads each domain's zone in the boot project (`projects.boot`; 1-dns makes it, and
-it holds the domain's delegation alone: no address, no certificate) and resolves the
+In a root organization (`"kind": "root"` in the placement; bedrock org, below) `domain
+check` reads each domain's zone in the root project (`projects.root`; the apply makes it,
+and it holds the domain's delegation alone: no address, no certificate) and resolves the
 domain the same way, with the same step printed for a domain as registered (the registrar)
 and for a label of a domain served elsewhere (the NS records at its DNS provider), and the
 same refusal of a domain that carries other DNS, with a label of it to hold instead. Then,
@@ -2313,7 +2327,7 @@ answer cached before the record set was added); or what it answers instead (a re
 changed within the hour, or a wrong entry to correct). Every domain delegated and every
 label handed is the check passing; while a domain is not delegated its labels are reported
 as waiting on it. A placement with no domain yet has nothing to check, and the command says
-so. `domain add` has no place in a zones organization, which registers nothing.
+so. `domain add` has no place in a root organization, which registers nothing.
 
 A domain 2-net registers has a registrant contact (`registrant_contact` in
 `2-net/terraform.tfvars`) that is the client's, never that of a contractor who builds or
@@ -2355,11 +2369,13 @@ fails on it.
 `org` renders and checks the organization foundation from the organization's placement.
 
 ```sh
-bedrock org new ../infrastructure --placement placement.json   # a foundation for an organization that has none
-bedrock org preflight                                           # before the seed: the bootstrap administrator's roles
+bedrock org bootstrap ../imr-root-infrastructure --prefix imr --github-organization impulseframework   # the root organization, the one thing made by hand: one command, as the break-glass account
+bedrock org new ../infrastructure --placement placement.json   # a hosting organization's foundation rendered from its placement (bedrock org create writes one)
+bedrock org preflight                                           # the break-glass account's three roles, which the bootstrap checks itself
 bedrock org render                                              # after a placement change
 bedrock org check                                               # the committed layers against the placement
 bedrock org register quill ../quill                             # an application joins the foundation; its first placement.json is written into its checkout
+bedrock org create rgb                                           # in a root organization: a hosting organization recorded, for the apply trigger to create on the merge
 bedrock org plan                                                # what the plan trigger runs on a pull request
 bedrock org apply                                               # what the apply trigger runs on a push to the default branch
 bedrock org teardown                                            # the applications out of service: 2-net's hosts and listeners, then every application torn down
@@ -2370,114 +2386,241 @@ bedrock org retire <app>                                        # a torn-down, d
 bedrock org destroy                                             # every project of the organization deleted, by hand, after the prefix typed back
 ```
 
-`org new` renders the six layers, each with its `.tf` files, its README and its seeded
-`terraform.tfvars`, and at the root the README, the journal, the ignore rules and the
-OpenTofu version, then prints the hand steps the model needs before the Cloud Build
-triggers can run. 0-bootstrap carries the two triggers (`0-bootstrap/cloud-build.tf`): one
-plans the layers a pull request changes, the other applies the layers a push to the default
-branch changes, each running `bedrock org plan` or `bedrock org apply` after `bedrock org
-check`. Everything the seed decides is `REPLACEME` in the seeded values until it has run.
-The triggers' runs fetch the bedrock the placement pins (`bedrockVersion`, and for a
-release `bedrockSha256`): `org new` records the bedrock running it when that is a release
-or a commit installed with `go install`, and `bedrock upgrade`, run in the repository,
-moves the pin and renders the layers with the bedrock it names; `org render`, `org check`
-and `org register` refuse a placement pinned to another bedrock than the one running them.
+`org new` renders a hosting organization's six layers, each with its `.tf` files, its
+README and its seeded `terraform.tfvars`, and at the root the README, the journal, the
+ignore rules and the OpenTofu version, then prints the hand steps that come before the
+organization's record and after its creation. 0-bootstrap carries the two triggers
+(`0-bootstrap/cloud-build.tf`): one plans the layers a pull request changes, the other
+applies the layers a push to the default branch changes, each running `bedrock org plan`
+or `bedrock org apply` after `bedrock org check`. Everything the creation decides (the
+folders, the boot project's suffix, the state bucket) is `REPLACEME` in the seeded values
+until `org create` and the creation record it: a hosting organization's placement is
+written by `org create` in its root organization's repository, and the creation renders
+the repository from it, so `org new` is a render of a placement that exists, never a
+seed by hand. The triggers' runs fetch the bedrock the placement pins (`bedrockVersion`,
+and for a release `bedrockSha256`): `org new` records the bedrock running it when that is
+a release or a commit installed with `go install`, `org create` copies the root
+organization's pin, and `bedrock upgrade`, run in the repository, moves the pin and
+renders the layers with the bedrock it names; `org render`, `org check` and `org register`
+refuse a placement pinned to another bedrock than the one running them.
 
-A placement may name a second kind of organization: `"kind": "zones"`, a zones
-organization, which holds DNS zones alone, no applications and no environments. It is how
-a customer's shared domain serves applications hosted in more than one bedrock
+A placement may name a second kind of organization: `"kind": "root"`, a root
+organization, which holds no application and no environment, and has no terraform: the
+DNS zones, the GitHub Apps' keys and the Cloud Build authorization for every organization
+in the Google Cloud organization, and the creation of each hosting organization. The zones
+are how a customer's shared domain serves applications hosted in more than one bedrock
 organization: the customer delegates the domain (`mydomain.com`, or a label of it such as
-`apps.mydomain.com`) once, to a zone of the zones organization, and each application's
+`apps.mydomain.com`) once, to a zone of the root organization, and each application's
 name under it (`acme.mydomain.com`) is handed onward, as one NS record set in that zone, to
 the zone the application's hosting organization serves it from as a vanity domain
 (`vanityDomains` there, the environment names nested under the application's:
 `stg.acme.mydomain.com`), so a second application lands in another hosting organization
-with nothing moving at the customer's registrar. One zones organization per Google Cloud
-organization that hosts applications, in a Google Cloud organization and a GitHub
-organization of its own or shared with a hosting one (the machine account and the two
-apps are then recorded again, created once). `org new` renders two layers for it:
-`0-bootstrap`, as for every organization, with the triggers, the dns layer identity and
-its plan identity (`roles/dns.admin` and `roles/dns.reader` on the boot project, nothing
-at the organization node), and `1-dns`, which makes one public zone per domain in the boot
-project (`<prefix>-boot-gbl-dns-<domain with hyphens>`, DNSSEC on, kept by
-`prevent_destroy` as 2-net's zones are, with the same `zoneReplacement` steps), one NS
-record set per label with an hour's time to live, and rules this repository's default
-branch with the GitHub provider (the infrastructure app's token in a run of the triggers,
-as 1-org does in a hosting organization). Its placement carries the fields every
-organization has, one region (the boot project's) and `domains`: each domain with the
-labels handed onward (`labels.<label>`: the hosting organization's prefix and the four
-name servers of the application's zone there, as `bedrock domain check` prints them in
-that organization's repository; a label may carry a dot, as in `east.acme`, and none is
-above or below another). A domain is a bare lowercase name, not the organization's own
-domain (whose mail is on it; a label of it is fine) nor above it, none under another
-listed, and at most 46 characters, so the zone's name fits. The placement refuses the
+with nothing moving at the customer's registrar. One root organization per Google Cloud
+organization that hosts applications, and one GitHub organization per root organization,
+which the hosting organizations under it share (their placements name the same
+organization, Bot Account and apps, filled in by the creation). The root organization
+is the one thing made by hand, by one command, `org bootstrap`, run once as the break-glass
+account; every hosting organization under it is created from it by pull request, the first
+like every later one. The root organization is bedrock's own bookkeeping: its
+`placement.json` says what it is, and its two Cloud Build triggers keep it true by API,
+through the engine the bootstrap made it with (`org plan` on a pull request, which says
+what the merge would change; `org apply` on the merge, which makes it so and creates the
+hosting organizations recorded), where a hosting organization's triggers plan and apply
+OpenTofu layers.
+
+`org bootstrap <dir>` makes the root organization, placement and files, in one run at a
+terminal with the break-glass account's Application Default Credentials (`gcloud auth
+application-default login`): `--prefix` and `--github-organization`; `--organization` and
+`--billing-account` when the account sees more than one (it asks otherwise); `--domain`
+for each domain delegated to it, `--key-operator` for each member who rotates a key,
+`--region` (us-central1 unless named), `--default-branch`, `--approving-reviews`,
+`--label` and `--app-prefix`, the three GitHub Apps' name prefix. It checks the three
+roles `org preflight` checks first, then looks before each step and makes what is
+missing, so a run that stopped finishes on the next run in the same directory, whose
+`placement.json` records everything made. In order: the Bot Account's token, read from
+`GITHUB_TOKEN` or asked for without echo (a classic personal access token of the `repo`,
+`read:user` and `read:org` scopes; the bootstrap checks that it is the account's and the
+account an owner of the GitHub organization); the organization's folder at the
+organization node, named after the prefix; the root project `<prefix>-root-gbl-core-
+<suffix>` under it, linked to the billing account with its APIs enabled, and the state
+bucket `<prefix>-root-gbl-state-<suffix>`; the token's secret, its first version pinned
+(`githubTokenVersion`), every connection naming its alias `current`; the three GitHub Apps,
+infrastructure, deployer and release, made in the browser from the manifests bedrock
+declares (a page the command serves on the computer: Create, then Install for all
+repositories, for each; `--no-browser` prints the address) or brought
+(`--infrastructure-app` with `--infrastructure-key`, and the deployer's and release's
+pairs) and held to the same declaration, each key going from GitHub into its secret and
+its version pinned; the Cloud Build installation found through the infrastructure app;
+the repository `<prefix>-root-infrastructure`, private in the GitHub organization, with
+the placement and the rendered README as its first commit; then everything the apply keeps
+true, through the same engine the apply trigger runs; last what Google gave it as the
+creator, Owner on the root project and Folder Editor on the folder, off; and the check. No key and no token touches the computer's disk. The IAM grants
+above the folder are the bootstrap's own, never a hand step: Folder Creator at the
+organization node and Billing Account Administrator on the billing account for the
+creating identity `<prefix>-create-gbl-tofu`, Organization Policy Administrator at the node
+for the applier and Organization Policy Viewer for the planner (Google grants those two
+there and nowhere lower; with them the root organization sets the organization-policy
+baseline on each hosting organization's folders, the rendered README's "The
+organization-policy baseline"), and its own working grants, which it takes off at the end.
+What it leaves by hand is the break-glass account's Folder Admin on the
+folder, which Google gives a creator, and the repository at its first commit, from which
+every change goes by pull request.
+
+What the apply keeps true, from `placement.json`, section by section: the root project's
+APIs; the runner identities `<prefix>-root-gbl-planner` and `<prefix>-root-gbl-applier`
+and the creating identity, with their roles on the root project and read roles on the
+folder, nothing higher (the applier impersonates the creating identity for a creation
+alone); the four secrets, `<prefix>-root-gbl-github-<app>-key` for each app and
+`<prefix>-root-gbl-github-token`, each one's alias `current` at the version the placement
+pins (`githubInfrastructureKeyVersion`, the two other keys' and `githubTokenVersion`), and
+their policies: the key
+operators' adding and reading, the runners' reads, and each created hosting
+organization's boot identity's policy administration (`secretPolicyAdmin`, a role of the
+root project: a secret's IAM policy and nothing else); one public zone per domain
+(`<prefix>-root-gbl-dns-<domain with hyphens>`, DNSSEC on) and one NS record set per
+label handed onward, an hour's time to live, nothing else in the zone; the Cloud Build
+connection `<prefix>-root-<region code>-github`, the repository's link under it and the
+two triggers `<prefix>-root-<region code>-plan` and `<prefix>-root-<region code>-apply`,
+whose steps are the trigger's own (the pinned bedrock fetched, `bedrock org check`, then
+the command); and the repository's settings and the ruleset on its default branch (pull
+requests alone, `approvingReviews` approving reviews, the plan trigger's check passing,
+the infrastructure app bypassing). Two things it reports and never changes: the creating
+identity's grants above the folder, made by the bootstrap, and a zone whose domain was
+taken out of `domains`, which stays standing until a person deletes it in the root
+project, since every name under the domain still points at its name servers (the rendered
+`README.md`, "Making a zone again"). Its placement carries the fields every organization
+has, one region (the root project's), `domains`: each domain with the labels handed
+onward (`labels.<label>`: the hosting organization's prefix and the four name servers of
+the application's zone there, as `bedrock domain check` prints them in that
+organization's repository; a label may carry a dot, as in `east.acme`, and none is above
+or below another), and the keys' two lists: `keyOperators`, the IAM members (`user:`,
+`group:`) who add a key's version and read it back for the check, and
+`hostingOrganizations`, each hosting organization's prefix, boot project and, once
+created, folder; `org create` lists an organization, and the creation's hand-off records
+its folder. A hosting organization's placement names it (`root`: the prefix and the root
+project) and carries no `ciLargeRunner` field: the larger runner, its runner group and
+the organization variable are the root organization's, which its apply makes.
+
+`org create <prefix>`, in a root organization's repository, records a hosting organization
+for the apply trigger to create on the merge. Run once, it writes
+`organizations/<prefix>/placement.json`, a hosting placement for a person to fill in with
+what is the new organization's own to decide (`appsDomain`, `spanner.config`, two regions
+with the primary the root organization's, `teamGroups`, `contactDomains`, and
+`entitlementDurations`, `labels` and `vanityDomains` as wanted); run again, it fills in
+what the root organization supplies (the Google Cloud organization and billing account,
+the GitHub organization with its Bot Account, default branch and three App IDs, the
+Cloud Build authorization, the break-glass account, the bedrock pin and `root`), chooses
+the boot project's four-hex suffix, lists the organization in `placement.json`
+(`hostingOrganizations`) and renders, printing what the merge creates. The merge's `org
+apply` creates each listed organization without a folder yet as the root organization's
+creating identity (`<prefix>-create-gbl-tofu`, made by its bootstrap, which granted it
+Folder Creator at the organization node and Billing Account Administrator on the billing
+account): the folder at the organization node, the `terraform` folder, the boot
+project with its billing link and APIs, the boot identity with its roles on the folder
+and the break-glass account's Folder Admin on it, the state bucket, the boot identity's
+policy administration of the four shared secrets; then, against the new bucket, the first
+applies of the new organization's 0-bootstrap and 1-org, as the creating identity, with
+1-org's `project_ids` and `project_numbers` recorded in the new placement and the layers
+rendered again, and Billing Account User on the billing account for the new organization's
+boot and org identities, which 1-org needs the day it links a project it creates; then the
+public zone of the apps domain in the net project, made as the creating identity and
+recorded in the new placement as `appsZone`, which 2-net adopts with an import block (Cloud
+DNS asks whoever makes a zone for a name under a verified domain to own the domain in
+Google's webmaster verification; the root organization's apply verifies the creating
+identity itself, by its token as a TXT record at the domain's apex in the zone it keeps,
+and nobody is made an owner by hand); then the
+repository `<prefix>-infrastructure`, private in the GitHub
+organization, with the rendered foundation as its first push, which the new apply trigger
+runs on, every layer as its own identity; then the creating identity's grants off
+everything it made (Owner on each project, Folder Admin and Folder Editor on each folder,
+its roles on the organization's folder), a marker in the root organization's state bucket
+(`applied/created/<prefix>`), and the hand-off, a pull request in the root organization's
+repository from the branch `create/<prefix>` recording the folder in `placement.json`, the
+placement as created, and the label of the apps domain handed onward to the zone
+(`domains`), from which the root organization's apply writes the NS record set, branch and
+pull request both as the infrastructure app, whose declaration carries Pull requests for
+it. Every step looks before it makes, so a creation
+that stopped
+finishes on the next push, and a created organization is left alone. `org plan` says on
+the pull request what its merge creates. Left by hand, after the creation: the spend
+budget, by a billing administrator; the consent screens and the role groups as the
+hosting README says. `org check` in any organization
+lists each grant on the organization's folder to a principal outside it (neither the
+break-glass account nor an identity in one of its projects), beside the leftover grants of
+a hand setup, in a root organization too. A domain is a bare lowercase name, none under another
+listed, and at most 46 characters, so the zone's name fits; the organization's own domain
+is one like any other, and the live domain check decides whether it is delegated whole or
+by a label; each may declare the records its zone carries (`records`, in the root README). The placement refuses the
 fields of the hosting model (`appsDomain`, `spanner.config`, `teamGroups`, `applications`
 and the rest), and a hosting organization's refuses `domains`. `org preflight` checks the
-five roles a zones organization's seed needs (no Organization Policy Administrator, no
-Tag Administrator: 1-org alone uses them); `org new` prints the hand steps in the same
-shape, with 1-dns's apply in 1-org's place and the domains last; `org register`, `org
-place`, `org teardown`, `org serve`, `org hostnames` and `org retire` refuse a zones
-organization, since there is nothing for them to act on; `org destroy` deletes the boot
-project and the zones with it, after taking this repository and the zones out of 1-dns's
-state (the zones go with the project, which their `prevent_destroy` would otherwise
-refuse), so a zones organization is destroyed once no domain is delegated to it; and
-`domain check` reads its domains and labels (bedrock domain, above). Handing a label
-onward is two pull requests: the hosting organization's, which declares the name as a
-vanity domain and applies 2-net, whose `bedrock domain check` then prints the zone's four
-name servers; and the zones organization's, which records them under the label and applies
-1-dns. The rendered `1-dns/README.md` carries both, with how a name resolves and the steps
-for delegating a domain to the organization.
+three roles the bootstrap needs (below), and nothing for a hosting organization, which its
+root organization creates; `org new`, `org register`, `org place`, `org teardown`, `org
+serve`, `org hostnames` and `org retire` refuse a root organization, since there is
+nothing for them to act on; `org destroy` deletes the root project, and with it the
+secrets, the zones, the connection, the triggers, the identities and the state bucket,
+takes the creating identity's grants off the organization node and the billing account,
+and deletes the folder, refused while a hosting organization is recorded as created
+(destroyed first, in its own repository, and its entry taken out), so a root organization
+is destroyed once no domain is delegated to it; and `domain check` reads its domains and
+labels (bedrock domain, above). Handing a label onward is two pull requests: the hosting
+organization's, which declares the name as a vanity domain and applies 2-net, whose
+`bedrock domain check` then prints the zone's four name servers; and the root
+organization's, which records them under the label, whose merge makes the record set. The
+rendered `README.md` carries both ("Handing a label onward"), with how a name resolves
+and the steps for delegating a domain to the organization.
 
-A new organization is set up in this order. Each step opens with the place it happens,
-and the rendered root README ("How the layers are applied", "The two GitHub Apps") and
-`0-bootstrap/README.md` carry the commands:
+A root organization is set up by the bootstrap, and a hosting organization under it by
+pull request. Each step opens with the place it happens; the rendered READMEs carry the
+commands (the root `README.md`, "Bootstrapped by one command" and "Creating a hosting
+organization"; a hosting organization's `README.md`, "Created by the root organization"):
 
-1. In the Workspace Admin console: one team group per environment (`teamGroups`). On
-   GitHub, as an organization owner: the organization, its machine account, the
-   infrastructure repository, the release and deployer apps installed on all
-   repositories, and the release app's two organization secrets (GitHub prerequisites,
-   below). The team groups, the machine account and the release app's App ID and slug go
-   into the placement, and `org new` renders.
-2. In a terminal, as the bootstrap administrator: `gcloud auth application-default
-   login`, then `bedrock org preflight`, which must find every role held, then the seed.
-3. In this repository: the seed's values in the placement and `org render`.
-4. In the boot project's Cloud Build console, as the bootstrap administrator (Owner on
-   the boot project from the seed), signed in to GitHub as the machine account: the Cloud
-   Build GitHub authorization, before the first apply of 0-bootstrap. Its installation id
-   and the token secret's version go into the placement (`cloudBuildInstallationId`,
-   `cloudBuildTokenSecretVersion`); then, in a terminal, in this repository, `bedrock
-   upgrade`, which pins the bedrock the triggers run and renders.
-5. In a terminal: the first apply of 0-bootstrap on local state, the console's connection
-   imported into it, and its migration into the bucket. From here the two triggers exist.
-6. In a terminal, as a billing administrator: the two billing grants. In the Billing
-   console, as the same administrator: the spend budget, which nothing renders.
-7. In a terminal: the first apply of 1-org, then its projects in the placement and
-   `org render`. From here on the apply trigger applies every layer.
-8. In a terminal, in this repository: the infrastructure app's key, `bedrock secret add
-   github-infrastructure-key` and `bedrock secret pin github-infrastructure-key
-   <version>`, with its App ID in the placement; and the deployer app's key, `bedrock
-   secret add github-deployer-key` and `bedrock secret pin github-deployer-key
-   <version>`, with its App ID in the placement (`githubDeployerAppId`). Both containers
-   are 0-bootstrap's, in the boot project.
-9. In each environment project's Google Cloud console: the consent screen, with the
+1. In the Google Cloud console, as a super administrator of the Workspace: the
+   break-glass account, a Google account with no person behind it, holding Organization
+   Administrator and Folder Creator at the organization node and Billing Account
+   Administrator on the billing account (granted by a billing administrator of the
+   Google Cloud organization the account belongs to, when that is another one).
+2. On GitHub, as an owner of the organization: the organization itself, its Bot Account
+   with a classic personal access token (`repo`, `read:user`, `read:org`), and Google's
+   Cloud Build GitHub App installed on the organization for all repositories as the Bot
+   Account (GitHub prerequisites, below).
+3. In a terminal, as the break-glass account: `gcloud auth application-default login`,
+   then `bedrock org bootstrap <dir> --prefix <prefix> --github-organization <login>`,
+   with the token in `GITHUB_TOKEN` or typed when asked, and a browser for the three
+   GitHub Apps. From here the root organization's two triggers run on its repository,
+   and the delegation of each domain is the customer's (`bedrock domain check`).
+4. In the Workspace Admin console: one team group per environment of the hosting
+   organization to come (`teamGroups`).
+5. In the root organization's repository: `bedrock org create <prefix>`, the record
+   filled in, `bedrock org create <prefix>` again, and the pull request. The merge
+   creates the organization, repository and all, and opens the hand-off pull request,
+   whose merge records its folder.
+6. In the Billing console, as a billing administrator: the new organization's spend
+   budget, which nothing renders.
+7. In each environment project's Google Cloud console: the consent screen, with the
    audience Internal, before the first application's OAuth client is made there.
-10. In the Workspace Admin console, for each application before its first sign-in: its
-    role groups, `<group prefix><role>@<domain>`, each set so that its members can view
-    its member list, since the sign-in reads a person's groups with the person's own
-    token and Google leaves out a group whose member list the person may not view.
-11. After the first apply of 2-net: `bedrock domain check`.
+8. In the Workspace Admin console, for each application before its first sign-in: its
+   role groups, `<group prefix><role>@<domain>`, each set so that its members can view
+   its member list, since the sign-in reads a person's groups with the person's own
+   token and Google leaves out a group whose member list the person may not view.
+9. After the first apply of 2-net: `bedrock domain check`.
 
-The organization's placement names its GitHub machine account (`githubMachineAccount`):
-the login of a GitHub user that belongs to the organization as an owner and acts for no
-person. In the browser step that authorizes the Cloud Build GitHub connection, in the boot
-project before the first apply of 0-bootstrap (`0-bootstrap/README.md`, "The Cloud Build
-GitHub authorization"), a person signs in to GitHub as that account, so the connection's
-token is the account's and nobody's leaving breaks it; a classic personal access token of
-the same account (the `repo`, `read:user` and `read:org` scopes; Cloud Build accepts no
-fine-grained token) is the alternative to that step. The token secret lives in the boot project,
-and 0-bootstrap grants each environment project's Cloud Build service agent its read, so
-every connection, the boot project's and each environment's, is rendered from the one
-authorization. The field is required: a placement without it is refused.
+The organization's placement names its GitHub Bot Account (`githubBotAccount`):
+the login of a GitHub user that belongs to the GitHub organization as an owner and acts for
+no person, so nobody's leaving breaks what runs as it. Its classic personal access token
+(the `repo`, `read:user` and `read:org` scopes; Cloud Build accepts no fine-grained token)
+is what every Cloud Build connection authorizes with: the root organization's bootstrap
+reads it from `GITHUB_TOKEN` or asks for it without echo, checks that it is the account's
+and the account an owner, and stores it as the secret `<prefix>-root-gbl-github-token` in
+the root project, pins the version (`githubTokenVersion`) and records the secret's alias
+`current` (`cloudBuildTokenSecretVersion`) beside the Cloud Build GitHub App's installation
+(`cloudBuildInstallationId`); the apply keeps the alias at the pinned version, so the token
+rotates like a key before it expires (`bedrock secret add github-token`, `org secrets
+check`, `secret pin`, the pull request) and every connection switches at the apply; the
+creation copies both into a hosting organization's placement, whose 0-bootstrap grants its
+own projects' Cloud Build service agents the token's read, so every connection, the root
+project's, each boot project's for the layers' triggers and each environment's for the
+applications', is rendered from the one authorization. The field is required: a placement
+without it is refused.
 
 The placement's `approvingReviews` is the number of approving reviews a pull request needs
 before it merges, on every application repository's default branch and patch lines and on
@@ -2508,19 +2651,35 @@ is the Cloud Armor policy an application's first placement starts with, which an
 environment turns on in the application's `terraform.tfvars` (the organization's own
 backends carry none).
 
-`org preflight` is the check before the seed. The seed and the first applies of 0-bootstrap
-and 1-org run as the bootstrap administrator, a person, before any layer identity exists, so
-that person must hold the roles they need. Run with the administrator's Application Default
-Credentials (`gcloud auth application-default login`), it asks Google which of the
-permissions those runs need the caller holds: on the organization `placement.json` names
-(Cloud Resource Manager's `testIamPermissions`) and on its billing account (Cloud Billing's).
-The roles are Folder Creator, Project Creator, Organization Administrator, Organization
-Policy Administrator, Organization Role Administrator and Tag Administrator at the
-organization, and Billing Account User on the billing account (a zones organization's
-seed needs five of them: neither the organization policy nor the tag role, which 1-org
-alone uses). It prints one line per role,
-`holds` or `missing` with the permissions tested, and exits 1 when a role is missing, saying
-who grants it where, or when it could not check (no credentials, or an API that refused).
+`org preflight` is the check before the bootstrap, which the bootstrap repeats before it
+touches anything. The bootstrap runs as the break-glass account (`breakGlassAccount` in
+the placement), before any identity exists, so that account must hold three roles above
+the organization's folder. Run with the account's Application Default Credentials (`gcloud
+auth application-default login`) in a root organization's repository, it asks Google which
+of the permissions the bootstrap needs the caller holds: on the organization
+`placement.json` names (Cloud Resource Manager's `testIamPermissions`) and on its billing
+account (Cloud Billing's). The roles are Organization Administrator at the organization
+node, for the creating identity's Folder Creator there and the bootstrap's own working
+grants, which it takes off at the end; Folder Creator at the organization node, for the
+organization's folder; and Billing Account Administrator on the billing account, for the
+root project's link and the creating identity's administration of the account, with which
+each hosting organization's identities get their billing grants. Everything else happens
+under the folder, where the bootstrap is the creator. It prints one line per role, `holds`
+or `missing` with the permissions tested, and exits 1 when a role is missing, saying who
+grants it where, or when it could not check (no credentials, or an API that refused). A
+hosting organization has no preflight: its root organization creates it.
+
+`org secrets check` runs in the root organization's repository, which holds the GitHub
+Apps' keys: given a secret's name and a version's number, it reads the version with the
+run's Google credentials, signs a token with it as the app `placement.json` records and
+asks GitHub for the app itself, which GitHub answers for the app's own key alone. It prints
+the app GitHub answered with, the version the alias `current` is pinned to and the pin to
+make; a version that is not the app's key, or an App ID that is another app's, is refused
+with GitHub's answer, and nothing moves either way. For `github-token`, the Bot Account's
+token, it reads the version and asks GitHub whose it is: a personal access token (one a
+GitHub App issued is refused by its prefix), the Bot Account's (`githubBotAccount`), an
+owner of the GitHub organization. A hosting organization's repository refuses it, naming
+the root organization.
 
 `org render` rewrites the owned files from the placement, seeds the absent ones, and says
 what the triggers still lack in the placement; `org check` compares the owned files and
@@ -2538,13 +2697,16 @@ registration's state and expiry date, an expiry within thirty days with the bill
 account to look at (renewal is automatic while it is active), and any other issue the
 registrar raises. It reads the registrations with the run's Google credentials
 (`roles/domains.viewer` on the network project); without any, or when Cloud Domains
-cannot be reached, it says so and never fails the check. `org check` then lists each person (a `user:`
-member) holding `roles/owner` on an environment project the placement records, with the
-project: the grant a project's creator receives, which the first apply of 1-org by hand
-leaves the bootstrap administrator with on every project it creates, temporary by design
-and removed by hand once the apply trigger applies the layers (`1-org/README.md`, "Applying").
-The listing reads the projects' IAM policies with the run's Google credentials (`gcloud
-auth application-default login`); without any it says so, and it never fails the check.
+cannot be reached, it says so and never fails the check. `org check` then lists each grant
+a hand apply left still held, with its place: Owner held by a person (a `user:`
+member) on a project the placement records, Folder Admin or Folder Editor held by a person
+on a folder under the organization's folder, which Google gives whoever creates a project or
+a folder, and every role the break-glass account holds on the organization's folder or a
+project but the one it keeps, Folder Admin on the organization's folder. All of them are
+temporary by design and removed by hand once the apply trigger applies the layers
+(`0-bootstrap/README.md`, "Recovery, by hand"). The listing reads the
+projects' and folders' IAM policies with the run's Google credentials (`gcloud auth
+application-default login`); without any it says so, and it never fails the check.
 While the placement declares more databases on a Spanner instance than it holds (the
 count `org register` refuses on, for the shared instance and each environment's own), or
 the applications' databases take all of the integration environment's instance and leave
@@ -2614,8 +2776,7 @@ per layer in the state bucket (`applied/<layer>`, `applied/2-env/<env>`) holds t
 of that apply, the files changed between it and the push are read through the connection,
 and a layer with no marker is applied. The layers apply in layer order (0-bootstrap, 1-org,
 2-shr and 2-spn, then 2-env for tst, stg and prd, then 2-net: 2-net's URL map names tst's
-pull-request backend, which 2-env tst makes; 0-bootstrap, then 1-dns in a zones
-organization), one at a time, each as its apply
+pull-request backend, which 2-env tst makes), one at a time, each as its apply
 identity: every run's `tofu init` at its state prefix first, then, layer by layer, a plan,
 the apply of that plan and the marker, stopping at the first failure. The inits come first
 because the gcs backend writes a state the first time anything opens it: a layer that has
@@ -2630,25 +2791,26 @@ Firebase assigns it and the Google provider finds no key by its name. A person a
 layer again with no change to it by starting the apply trigger with `_LAYER`, and for
 2-env `_ENVIRONMENT` (`gcloud builds triggers run <prefix>-boot-<region code>-layers-apply
 --region=<region> --project=<boot project> --branch=<default branch>
---substitutions=_LAYER=2-env,_ENVIRONMENT=tst`, or `_LAYER=1-dns` in a zones organization;
-`0-bootstrap/README.md`, "The Cloud
+--substitutions=_LAYER=2-env,_ENVIRONMENT=tst`; `0-bootstrap/README.md`, "The Cloud
 Build triggers"). The placement names what the runs work with: every project under
 `projects` (`boot` from the seed, the six others from 1-org's `project_ids`), the
 environment projects' numbers under `projectNumbers` (their Cloud Build service agents'
 read of the token), the Cloud Build GitHub authorization (`cloudBuildInstallationId`,
 `cloudBuildTokenSecretVersion`), the infrastructure GitHub App whose token 1-org's GitHub
-provider takes (`githubInfrastructureAppId`, and `githubInfrastructureKeyVersion`, the
-pinned version of its key in the boot project's container), the deployer app the plans are
-posted as (`githubDeployerAppId`, `githubDeployerKeyVersion`) and the bedrock pin;
+provider takes (`githubInfrastructureAppId`), the deployer app the plans are posted as
+(`githubDeployerAppId`), the root organization whose root project holds the apps' keys
+(`root`: its prefix and that project, where every reader names each secret's alias
+`current`) and the bedrock pin;
 `0-bootstrap/README.md` has the person's steps. A run of the triggers that plans or
 applies a layer whose project the placement does not record yet (REPLACEME) stops and says
 which ids to record; one that plans or applies 1-org without the infrastructure app
 recorded stops and says what records it. The first applies of 0-bootstrap and 1-org are
-the bootstrap administrator's, before the identities exist; recovery is by hand, for 2-env
+the creation's, as the root organization's creating identity, before the identities
+exist; recovery is by hand, for 2-env
 by a member of the environment's team group under the layer administrator entitlement (the
 environment layer identity's roles on the environment project) and the layer state
 entitlement (its slot in the state bucket, on the boot project), running the layer as
-themselves, for the other layers as the bootstrap administrator; an apply by hand leaves
+themselves, for the other layers as the break-glass account; an apply by hand leaves
 the layer's marker as it was, so the next push applies the layer again, with an empty plan
 when the hand apply was complete.
 
@@ -2718,7 +2880,8 @@ backups of its databases and the data down). The code typed back gates the run (
 stands in for it). A retired application is registered again as a new one.
 
 `org destroy` deletes every project of the organization, by a person at their own computer
-with their own sign-in (an owner of the GCP organization; `GITHUB_TOKEN`, or gh's token, for
+with their own sign-in (the break-glass account, holding Owner on the organization's folder
+for the run; `GITHUB_TOKEN`, or gh's token, for
 1-org's GitHub provider: the infrastructure GitHub App's installation token, or an
 organization owner's). It says what goes, project by project, and asks for the prefix typed
 back before anything runs (`--yes` stands in for it where there is no terminal). It destroys
@@ -2736,12 +2899,16 @@ and are gone after. A layer whose state holds nothing is skipped. When 2-net reg
 with its folder and the organization's, for a person: a registration cannot move to another
 project. It refuses a layer rendered by an earlier bedrock, which declares no `destroy`
 variable, and ends with a line in `JOURNAL.md` and what starting over takes (the rendered
-`0-bootstrap/README.md`, "Destroying the organization"). In a zones organization it
-destroys 1-dns in 1-org's place, this repository and the zones taken out of its state
-first (the zones go with the boot project, which their `prevent_destroy` would otherwise
-refuse; 1-dns declares no `destroy` variable, having no project and no folder), then
-0-bootstrap the same way: every domain delegated to the organization then points at
-servers that answer nothing, so it is destroyed once no domain is.
+`0-bootstrap/README.md`, "Destroying the organization"). In a root organization, which has
+no terraform, it deletes the root project (and with it the secrets, the zones, the
+connection, the triggers, the identities and the state bucket), takes the creating
+identity's grants off the organization node and the billing account, and deletes the
+folder, refused while a hosting organization is recorded as created: that one is destroyed
+first, in its own repository, and its entry taken out. The repository stays on GitHub with
+its code and pull requests, and the apps stay with their installations, so a bootstrap
+again brings them as brought apps, with their keys, or makes new ones; every domain
+delegated to the organization then points at servers that answer nothing, so it is
+destroyed once no domain is.
 
 `org register <code> <checkout>` adds an application: its code, the organization's naming
 decision under the one rule (one to six lowercase letters and digits starting with a
@@ -2863,7 +3030,10 @@ runner of the name and size on GitHub's current Ubuntu, in a runner group of the
 application repositories alone, capped at `ciLargeRunnerMaximum` running at once (0 for
 GitHub's default), through the app's Self-hosted runners organization permission; GitHub
 bills it per minute by its size on the Team and Enterprise plans. A repository that existed before the layer
-declared it is imported into the state first; `1-org/README.md` lists the commands.
+declared it is adopted on the first apply: `bedrock org register` records `adopted` on the
+application's entry when GitHub has the repository, and an import block in 1-org adopts it
+into the state; a ruleset or Environment made on it by hand is imported first, and
+`1-org/README.md` lists the commands.
 bedrock's commands use the GitHub API only to act: `restore` dispatches a workflow,
 `patch` creates branches and pull requests, the pipeline talks back on a pull request. OpenTofu reads `*.auto.tfvars` after `terraform.tfvars`, which keeps what a person
 decides. Once `placement.json` records the environment projects' ids and numbers
@@ -2891,25 +3061,29 @@ organization's GitHub plan, so its plan must include all four.
   rerun or a rollback in a GitHub Environment per environment, each deploying from the
   default branch alone. No Environment requires reviewers: that rule needs GitHub
   Enterprise on a private repository, and the approval is Cloud Build's instead.
-- **Organization secrets that reach private repositories.** The release app's
-  `RELEASE_APP_ID` and `RELEASE_APP_PRIVATE_KEY` are set once for the organization,
-  visible to all repositories, and each application's release workflow makes the app's
-  token from them. Writing an organization secret takes an organization owner signed in,
-  or an owner's token carrying the organization-administration scope; a token without
-  that scope is refused.
-- **GitHub Apps owned by the organization.** The release app (Contents, Issues and Pull
-  requests, read and write), the deployer app (Checks, Deployments, Issues and Pull
-  requests, read and write) and the infrastructure app (`0-bootstrap/README.md`:
-  repository Actions, Administration and Metadata, organization Administration and
-  Variables), each
-  installed on all repositories, and the Google Cloud Build GitHub App, installed when
-  the connection is authorized.
+- **One GitHub organization per root organization.** The three GitHub Apps are
+  installed on the whole GitHub organization, and their private keys live in Secret
+  Manager in the root organization's root project, one secret per app for every bedrock
+  organization in the Google Cloud organization, read through an alias and rotated in one
+  place; no key is a GitHub secret, and no repository secret carries one.
+- **GitHub Apps owned by the organization.** The three apps are the root organization's
+  bootstrap's, made in the browser from bedrock's declaration of each, or brought and held
+  to it: the release app (Contents, Issues and Pull requests, read and write), the
+  deployer app (Checks, Deployments, Issues and Pull requests, read and write) and the
+  infrastructure app (`0-bootstrap/README.md`: repository Actions, Administration,
+  Contents, Metadata and Pull requests, organization Administration, Variables and
+  Self-hosted runners; Contents read and write is what the creation pushes a new
+  organization's repository with, and Pull requests what it opens the hand-off pull
+  request in the root organization's repository with), each installed on all
+  repositories; and Google's Cloud Build GitHub App,
+  installed on the organization for all repositories as the Bot Account before the
+  bootstrap, which finds the installation through the infrastructure app.
 
-And one account: the machine account (`githubMachineAccount`, under bedrock org above), a
-GitHub user that is an owner of the organization and acts for no person, which authorizes
-the Cloud Build GitHub connection once, in the boot project, as the bootstrap administrator
-at the console; the token secret lives there, and every connection, the boot project's for
-the layers' triggers and each environment's for the applications', is rendered from it.
+And one account: the Bot Account (`githubBotAccount`, under bedrock org above), a
+GitHub user that is an owner of the organization and acts for no person, whose classic
+personal access token the bootstrap stores in the root project; every Cloud Build
+connection, the root project's, each hosting organization's boot project's for the layers'
+triggers and each environment's for the applications', authorizes with it.
 
 ## The application's pipeline
 

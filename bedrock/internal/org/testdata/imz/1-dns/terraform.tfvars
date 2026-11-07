@@ -1,5 +1,0 @@
-# Committed on purpose: nothing here is a secret. boot_project_id is the output
-# boot_project_id of 0-bootstrap, suffix included; the domains and their labels
-# are placement.json's, rendered into domains.auto.tfvars.
-
-boot_project_id = "imz-boot-gbl-core-REPLACEME"

@@ -285,9 +285,13 @@ func (env *dataConfig) staffSettings(collection access.PermissionCollection, sig
 // openMailSender opens the sender every auth mails through: the Google Workspace SMTP
 // relay as the mailbox the deployment names (APP_MAIL_MAILBOX, with its app password),
 // or the log where none is named, as in development, where nothing is sent and a
-// developer follows the link from the log.
+// developer follows the link from the log. A mailbox named without its app password is
+// the first environment before an operator adds the secret's version (the stack's
+// secret_versions, where no entry means not yet): the log stands in there too, so the
+// environment runs and its migrations seed, and the relay takes over once the version
+// is pinned; a release to any other environment is refused until it is.
 func openMailSender(env *dataConfig) (mail.Sender, error) {
-	if env.MailMailbox == "" {
+	if env.MailMailbox == "" || env.MailAppPassword == "" {
 		return mail.Log{}, nil
 	}
 	sender, err := workspace.New(&workspace.Settings{Mailbox: env.MailMailbox, From: env.MailFrom, AppPassword: env.MailAppPassword, Name: staff.Application})

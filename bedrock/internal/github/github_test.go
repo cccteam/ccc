@@ -274,6 +274,25 @@ func TestIssueComments(t *testing.T) {
 	}
 }
 
+// TestMoved: a repository renamed away from the name asked for answers 301 with the new
+// address; the client follows no redirect and answers Moved, not the renamed repository.
+func TestMoved(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Location", "https://api.github.com/repositories/1")
+		w.WriteHeader(http.StatusMovedPermanently)
+	}))
+	t.Cleanup(server.Close)
+	_, err := github.New(server.URL, "test-token").Repository(context.Background(), "imp-example", "imr-root-infrastructure")
+	if !github.Moved(err) || github.NotFound(err) {
+		t.Fatalf("error = %v, want Moved and not NotFound", err)
+	}
+	if want := "answered 301: moved to https://api.github.com/repositories/1"; err == nil || !strings.Contains(err.Error(), want) {
+		t.Errorf("error = %v, want it to carry %q", err, want)
+	}
+}
+
 func TestRetries(t *testing.T) {
 	t.Parallel()
 

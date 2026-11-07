@@ -29,10 +29,13 @@ var templates embed.FS
 
 const (
 	templateDir = "templates"
-	templateExt = ".tmpl"
-	tfvarsFile  = "terraform.tfvars"
-	journalFile = "JOURNAL.md"
-	ignoreFile  = ".gitignore"
+	// rootTemplateDir holds a root organization's files: the README, the journal and
+	// the ignore rules, and no layer.
+	rootTemplateDir = templateDir + "/root"
+	templateExt     = ".tmpl"
+	tfvarsFile      = "terraform.tfvars"
+	journalFile     = "JOURNAL.md"
+	ignoreFile      = ".gitignore"
 	// StepsVersion names the shape of the triggers' inline steps this bedrock renders
 	// (0-bootstrap/cloud-build.tf): the substitutions they carry and what each step
 	// does. The steps also follow the pin's kind (a release pin renders FetchBedrock
@@ -65,18 +68,16 @@ const (
 // HostingLayers are the hosting model's layers, in apply order: 2-env before 2-net, since
 // 2-net's URL map names tst's pull-request backend, which 2-env tst makes, while nothing
 // in 2-env waits on 2-net (its two load balancer principals are derived from 1-org until
-// 2-net exists, and the apps domain is the placement's). A zones organization's are
-// ZonesLayers (zones.go); Placement.Layers answers by kind.
+// 2-net exists, and the apps domain is the placement's). A root organization's are
+// RootLayers (zones.go); Placement.Layers answers by kind.
 var HostingLayers = []string{bootstrapLayer, orgLayer, shrLayer, spnLayer, envLayer, netLayer}
 
 // layerProjects is the project each single-run layer's identities live in, by layer: the
 // boot project for the two boot layers (both identities are named after their layer, boot
-// and org, or dns for a zones organization), the layer's own project for the shared ones.
-// 2-env's are the environments'.
+// and org), the layer's own project for the shared ones. 2-env's are the environments'.
 var layerProjects = map[string]struct{ name, project string }{
 	bootstrapLayer: {name: bootProject, project: bootProject},
 	orgLayer:       {name: orgIdentity, project: bootProject},
-	dnsLayer:       {name: dnsIdentity, project: bootProject},
 	shrLayer:       {name: shrProject, project: shrProject},
 	spnLayer:       {name: spnProject, project: spnProject},
 	netLayer:       {name: netProject, project: netProject},
@@ -89,9 +90,41 @@ var seeded = map[string]bool{
 	ignoreFile:  true,
 }
 
-// view is what the templates see: the placement and the phrases derived from it.
+// view is what the templates see: the placement and the phrases derived from it, and
+// the creation's seed when the render is a creation's (the folder ids the seeded tfvars
+// carry; REPLACEME otherwise, until the creation records them).
 type view struct {
 	*Placement
+	seed *Seed
+}
+
+// BootProjectID is the boot project's id for a seeded tfvars: the placement's once
+// recorded, else <prefix>-boot-gbl-core-REPLACEME for the seed to fill in.
+func (v *view) BootProjectID() string {
+	if id := v.Projects[bootProject]; id != "" {
+		return id
+	}
+
+	return v.Prefix + "-boot-gbl-core-" + replaceMe
+}
+
+// OrganizationFolderID is the organization's folder id for 0-bootstrap's seeded tfvars:
+// the creation's, else REPLACEME.
+func (v *view) OrganizationFolderID() string {
+	if v.seed != nil && v.seed.OrganizationFolder != "" {
+		return v.seed.OrganizationFolder
+	}
+
+	return replaceMe
+}
+
+// TerraformFolderID is the terraform folder's id for the same file.
+func (v *view) TerraformFolderID() string {
+	if v.seed != nil && v.seed.TerraformFolder != "" {
+		return v.seed.TerraformFolder
+	}
+
+	return replaceMe
 }
 
 // Environments is the model's environments in promotion order, for the templates.
@@ -271,8 +304,8 @@ func (v *view) CloudBuildTokenSecretVersionHCL() string {
 }
 
 // GithubDeployerAppIDHCL is the deployer app's App ID as an HCL value, or null until the
-// app is recorded; DeployerKeyVersionNameHCL the pinned version of its key by resource
-// name, quoted, or null until one is pinned.
+// app is recorded; DeployerKeyVersionNameHCL its key's alias by resource name, quoted,
+// or null on a root organization before the app is recorded.
 func (v *view) GithubDeployerAppIDHCL() string {
 	if v.GithubDeployerAppID == "" {
 		return hclNull
@@ -281,12 +314,22 @@ func (v *view) GithubDeployerAppIDHCL() string {
 	return v.GithubDeployerAppID
 }
 
+// GithubInfrastructureAppIDHCL is the infrastructure app's App ID as an HCL number, or
+// null on a placement that records none yet.
+func (v *view) GithubInfrastructureAppIDHCL() string {
+	if v.GithubInfrastructureAppID == "" {
+		return hclNull
+	}
+
+	return v.GithubInfrastructureAppID
+}
+
 func (v *view) DeployerKeyVersionNameHCL() string {
 	return hclStringOrNull(v.DeployerKeyVersionName())
 }
 
-// ReleaseKeyVersionNameHCL is the pinned version of the release app's key by resource
-// name, quoted, or null until one is pinned.
+// ReleaseKeyVersionNameHCL is the release app's key's alias by resource name, quoted,
+// or null on a root organization before the app is recorded.
 func (v *view) ReleaseKeyVersionNameHCL() string {
 	return hclStringOrNull(v.ReleaseKeyVersionName())
 }
@@ -401,8 +444,8 @@ func (*view) ApplyBuildSeconds() int {
 }
 
 // LayerOrderProse spells the apply order: 0-bootstrap, 1-org, 2-shr and 2-spn, then
-// 2-env for tst, stg and prd, then 2-net; for a zones organization, 0-bootstrap, then
-// 1-dns.
+// 2-env for tst, stg and prd, then 2-net; empty for a root organization, which has no
+// layer.
 func (v *view) LayerOrderProse() string {
 	layers := v.Layers()
 	i := slices.Index(layers, envLayer)
@@ -566,6 +609,10 @@ var numberWords = map[int]string{2: "two", 3: "three", 4: "four", 5: "five", 6: 
 
 // hclList is the items as an HCL list of strings.
 func hclList(items []string) string {
+	if len(items) == 0 {
+		return emptyHCLList
+	}
+
 	return `["` + strings.Join(items, `", "`) + `"]`
 }
 
@@ -582,6 +629,13 @@ func (v *view) ApplicationsList() string {
 	}
 
 	return `["` + strings.Join(v.Codes(), `", "`) + `"]`
+}
+
+// AdoptedList is the codes of the applications whose repositories exist on GitHub
+// already, which 1-org adopts through an import block instead of making, as an HCL list;
+// [] with none.
+func (v *view) AdoptedList() string {
+	return hclList(v.Adopted())
 }
 
 // ApplicationRepositoriesHCL is the applications' repository names by code as an HCL
@@ -761,37 +815,7 @@ func (v *view) LabelsBlockQuoted(layer, environment string) string {
 	return v.LabelsBlock(layer, fmt.Sprintf("%q", environment))
 }
 
-// DomainsHCL is a zones organization's domains as the HCL value 1-dns takes
-// (var.domains): each domain with its labels handed onward, each label with the hosting
-// organization and the four name servers, in name order; {} with no domain.
-func (v *view) DomainsHCL() string {
-	domains := v.DomainNames()
-	if len(domains) == 0 {
-		return emptyHCLMap
-	}
-	var b strings.Builder
-	b.WriteString("{\n")
-	for _, d := range domains {
-		fmt.Fprintf(&b, "  %q = {\n    labels = ", d)
-		labels := v.LabelNames(d)
-		if len(labels) == 0 {
-			b.WriteString(emptyHCLMap + "\n  }\n")
-
-			continue
-		}
-		b.WriteString("{\n")
-		for _, label := range labels {
-			h := v.Domains[d].Labels[label]
-			fmt.Fprintf(&b, "      %q = { organization = %q, name_servers = %s }\n", label, h.Organization, hclList(h.NameServers))
-		}
-		b.WriteString("    }\n  }\n")
-	}
-	b.WriteString("}")
-
-	return b.String()
-}
-
-// DomainsProse names a zones organization's domains for a README, each in backticks,
+// DomainsProse names a root organization's domains for a README, each in backticks,
 // joined with "and"; empty when none is declared yet.
 func (v *view) DomainsProse() string {
 	return prose(backticked(v.DomainNames()))
@@ -830,12 +854,23 @@ func backticked(items []string) []string {
 // Render renders every file of the organization's repository: the layers' owned files
 // (the layers of its kind), each layer's seeded values, and the root files.
 func Render(p *Placement) ([]render.File, error) {
+	return RenderSeeded(p, nil)
+}
+
+// RenderSeeded renders the organization with the creation's seed in the seeded tfvars
+// (the folder ids and the boot project the creation made), for the repository the
+// creation pushes; a nil seed renders as Render does.
+func RenderSeeded(p *Placement, seed *Seed) ([]render.File, error) {
 	if err := p.Validate(); err != nil {
 		return nil, err
 	}
-	v := &view{Placement: p}
+	v := &view{Placement: p, seed: seed}
 	var files []render.File
-	root, err := renderDir(templateDir, "", v)
+	dir := templateDir
+	if p.IsRoot() {
+		dir = rootTemplateDir
+	}
+	root, err := renderDir(dir, "", v)
 	if err != nil {
 		return nil, err
 	}

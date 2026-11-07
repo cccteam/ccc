@@ -1,10 +1,8 @@
 terraform {
   # State lives in a bucket in the boot project. A backend block cannot read a
-  # variable, so the bucket name is a placeholder: the seed step in the README
-  # creates the bucket, and the name is substituted here once, by hand. The
-  # first apply of this layer runs on local state with this block commented
-  # out, and the state is moved into the bucket with `tofu init -migrate-state`
-  # once the name is in; see the README.
+  # variable, so the bucket name is a placeholder: the creation makes the
+  # bucket and renders the name here before the first apply, which runs
+  # against the bucket from the start; see the README.
   backend "gcs" {
     bucket = "imp-boot-gbl-state-a1b2"
     prefix = "0-bootstrap"
@@ -19,15 +17,11 @@ terraform {
       source  = "hashicorp/google-beta"
       version = "~> 7.0"
     }
-    random = {
-      source  = "hashicorp/random"
-      version = "~> 3.6"
-    }
   }
 }
 
-# Bootstrap is the one layer applied by a human. It runs locally against the
-# the bootstrap administrator's ADC (gcloud auth application-default login) because the identity
+# Bootstrap's first apply is the root organization's creating identity's
+# (GOOGLE_IMPERSONATE_SERVICE_ACCOUNT in the creation), because the identity
 # every other layer runs as does not exist yet.
 provider "google" {
   user_project_override = false
@@ -35,8 +29,4 @@ provider "google" {
 
 provider "google-beta" {
   user_project_override = false
-}
-
-data "google_organization" "this" {
-  domain = var.organization_domain
 }

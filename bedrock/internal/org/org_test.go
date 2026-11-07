@@ -18,10 +18,10 @@ import (
 	"github.com/cccteam/ccc/bedrock/internal/render"
 )
 
-// The two fixture organizations: a hosting organization, and a zones organization.
+// The two fixture organizations: a hosting organization, and a root organization.
 const (
-	fixture      = "testdata/imp"
-	zonesFixture = "testdata/imz"
+	fixture     = "testdata/imp"
+	rootFixture = "testdata/imr"
 )
 
 // update rewrites the fixture organization's files from the render (go test -update),
@@ -35,11 +35,11 @@ func testPlacement(t *testing.T) *Placement {
 	return fixturePlacement(t, fixture)
 }
 
-// zonesPlacement reads the zones fixture organization's placement.
-func zonesPlacement(t *testing.T) *Placement {
+// rootPlacement reads the zones fixture organization's placement.
+func rootPlacement(t *testing.T) *Placement {
 	t.Helper()
 
-	return fixturePlacement(t, zonesFixture)
+	return fixturePlacement(t, rootFixture)
 }
 
 // fixturePlacement reads a fixture organization's placement.
@@ -87,8 +87,8 @@ func TestPlacementValidate(t *testing.T) {
 	}{
 		{name: "the fixture", mutate: func(*Placement) {}},
 		{name: "the hosting kind named", mutate: func(p *Placement) { p.Kind = HostingKind }},
-		{name: "a kind that is neither", mutate: func(p *Placement) { p.Kind = "edge" }, wantErr: `kind "edge" is not one of hosting, zones: a hosting organization holds applications in its environments (the default, left out), a zones organization holds DNS zones alone`},
-		{name: "domains on a hosting organization", mutate: func(p *Placement) { p.Domains = map[string]Domain{"clientbay.example": {}} }, wantErr: "domains is set, and a hosting organization holds no zone but the apps domain's and the vanity domains': a zones organization (kind) holds the zones that hand names onward"},
+		{name: "a kind that is neither", mutate: func(p *Placement) { p.Kind = "edge" }, wantErr: `kind "edge" is not one of hosting, root: a hosting organization holds applications in its environments (the default, left out), a root organization holds the GitHub Apps' keys`},
+		{name: "domains on a hosting organization", mutate: func(p *Placement) { p.Domains = map[string]Domain{"clientbay.example": {}} }, wantErr: "domains is set, and a hosting organization holds no zone but the apps domain's and the vanity domains': a root organization (kind) holds the zones that hand names onward"},
 		{name: "a long prefix", mutate: func(p *Placement) { p.Prefix = "impulse" }, wantErr: "prefix"},
 		{name: "no organization domain", mutate: func(p *Placement) { p.OrganizationDomain = " " }, wantErr: "organizationDomain is empty"},
 		{name: "no billing account", mutate: func(p *Placement) { p.BillingAccount = "" }, wantErr: "billingAccount is empty"},
@@ -143,7 +143,7 @@ func TestPlacementValidate(t *testing.T) {
 		{name: "the apps domain as a vanity domain", mutate: func(p *Placement) { p.VanityDomains = []string{"apps.imp.example"} }, wantErr: `vanityDomains names "apps.imp.example", which is the apps domain: a vanity domain is a client's own domain, delegated whole to the network project beside it`},
 		{name: "a vanity domain under the apps domain", mutate: func(p *Placement) { p.VanityDomains = []string{"lights.apps.imp.example"} }, wantErr: `vanityDomains names "lights.apps.imp.example", which is under the apps domain apps.imp.example: its zone already serves every name under it`},
 		{name: "a vanity domain above the apps domain", mutate: func(p *Placement) { p.VanityDomains = []string{"imp.example"} }, wantErr: `vanityDomains names "imp.example", which is above the apps domain apps.imp.example: one zone would serve both`},
-		{name: "a vanity domain under the organization's domain", mutate: func(p *Placement) { p.VanityDomains = []string{"mail.imp.example"} }, wantErr: `vanityDomains names "mail.imp.example", which is under the organization's domain, whose mail is on it imp.example`},
+		{name: "a vanity domain under the organization's domain, a domain like any other", mutate: func(p *Placement) { p.VanityDomains = []string{"mail.imp.example"} }},
 		{name: "a vanity domain listed twice", mutate: func(p *Placement) { p.VanityDomains = []string{"harborlights.example", "harborlights.example"} }, wantErr: `vanityDomains lists "harborlights.example" twice`},
 		{name: "a vanity domain under another listed", mutate: func(p *Placement) { p.VanityDomains = []string{"harborlights.example", "www.harborlights.example"} }, wantErr: `vanityDomains lists "harborlights.example" and "www.harborlights.example", one under the other: the zone of a vanity domain serves everything under it, so the one above is enough`},
 		{name: "a vanity domain above another listed", mutate: func(p *Placement) { p.VanityDomains = []string{"www.harborlights.example", "harborlights.example"} }, wantErr: `vanityDomains lists "www.harborlights.example" and "harborlights.example", one under the other`},
@@ -172,12 +172,12 @@ func TestPlacementValidate(t *testing.T) {
 		{name: "no release app slug", mutate: func(p *Placement) { p.GithubReleaseAppSlug = "" }, wantErr: `githubReleaseAppSlug "" is not a GitHub App's slug (lowercase letters, digits and single hyphens, as in github.com/apps/<slug>)`},
 		{name: "a release app slug in capitals", mutate: func(p *Placement) { p.GithubReleaseAppSlug = "Imp-Release" }, wantErr: `githubReleaseAppSlug "Imp-Release" is not a GitHub App's slug`},
 		{name: "a release app slug with its bot suffix", mutate: func(p *Placement) { p.GithubReleaseAppSlug = "imp-release[bot]" }, wantErr: `githubReleaseAppSlug "imp-release[bot]" is not a GitHub App's slug`},
-		{name: "no machine account", mutate: func(p *Placement) { p.GithubMachineAccount = "" }, wantErr: "githubMachineAccount is empty: the GitHub login of the organization's machine account, an owner of the organization, which authorizes the Cloud Build GitHub connection in the browser and owns the personal access token that can stand in for it"},
-		{name: "a machine account with a space", mutate: func(p *Placement) { p.GithubMachineAccount = "imp machine" }, wantErr: `githubMachineAccount "imp machine" is not a GitHub login (letters, digits and single hyphens, at most 39 characters)`},
-		{name: "a machine account starting with a hyphen", mutate: func(p *Placement) { p.GithubMachineAccount = "-imp" }, wantErr: `githubMachineAccount "-imp" is not a GitHub login`},
-		{name: "a machine account with two hyphens in a row", mutate: func(p *Placement) { p.GithubMachineAccount = "imp--machine" }, wantErr: `githubMachineAccount "imp--machine" is not a GitHub login`},
-		{name: "a machine account longer than GitHub allows", mutate: func(p *Placement) { p.GithubMachineAccount = strings.Repeat("a", 40) }, wantErr: "is not a GitHub login"},
-		{name: "a machine account of 39 characters", mutate: func(p *Placement) { p.GithubMachineAccount = strings.Repeat("a", 39) }},
+		{name: "no Bot Account", mutate: func(p *Placement) { p.GithubBotAccount = "" }, wantErr: "githubBotAccount is empty: the login of the organization's GitHub Bot Account"},
+		{name: "a Bot Account with a space", mutate: func(p *Placement) { p.GithubBotAccount = "imp machine" }, wantErr: `githubBotAccount "imp machine" is not a GitHub login (letters, digits and single hyphens, at most 39 characters)`},
+		{name: "a Bot Account starting with a hyphen", mutate: func(p *Placement) { p.GithubBotAccount = "-imp" }, wantErr: `githubBotAccount "-imp" is not a GitHub login`},
+		{name: "a Bot Account with two hyphens in a row", mutate: func(p *Placement) { p.GithubBotAccount = "imp--machine" }, wantErr: `githubBotAccount "imp--machine" is not a GitHub login`},
+		{name: "a Bot Account longer than GitHub allows", mutate: func(p *Placement) { p.GithubBotAccount = strings.Repeat("a", 40) }, wantErr: "is not a GitHub login"},
+		{name: "a Bot Account of 39 characters", mutate: func(p *Placement) { p.GithubBotAccount = strings.Repeat("a", 39) }},
 		{name: "no infrastructure team", mutate: func(p *Placement) { p.GithubInfrastructureTeam = "" }},
 		{name: "project numbers for the environments", mutate: func(p *Placement) { p.ProjectNumbers = map[string]string{"tst": "123456789012"} }},
 		{name: "a project number in an unknown environment", mutate: func(p *Placement) { p.ProjectNumbers = map[string]string{"qa": "1"} }, wantErr: `projectNumbers names "qa", which is not one of boot, shr, net, spn, tst, stg, prd`},
@@ -187,16 +187,11 @@ func TestPlacementValidate(t *testing.T) {
 			p.ProjectNumbers = map[string]string{"boot": "100000000001"}
 		}},
 		{name: "no infrastructure app yet", mutate: func(p *Placement) { p.GithubInfrastructureAppID, p.GithubInfrastructureKeyVersion = "", "" }},
-		{name: "a larger runner the organization already has", mutate: func(p *Placement) { p.CiLargeRunnerSize, p.CiLargeRunnerMaximum = "", 0 }},
-		{name: "no larger runner", mutate: func(p *Placement) { p.CiLargeRunner, p.CiLargeRunnerSize, p.CiLargeRunnerMaximum = "", "", 0 }},
-		{name: "a created runner with GitHub's default cap", mutate: func(p *Placement) { p.CiLargeRunnerMaximum = 0 }},
-		{name: "an arm size", mutate: func(p *Placement) { p.CiLargeRunnerSize = "arm-16-core" }},
-		{name: "a size without the runner's name", mutate: func(p *Placement) { p.CiLargeRunner = "" }, wantErr: "ciLargeRunnerSize 8-core names the runner 1-org creates, and ciLargeRunner, its name, is empty"},
-		{name: "a size that is not GitHub's", mutate: func(p *Placement) { p.CiLargeRunnerSize = "large" }, wantErr: `ciLargeRunnerSize "large" is not a GitHub machine size`},
-		{name: "a size in cores without the word", mutate: func(p *Placement) { p.CiLargeRunnerSize = "8" }, wantErr: `ciLargeRunnerSize "8" is not a GitHub machine size`},
-		{name: "a name a hosted runner cannot carry", mutate: func(p *Placement) { p.CiLargeRunner = "ci large" }, wantErr: `ciLargeRunner "ci large" cannot name a GitHub-hosted runner`},
-		{name: "a cap without a size", mutate: func(p *Placement) { p.CiLargeRunnerSize = "" }, wantErr: "ciLargeRunnerMaximum 10 caps the runner 1-org creates, and ciLargeRunnerSize is empty"},
-		{name: "a negative cap", mutate: func(p *Placement) { p.CiLargeRunnerMaximum = -1 }, wantErr: "ciLargeRunnerMaximum -1 is negative"},
+		{name: "a larger runner, which is the root organization's", mutate: func(p *Placement) { p.CiLargeRunner = "ci-large" }, wantErr: "ciLargeRunner, ciLargeRunnerSize and ciLargeRunnerMaximum are the GitHub organization's larger runner, declared once in the root organization imr's placement.json"},
+		{name: "a larger runner's cap alone", mutate: func(p *Placement) { p.CiLargeRunnerMaximum = 4 }, wantErr: "ciLargeRunner, ciLargeRunnerSize and ciLargeRunnerMaximum are the GitHub organization's larger runner"},
+		{name: "a token secret in this organization's boot project", mutate: func(p *Placement) {
+			p.CloudBuildTokenSecretVersion = "projects/imp-boot-gbl-core-a1b2/locations/us-central1/secrets/github-github-oauthtoken-abcdef/versions/1"
+		}, wantErr: "cloudBuildTokenSecretVersion names a secret in imp-boot-gbl-core-a1b2, and a hosting organization's connections read the token the root organization imr recorded once, in its root project imr-root-gbl-core-c3d4 (root.project)"},
 		{name: "the approving reviews left out", mutate: func(p *Placement) {
 			p.ApprovingReviews = nil
 		}},
@@ -219,12 +214,16 @@ func TestPlacementValidate(t *testing.T) {
 		{name: "an installation id that is not one", mutate: func(p *Placement) { p.CloudBuildInstallationID = "imp" }, wantErr: `cloudBuildInstallationId "imp" is not an installation id (digits, from the installation's settings page)`},
 		{name: "a token secret version named by latest", mutate: func(p *Placement) {
 			p.CloudBuildTokenSecretVersion = "projects/imp-boot-gbl-core-a1b2/locations/us-central1/secrets/github-token/versions/latest"
-		}, wantErr: `is not a secret version's resource name (projects/<project>[/locations/<region>]/secrets/<secret>/versions/<number>, a number and never latest)`},
+		}, wantErr: `is not a secret version's resource name (projects/<project>[/locations/<region>]/secrets/<secret>/versions/<number or current>, never latest)`},
 		{name: "a token secret version that is a number alone", mutate: func(p *Placement) { p.CloudBuildTokenSecretVersion = "1" }, wantErr: `cloudBuildTokenSecretVersion "1" is not a secret version's resource name`},
 		{name: "a global token secret version", mutate: func(p *Placement) {
-			p.CloudBuildTokenSecretVersion = "projects/imp-boot-gbl-core-a1b2/secrets/github-token/versions/3"
+			p.CloudBuildTokenSecretVersion = "projects/imr-root-gbl-core-c3d4/secrets/github-token/versions/3"
 		}},
-		{name: "the installation id without the token", mutate: func(p *Placement) { p.CloudBuildTokenSecretVersion = "" }, wantErr: "cloudBuildInstallationId and cloudBuildTokenSecretVersion are recorded together: the browser authorization in the boot project's Cloud Build console gives both (0-bootstrap/README.md, \"The Cloud Build GitHub authorization\")"},
+		{name: "the token secret's alias current", mutate: func(p *Placement) {
+			p.CloudBuildTokenSecretVersion = "projects/imr-root-gbl-core-c3d4/secrets/imr-root-gbl-github-token/versions/current"
+		}},
+		{name: "a token version pinned in a hosting organization", mutate: func(p *Placement) { p.GithubTokenVersion = "1" }, wantErr: "githubTokenVersion is set, and a hosting organization pins no key: the root organization imr pins the version in its own placement.json"},
+		{name: "the installation id without the token", mutate: func(p *Placement) { p.CloudBuildTokenSecretVersion = "" }, wantErr: "cloudBuildInstallationId and cloudBuildTokenSecretVersion are recorded together: the root organization's bootstrap records both, the Cloud Build GitHub App's installation it finds and the Bot Account's token secret it makes (README.md, \"Bootstrapped by one command\"), and the creation copies them into a hosting organization's placement"},
 		{name: "the token without the installation id", mutate: func(p *Placement) { p.CloudBuildInstallationID = "" }, wantErr: "cloudBuildInstallationId and cloudBuildTokenSecretVersion are recorded together"},
 		{name: "no bedrock pin yet", mutate: func(p *Placement) { p.BedrockVersion, p.BedrockSHA256 = "", "" }},
 		{name: "a release pin without its checksum", mutate: func(p *Placement) { p.BedrockSHA256 = "" }, wantErr: "bedrockVersion v0.5.0 is a release, and bedrockSha256 \"\" is not the SHA-256 checksum of its bedrock-linux-amd64: bedrock upgrade v0.5.0 records it from the release's checksums.txt"},
@@ -274,12 +273,12 @@ func TestPlacementValidate(t *testing.T) {
 }
 
 // TestRenderGolden compares every rendered file, owned and seeded alike, with each
-// fixture organization's committed one (the hosting organization and the zones
+// fixture organization's committed one (the hosting organization and the root
 // organization), and checks nothing committed goes unrendered.
 func TestRenderGolden(t *testing.T) {
 	t.Parallel()
 
-	for _, dir := range []string{fixture, zonesFixture} {
+	for _, dir := range []string{fixture, rootFixture} {
 		t.Run(dir, func(t *testing.T) {
 			t.Parallel()
 
@@ -341,7 +340,7 @@ func renderGolden(t *testing.T, dir string) {
 // TestNamesFromPlacement renders the fixture organization and reads back every name a
 // rendered file gives an account or an address, which must come from the placement: an
 // address is at the organization's domain, at a contact domain, or a service account's;
-// a machine account named anywhere is the placement's. A name a template carried as fixed
+// a Bot Account named anywhere is the placement's. A name a template carried as fixed
 // text, the account or the domains of the deployment bedrock was first tried in, would be
 // none of these.
 func TestNamesFromPlacement(t *testing.T) {
@@ -369,12 +368,12 @@ func TestNamesFromPlacement(t *testing.T) {
 			atLeast: 10,
 		},
 		{
-			name:    "every machine account named is the placement's",
-			pattern: regexp.MustCompile("machine account,?\\s+`?([A-Za-z0-9][A-Za-z0-9-]*)"),
+			name:    "every Bot Account named is the placement's",
+			pattern: regexp.MustCompile("Bot Account,?\\s+`?([A-Za-z0-9][A-Za-z0-9-]*)"),
 			fromPlacement: func(login string) bool {
-				return login == p.GithubMachineAccount
+				return login == p.GithubBotAccount
 			},
-			atLeast: 4,
+			atLeast: 3,
 		},
 	}
 	for _, tt := range tests {
@@ -397,10 +396,10 @@ func TestNamesFromPlacement(t *testing.T) {
 	}
 }
 
-// TestMachineAccount pins the organization's machine account where the GitHub
+// TestBotAccount pins the organization's Bot Account where the GitHub
 // authorization names it: the browser step and the personal access token in 2-env's
 // README, the connection's comment and the token variable's description.
-func TestMachineAccount(t *testing.T) {
+func TestBotAccount(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
@@ -409,23 +408,18 @@ func TestMachineAccount(t *testing.T) {
 		want []string
 	}{
 		{
-			name: "0-bootstrap's README: the browser step in the boot project, by the bootstrap administrator as the machine account, and the token",
-			path: "0-bootstrap/README.md",
-			want: []string{
-				"### 2. The Cloud Build GitHub authorization\n",
-				"The person at the browser is the bootstrap\nadministrator, who is Owner on the boot project from step 1; the GitHub\naccount signed in is the organization's machine account,\n`imp-machine` (`githubMachineAccount` in `placement.json`)",
-				"belongs to the `imp-example`\norganization and is an owner of it",
-				"Sign in to GitHub as\n   the machine account `imp-machine`, install or select",
-				"Record both in `placement.json`, as `cloudBuildInstallationId` and\n   `cloudBuildTokenSecretVersion`",
-				"classic personal access token of\n`imp-machine` with the `repo`, `read:user` and `read:org` scopes",
-			},
-		},
-		{
 			name: "2-env's README points at it",
 			path: "2-env/README.md",
-			want: []string{"## The GitHub authorization\n", "before the first apply of `0-bootstrap` (`0-bootstrap/README.md`, \"2. The\nCloud Build GitHub authorization\")", "signed in to GitHub as the organization's machine account\n`imp-machine` (`githubMachineAccount` in `placement.json`)"},
+			want: []string{"## The GitHub authorization\n", "access token of the organization's Bot Account `imp-bot`\n(`githubBotAccount` in `placement.json`), which the root organization\n`imr`'s bootstrap stored once in Secret Manager in its root\nproject", "(the root\n`README.md`, \"Bootstrapped by one command\")"},
 		},
-		{name: "the environment connection's comment", path: "2-env/cloud-build.tf", want: []string{"machine account imp-machine, before the first apply of 0-bootstrap"}},
+		{name: "the environment connection's comment", path: "2-env/cloud-build.tf", want: []string{"installation with a token held in Secret Manager: the Bot Account\n# imp-bot's personal access token, which the root organization\n# imr's bootstrap stored once in its root project"}},
+		{
+			name: "a hosting organization's 0-bootstrap README: the authorization is the root organization's, recorded by the creation",
+			path: "0-bootstrap/README.md",
+			want: []string{
+				"the connection from the Cloud Build\n   authorization the root organization recorded (`cloudBuildInstallationId`\n   and `cloudBuildTokenSecretVersion`, which name the Bot Account's token\n   in that organization's root project",
+			},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -441,62 +435,10 @@ func TestMachineAccount(t *testing.T) {
 	}
 }
 
-// TestBootstrapRolesNamed reads the READMEs that tell the bootstrap administrator what to
-// hold: each names every role of org preflight's table, by title and id, and the
-// preflight command, so a role added to the check cannot be missing from the steps; the
-// four-role list the check replaced is gone.
-func TestBootstrapRolesNamed(t *testing.T) {
-	t.Parallel()
-
-	tests := []struct {
-		name   string
-		path   string
-		want   []string
-		absent []string
-	}{
-		{
-			name: "0-bootstrap's seed step: the role table, then preflight before the seed",
-			path: "0-bootstrap/README.md",
-			want: []string{
-				"| Role | Granted on | Needed for |\n",
-				"gcloud auth application-default login\nbedrock org preflight\n\nexport ORG_ID=123456789012\n",
-			},
-			absent: []string{"who holds\nOrganization Administrator, Project Creator, and Organization Policy\nAdministrator"},
-		},
-		{
-			name: "the root README's seed step",
-			path: "README.md",
-			want: []string{"3. **Seed.** In a terminal, as the bootstrap administrator: `bedrock org\n   preflight` first, which checks that the person holds each of these roles:\n"},
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-
-			got := renderedFile(t, tt.path)
-			want := slices.Clone(tt.want)
-			for _, role := range BootstrapRoles {
-				want = append(want, role.Title+" (`"+role.Role+"`)")
-			}
-			for _, w := range want {
-				if !strings.Contains(got, w) {
-					t.Errorf("%s lacks %q", tt.path, w)
-				}
-			}
-			for _, a := range tt.absent {
-				if strings.Contains(got, a) {
-					t.Errorf("%s still carries %q", tt.path, a)
-				}
-			}
-		})
-	}
-}
-
-// TestGithubAppSteps reads the steps for the organization's GitHub Apps: the root README
-// gives the release and deployer apps' permissions, their installation, the release
-// app's two organization secrets and the deployer key's commands; 0-bootstrap's README
-// and 2-env's add and pin each key with bedrock secret, never by a gcloud command or an
-// edit of the pin by hand.
+// TestGithubAppSteps reads what the READMEs say about the organization's GitHub Apps: all
+// three are the root organization's bootstrap's, their keys live in its root project and
+// are read by alias, nothing is added or pinned here, and the spend budget is the one
+// step a billing administrator takes by hand after the creation.
 func TestGithubAppSteps(t *testing.T) {
 	t.Parallel()
 
@@ -507,50 +449,58 @@ func TestGithubAppSteps(t *testing.T) {
 		absent []string
 	}{
 		{
-			name: "the root README: the two apps' permissions, installation and keys",
+			name: "the root README: the three apps are the root organization's bootstrap's, their keys in its root project",
 			path: "README.md",
 			want: []string{
-				"## The two GitHub Apps\n",
-				"   - the release app: Contents, Issues and Pull requests, each read and\n     write;\n",
-				"   - the deployer app: Checks, Deployments, Issues and Pull requests, each\n     read and write.\n",
-				"Install App, on the organization,\n   for all repositories",
-				"   bedrock secret add github-deployer-key --from-file <the deployer app's .pem file>\n   bedrock secret pin github-deployer-key <version>\n   bedrock secret add github-release-key --from-file <the release app's .pem file>\n   bedrock secret pin github-release-key <version>\n",
-				"Both keys live in Secret Manager in the boot\nproject, and neither reaches GitHub.",
-				"([GitHub prerequisites](https://github.com/cccteam/ccc/blob/master/bedrock/README.md#github-prerequisites))",
+				"## The GitHub Apps\n",
+				"All three are the root organization `imr`'s: its bootstrap\nmade them from bedrock's declaration of each, owned by the\n`imp-example` organization and installed on all its repositories,",
+				"their keys live in Secret Manager in its root project, which holds them for\nevery organization and rotates them in one place (that organization's\n`README.md`, \"The GitHub Apps' keys\"); no key reaches GitHub.",
+				"records the same App IDs (`githubInfrastructureAppId`, `githubDeployerAppId`,\n`githubReleaseAppId`) and the release app's slug (`githubReleaseAppSlug`",
+				"Nothing is added in this repository: `2-env`'s outputs name each key's alias\n`current` (`imr-root-gbl-github-deployer-key`, `imr-root-gbl-github-release-key`, in that\norganization's root project)",
 			},
+			absent: []string{"## The two GitHub Apps", "Install App, on the organization", "boot project, which holds them", "machine account"},
 		},
 		{
 			name: "the root README: the consent screen and the role groups",
 			path: "README.md",
 			want: []string{
-				"9. **The consent screen.** In each environment project's Google Cloud\n   console, before the first application's OAuth client is made there",
+				"3. **The consent screen.** In each environment project's Google Cloud\n   console, before the first application's OAuth client is made there",
+				"## Created by the root organization\n",
+				"2. **The spend budget**, after the creation. In the Billing console, a billing\n   administrator sets the spend budget (`0-bootstrap/README.md`, \"The spend\n   budget\"); the two layer identities' Billing Account User, which `1-org`\n   needs the day it links a project it creates, is the creation's.",
 				"with the audience **Internal**",
 				"`<group prefix><role>@imp.example`",
 				"set \"Who can view members\" so that the group's members can",
 			},
 		},
 		{
-			name: "0-bootstrap: the infrastructure key added and pinned with bedrock secret, the budget beside the billing grants",
+			name: "0-bootstrap: the infrastructure app made by the root organization's bootstrap, its key in the root project, the budget the one hand step",
 			path: "0-bootstrap/README.md",
 			want: []string{
-				"   bedrock secret add github-infrastructure-key --from-file <the .pem file>\n   bedrock secret pin github-infrastructure-key <version>\n",
-				"### 5. Billing grants and the budget, by a billing administrator\n",
-				"In the Billing console, as the same billing administrator, set the spend\nbudget",
-				"## The deployer and release GitHub Apps' keys\n",
-				"   bedrock secret add github-deployer-key --from-file <the .pem file>\n   bedrock secret pin github-deployer-key <version>\n",
-				"records it as `githubDeployerKeyVersion` in `placement.json`",
+				"The app is the root organization's: its bootstrap made\nit from bedrock's declaration (the root `README.md`, \"Bootstrapped by one\ncommand\")",
+				"organization records the same App ID (`githubInfrastructureAppId` in\n`placement.json`, filled in by the creation).",
+				"The key itself lives in the root organization `imr`'s root\nproject (`root` in `placement.json`), added, proven and pinned there by its key\noperators",
+				"### The spend budget, by a billing administrator\n",
+				"## Created by the root organization\n",
+				"3. **The first apply of `1-org`**, the same way, with the infrastructure\n   GitHub App's token for its GitHub provider",
+				"hold `roles/billing.user` on the billing account `012345-6789AB-CDEF01` since the\ncreation, which granted it as the root organization's creating identity, a\nBilling Account Administrator.",
+				"In the Billing console, as a billing administrator, set the spend budget:",
+				"## The GitHub Apps' keys\n",
+				"`imr-root-gbl-core-c3d4`; `root` in\n`placement.json`), one secret per app for every bedrock organization in the\nGoogle Cloud organization: `imr-root-gbl-github-infrastructure-key`,\n`imr-root-gbl-github-deployer-key` and `imr-root-gbl-github-release-key`.",
+				"`bedrock secret\nadd` and `pin` refuse here and name that organization",
+				"the root organization gives this\norganization's boot identity `secretPolicyAdmin` on the three secrets",
 			},
-			absent: []string{"gcloud secrets versions add", "github-deployer-key <env>"},
+			absent: []string{"gcloud secrets versions add", "github-deployer-key <env>", "bedrock secret pin github-", "## Rotating a GitHub App's key", "githubDeployerKeyVersion", "key container", "Billing grants and the budget", "boot project's Cloud Build console", "machine account"},
 		},
 		{
-			name: "2-env: the deployer key is 0-bootstrap's, added and pinned there",
+			name: "2-env: the deployer key is the root organization's, read by its alias",
 			path: "2-env/README.md",
 			want: []string{
 				"## The deployer and release GitHub Apps' keys\n",
-				"added with\n`bedrock secret add github-deployer-key` and pinned with `bedrock secret pin\ngithub-deployer-key <version>` (`0-bootstrap/README.md`, \"The deployer and\nrelease GitHub Apps' keys\")",
-				"This layer carries the pinned version's resource name to the\napplications' pipelines through its output `github_deployer_key_secret_version`\nand grants their identities its read: every application's deploy identity,\nand in tst its apply identity too.",
+				"its key is a secret in the root organization\n`imr`'s root project (`imr-root-gbl-github-deployer-key`, in\n`imr-root-gbl-core-c3d4`; `root` in `placement.json`), held there for every\norganization and read by its alias `current`, which that organization pins\nand moves (that organization's `README.md`, \"The GitHub Apps' keys\")",
+				"The connection authorizes with the Bot Account's token: a classic personal\naccess token of the organization's Bot Account `imp-bot`",
+				"This layer\ncarries the alias's resource name to the applications' pipelines through its\noutput `github_deployer_key_secret_version` and grants their identities its\nread: every application's deploy identity, and in tst its apply identity too,",
 			},
-			absent: []string{"gcloud secrets versions add", "github-deployer-key <env>", "github_deployer_key_secret_versions"},
+			absent: []string{"gcloud secrets versions add", "github-deployer-key <env>", "github_deployer_key_secret_versions", "pinned version", "bedrock secret pin github-", "key container"},
 		},
 	}
 	for _, tt := range tests {
@@ -595,24 +545,25 @@ func TestReleaseKeyGrants(t *testing.T) {
 			},
 		},
 		{
-			name: "the release identity reads the boot container, in tst alone",
+			name: "the release identity reads the root organization's secret, in tst alone",
 			path: "2-env/github-apps.tf",
 			want: []string{
-				"resource \"google_secret_manager_secret_iam_member\" \"release_release_key\" {\n  for_each = local.is_tst ? local.apps : toset([])\n\n  project   = var.boot_project_id\n  secret_id = local.github_release_key_secret\n  role      = \"roles/secretmanager.secretAccessor\"\n  member    = google_service_account.release[each.key].member\n}\n",
+				"resource \"google_secret_manager_secret_iam_member\" \"release_release_key\" {\n  for_each = local.is_tst ? local.apps : toset([])\n\n  project   = local.keys_project\n  secret_id = local.github_release_key_secret\n  role      = \"roles/secretmanager.secretAccessor\"\n  member    = google_service_account.release[each.key].member\n}\n",
 			},
 			absent: []string{"resource \"google_secret_manager_secret\" \"github_release_key\""},
 		},
 		{
-			name: "locals.tf names the boot container, the app and the pin from placement.json",
+			name: "locals.tf names the root organization's secret, the app and the alias",
 			path: "2-env/locals.tf",
 			want: []string{
 				"  github_release_app_id             = 5080645\n",
-				"  github_release_key_secret         = \"${local.prefix}-boot-gbl-github-release-key\"\n",
-				"  github_release_key_secret_version = null\n",
+				"  github_release_key_secret         = \"imr-root-gbl-github-release-key\"\n",
+				"  github_release_key_secret_version = \"projects/imr-root-gbl-core-c3d4/secrets/imr-root-gbl-github-release-key/versions/current\"\n",
+				"  keys_project = \"imr-root-gbl-core-c3d4\"\n",
 			},
 		},
 		{
-			name: "the outputs carry the identity, the App ID and the pinned version's resource name",
+			name: "the outputs carry the identity, the App ID and the alias's resource name",
 			path: "2-env/outputs.tf",
 			want: []string{
 				"      release_identity_email     = try(google_service_account.release[app].email, null)\n",
@@ -622,18 +573,19 @@ func TestReleaseKeyGrants(t *testing.T) {
 			},
 		},
 		{
-			name: "0-bootstrap makes the container and 1-org hands its administration to the environment layers",
+			name: "0-bootstrap makes no secret: the org identity gets the deployer and release secrets' policy administration, with the root organization's role",
 			path: "0-bootstrap/github.tf",
 			want: []string{
-				"resource \"google_secret_manager_secret\" \"github_release_key\" {\n  project   = module.boot_project.project_id\n  secret_id = \"${var.prefix}-boot-gbl-github-release-key\"\n",
-				"resource \"google_secret_manager_secret_iam_member\" \"org_tofu_release_key\" {",
+				"resource \"google_secret_manager_secret_iam_member\" \"org_tofu_keys\" {\n  for_each = toset([\"deployer\", \"release\"])\n\n  project   = local.keys_project\n  secret_id = local.key_secrets[each.key]\n  role      = local.keys_policy_admin_role\n  member    = google_service_account.org_tofu.member\n}\n",
+				"  keys_policy_admin_role = \"projects/imr-root-gbl-core-c3d4/roles/secretPolicyAdmin\"\n",
 			},
+			absent: []string{"resource \"google_secret_manager_secret\" ", "version_aliases", "roles/secretmanager.admin\"\n  member    = google_service_account.org_tofu"},
 		},
 		{
-			name: "1-org grants the environment layers the container's administration and their plan identities its read",
+			name: "1-org grants the environment layers the secret's policy administration and their plan identities its read",
 			path: "1-org/runners.tf",
 			want: []string{
-				"resource \"google_secret_manager_secret_iam_member\" \"environment_tofu_release_key\" {\n  for_each = local.environment_layers\n\n  project   = var.boot_project_id\n  secret_id = local.boot.github_release_key_secret\n",
+				"resource \"google_secret_manager_secret_iam_member\" \"environment_tofu_release_key\" {\n  for_each = local.environment_layers\n\n  project   = local.keys_project\n  secret_id = local.key_secrets.release\n  role      = local.keys_policy_admin_role\n  member    = google_service_account.tofu[each.key].member\n}\n",
 				"resource \"google_secret_manager_secret_iam_member\" \"environment_plan_release_key\" {",
 			},
 		},
@@ -681,24 +633,24 @@ func TestDeployerKeyGrants(t *testing.T) {
 			absent: []string{"resource \"google_secret_manager_secret\" \"github_deployer_key\"", "local.project_id", "var.github_deployer", "removed {"},
 		},
 		{
-			name: "the deploy identities and tst's apply identities read the boot container",
+			name: "the deploy identities and tst's apply identities read the root organization's secret",
 			path: "2-env/github-apps.tf",
 			want: []string{
-				"resource \"google_secret_manager_secret_iam_member\" \"deploy_deployer_key\" {\n  for_each = local.apps\n\n  project   = var.boot_project_id\n  secret_id = local.github_deployer_key_secret\n  role      = \"roles/secretmanager.secretAccessor\"\n  member    = google_service_account.deploy[each.key].member\n}\n",
-				"resource \"google_secret_manager_secret_iam_member\" \"apply_deployer_key\" {\n  for_each = local.is_tst ? local.apps : toset([])\n\n  project   = var.boot_project_id\n  secret_id = local.github_deployer_key_secret\n  role      = \"roles/secretmanager.secretAccessor\"\n  member    = google_service_account.apply[each.key].member\n}\n",
+				"resource \"google_secret_manager_secret_iam_member\" \"deploy_deployer_key\" {\n  for_each = local.apps\n\n  project   = local.keys_project\n  secret_id = local.github_deployer_key_secret\n  role      = \"roles/secretmanager.secretAccessor\"\n  member    = google_service_account.deploy[each.key].member\n}\n",
+				"resource \"google_secret_manager_secret_iam_member\" \"apply_deployer_key\" {\n  for_each = local.is_tst ? local.apps : toset([])\n\n  project   = local.keys_project\n  secret_id = local.github_deployer_key_secret\n  role      = \"roles/secretmanager.secretAccessor\"\n  member    = google_service_account.apply[each.key].member\n}\n",
 			},
 		},
 		{
-			name: "locals.tf names the boot container and carries the pin from placement.json",
+			name: "locals.tf names the root organization's secret and its alias",
 			path: "2-env/locals.tf",
 			want: []string{
-				"  github_deployer_key_secret         = \"${local.prefix}-boot-gbl-github-deployer-key\"\n",
-				"  github_deployer_key_secret_version = \"projects/imp-boot-gbl-core-a1b2/secrets/imp-boot-gbl-github-deployer-key/versions/1\"\n",
+				"  github_deployer_key_secret         = \"imr-root-gbl-github-deployer-key\"\n",
+				"  github_deployer_key_secret_version = \"projects/imr-root-gbl-core-c3d4/secrets/imr-root-gbl-github-deployer-key/versions/current\"\n",
 			},
 			absent: []string{"var.github_deployer_app_id", "var.github_deployer_key_secret_versions"},
 		},
 		{
-			name: "the outputs carry the App ID and the pinned version's resource name",
+			name: "the outputs carry the App ID and the alias's resource name",
 			path: "2-env/outputs.tf",
 			want: []string{
 				"output \"github_deployer_app_id\" {",
@@ -893,7 +845,7 @@ func TestStorageAdminBounds(t *testing.T) {
 			name: "an application's apply identity: its own buckets by name, the creator role beside",
 			path: "2-env/identities.tf",
 			want: []string{
-				"resource \"google_project_iam_member\" \"apply_bucket_creator\" {\n  for_each = local.apps\n\n  project = local.project_id\n  role    = local.org.storage_bucket_creator_role\n  member  = google_service_account.apply[each.key].member\n}\n",
+				"resource \"google_project_iam_member\" \"apply_bucket_creator\" {\n  for_each = local.apps\n\n  project = local.project_id\n  role    = local.org.storage_bucket_creator_role[var.environment]\n  member  = google_service_account.apply[each.key].member\n}\n",
 				"resource \"google_project_iam_member\" \"apply_storage_admin\" {\n  for_each = local.apps\n\n  project = local.project_id\n  role    = \"roles/storage.admin\"\n  member  = google_service_account.apply[each.key].member\n\n  condition {\n    title       = \"${each.key} ${var.environment} buckets\"\n",
 				`expression  = join(" || ", [for code in local.files_bucket_codes : "resource.name.startsWith(\"projects/_/buckets/${local.name}-${code}-${each.key}-\")"])`,
 				"resource \"google_project_iam_member\" \"apply_security_policy_admin\" {\n  for_each = local.apps\n\n  project = local.project_id\n  role    = \"roles/compute.securityAdmin\"\n  member  = google_service_account.apply[each.key].member\n\n  condition {\n    title       = \"${each.key} ${var.environment} security policies\"\n",
@@ -940,12 +892,12 @@ func TestStorageAdminBounds(t *testing.T) {
 		{
 			name: "1-org resolves the creator role by bare id and publishes it",
 			path: "1-org/locals.tf",
-			want: []string{"    storageBucketCreator        = google_organization_iam_custom_role.storage_bucket_creator.id\n"},
+			want: []string{"    storageBucketCreator        = google_project_iam_custom_role.storage_bucket_creator[k].id\n"},
 		},
 		{
 			name: "the output",
 			path: "1-org/outputs.tf",
-			want: []string{"output \"storage_bucket_creator_role\" {", "  value       = google_organization_iam_custom_role.storage_bucket_creator.id\n"},
+			want: []string{"output \"storage_bucket_creator_role\" {", "  value       = { for k, r in google_project_iam_custom_role.storage_bucket_creator : k => r.id }\n"},
 		},
 		{
 			name: "the READMEs name what a bucket's name cannot bound",
@@ -1007,8 +959,8 @@ func TestDeployProjectRoles(t *testing.T) {
 				"    \"roles/cloudtrace.agent\",\n" +
 				"    \"roles/telemetry.tracesWriter\",\n" +
 				"    \"roles/monitoring.viewer\",\n" +
-				"    local.org.run_job_policy_admin_role,\n" +
-				"    local.org.cloud_build_build_reader_role,\n" +
+				"    local.org.run_job_policy_admin_role[var.environment],\n" +
+				"    local.org.cloud_build_build_reader_role[var.environment],\n" +
 				"  ]\n",
 		},
 		{name: "no trigger runner for the deploy identity", text: "local.org.cloud_build_trigger_runner_role] : []", absent: true},
@@ -1047,7 +999,7 @@ func TestPlanProjectRoles(t *testing.T) {
 			name: "the roles a plan needs",
 			text: "  plan_project_roles = [\n" +
 				"    \"roles/serviceusage.serviceUsageConsumer\",\n" +
-				"    local.org.application_plan_reader_role,\n" +
+				"    local.org.application_plan_reader_role[var.environment],\n" +
 				"    \"roles/iam.securityReviewer\",\n" +
 				"  ]\n",
 		},
@@ -1192,9 +1144,7 @@ func TestCustomRolePermissions(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			header := "resource \"google_organization_iam_custom_role\" \"" + tt.resource + "\" {\n" +
-				"  org_id      = local.org_id\n" +
-				"  role_id     = \"" + tt.roleID + "_${local.boot.organization_suffix}\"\n"
+			header := "resource \"google_project_iam_custom_role\" \"" + tt.resource + "\" {\n"
 			start := strings.Index(roles, header)
 			if start < 0 {
 				t.Fatalf("1-org/custom-roles.tf lacks the role %s", tt.roleID)
@@ -1202,6 +1152,10 @@ func TestCustomRolePermissions(t *testing.T) {
 			block, _, closed := strings.Cut(roles[start:], "\n}\n")
 			if !closed {
 				t.Fatalf("1-org/custom-roles.tf: the role %s has no closing brace", tt.roleID)
+			}
+			// One definition per project, with the bare id: nothing at the organization node.
+			if !strings.Contains(block, "\n  project     = each.value\n  role_id     = \""+tt.roleID+"\"\n") {
+				t.Fatalf("1-org/custom-roles.tf: the role %s is not created per project with its bare id:\n%s", tt.roleID, block)
 			}
 			_, list, found := strings.Cut(block, "  permissions = [\n")
 			if !found {
@@ -1264,7 +1218,7 @@ func TestLayerPlanRoles(t *testing.T) {
 			path: "1-org/service-accounts.tf",
 			want: []string{
 				"resource \"google_project_iam_member\" \"plan\" {\n  for_each = {\n    for pair in flatten([\n      for key, cfg in local.layers : [\n        for role in var.plan_roles[cfg.role_set] : {\n",
-				"  role    = lookup(local.custom_roles, each.value.role, each.value.role)\n  member  = google_service_account.plan[each.value.proj].member\n",
+				"  role    = lookup(local.custom_roles[each.value.proj], each.value.role, each.value.role)\n  member  = google_service_account.plan[each.value.proj].member\n",
 			},
 			absent: []string{"\"roles/viewer\"", "\"roles/browser\""},
 		},
@@ -1272,10 +1226,10 @@ func TestLayerPlanRoles(t *testing.T) {
 			name: "the custom roles resolve by bare ID",
 			path: "1-org/locals.tf",
 			want: []string{
-				"    environmentLayerPlanReader  = google_organization_iam_custom_role.environment_layer_plan_reader.id\n",
-				"    servicesLayerPlanReader     = google_organization_iam_custom_role.services_layer_plan_reader.id\n",
-				"    networkLayerPlanReader      = google_organization_iam_custom_role.network_layer_plan_reader.id\n",
-				"    spannerLayerPlanReader      = google_organization_iam_custom_role.spanner_layer_plan_reader.id\n",
+				"    environmentLayerPlanReader  = google_project_iam_custom_role.environment_layer_plan_reader[k].id\n",
+				"    servicesLayerPlanReader     = google_project_iam_custom_role.services_layer_plan_reader[k].id\n",
+				"    networkLayerPlanReader      = google_project_iam_custom_role.network_layer_plan_reader[k].id\n",
+				"    spannerLayerPlanReader      = google_project_iam_custom_role.spanner_layer_plan_reader[k].id\n",
 			},
 		},
 		{
@@ -1495,11 +1449,11 @@ func TestTeamGroup(t *testing.T) {
 			name: "what each entitlement grants, the Spanner ones for an own instance alone, the layer administrator the layer identity's roles",
 			path: "2-env/team-group.tf",
 			want: []string{
-				"      secret-operator = {\n        declared = true\n        duration = local.entitlement_durations.secret_operator\n        bindings = [{ role = local.org.secret_operator_role, condition = \"\" }]\n      }\n",
+				"      secret-operator = {\n        declared = true\n        duration = local.entitlement_durations.secret_operator\n        bindings = [{ role = local.org.secret_operator_role[var.environment], condition = \"\" }]\n      }\n",
 				"      spanner-admin = {\n        declared = local.own_instance\n",
 				"          { role = \"roles/spanner.databaseAdmin\", condition = \"\" },\n          { role = \"roles/spanner.backupAdmin\", condition = \"\" },\n",
 				"      spanner-viewer = {\n        declared = local.own_instance\n",
-				"          { role = \"roles/spanner.databaseReader\", condition = \"\" },\n          { role = local.org.spanner_plan_reader_role, condition = \"\" },\n",
+				"          { role = \"roles/spanner.databaseReader\", condition = \"\" },\n          { role = local.org.spanner_plan_reader_role[var.environment], condition = \"\" },\n",
 				"        bindings = local.layer_administrator_bindings\n",
 				"    } : name => e if e.declared\n",
 			},
@@ -1530,7 +1484,7 @@ func TestTeamGroup(t *testing.T) {
 				"  entitlement_durations = {\n    spanner_admin  = \"7200s\"\n    spanner_viewer = \"28800s\"\n  }\n",
 				"  environment_databases = { for env in keys(local.entitled_environments) : env => \"${local.instance_path}/databases/${local.prefix}-${env}-gbl-\" }\n  environment_backups   = { for env in keys(local.entitled_environments) : env => \"${local.instance_path}/backups/${local.prefix}-${env}-gbl-\" }\n",
 				"    for env, e in local.entitled_environments : \"${env}-spanner-admin\" => {\n",
-				"        { role = \"roles/spanner.databaseAdmin\", condition = \"resource.name.startsWith(\\\"${local.environment_databases[env]}\\\")\" },\n        { role = \"roles/spanner.backupAdmin\", condition = \"resource.name.startsWith(\\\"${local.environment_databases[env]}\\\") || resource.name.startsWith(\\\"${local.environment_backups[env]}\\\")\" },\n        { role = local.org.spanner_plan_reader_role, condition = \"\" },\n",
+				"        { role = \"roles/spanner.databaseAdmin\", condition = \"resource.name.startsWith(\\\"${local.environment_databases[env]}\\\")\" },\n        { role = \"roles/spanner.backupAdmin\", condition = \"resource.name.startsWith(\\\"${local.environment_databases[env]}\\\") || resource.name.startsWith(\\\"${local.environment_backups[env]}\\\")\" },\n        { role = local.org.spanner_plan_reader_role[local.environment], condition = \"\" },\n",
 				"    for env, e in local.entitled_environments : \"${env}-spanner-viewer\" => {\n",
 				"        { role = \"roles/spanner.databaseReader\", condition = \"resource.name.startsWith(\\\"${local.environment_databases[env]}\\\")\" },\n",
 				"  entitlement_id       = \"${local.prefix}-${each.key}\"\n",
@@ -1555,7 +1509,7 @@ func TestTeamGroup(t *testing.T) {
 				"The other,\nin every environment, is `roles/storage.objectUser` under `<app>/stacks/` in\nthe records bucket (`records.tf`)",
 				"unset, the secret operator an hour, the Spanner admin two hours, the Spanner viewer four hours and the layer administrator four hours.",
 				"so `2-spn`\ndeclares them on that project (`entitlements.tf` there)",
-				"recovery is the bootstrap administrator's",
+				"recovery is the break-glass account's",
 			},
 			absent: []string{"### Secret operators", "`var.secret_operators`"},
 		},
@@ -1731,19 +1685,19 @@ func TestViewPhrases(t *testing.T) {
 		{name: "the bucket before the seed", placement: Placement{Prefix: "acme"}, check: func(v *view) string { return v.Bucket() }, want: "acme-boot-gbl-state-REPLACEME"},
 		{name: "the bucket after the seed", placement: Placement{Prefix: "acme", StateBucket: "acme-boot-gbl-state-1a2b"}, check: func(v *view) string { return v.Bucket() }, want: "acme-boot-gbl-state-1a2b"},
 		{name: "the layer order", placement: Placement{}, check: func(v *view) string { return v.LayerOrderProse() }, want: "0-bootstrap, 1-org, 2-shr and 2-spn, then 2-env for tst, stg and prd, then 2-net"},
-		{name: "the layer order of a zones organization", placement: Placement{Kind: ZonesKind}, check: func(v *view) string { return v.LayerOrderProse() }, want: "0-bootstrap, then 1-dns"},
-		{name: "the second layer, its identity and the rerun example, per kind", placement: Placement{}, check: func(v *view) string {
-			hosting := v.SecondLayer() + " " + v.SecondIdentity() + " " + v.RerunExample()
-			v.Kind = ZonesKind
+		{name: "the layer order of a root organization, which has no layer", placement: Placement{Kind: RootKind}, check: func(v *view) string { return v.LayerOrderProse() }, want: ""},
+		{name: "the rerun example, per kind", placement: Placement{}, check: func(v *view) string {
+			hosting := v.RerunExample()
+			v.Kind = RootKind
 
-			return hosting + "|" + v.SecondLayer() + " " + v.SecondIdentity() + " " + v.RerunExample()
-		}, want: "1-org org _LAYER=2-env,_ENVIRONMENT=tst|1-dns dns _LAYER=1-dns"},
-		{name: "no domains", placement: Placement{Kind: ZonesKind}, check: func(v *view) string {
-			return v.DomainsHCL() + " " + strconv.Itoa(v.DelegationCount()) + " [" + v.DomainsProse() + "]"
-		}, want: "{} 0 []"},
+			return hosting + "|" + v.RerunExample()
+		}, want: "_LAYER=2-env,_ENVIRONMENT=tst|"},
+		{name: "no domains", placement: Placement{Kind: RootKind}, check: func(v *view) string {
+			return strconv.Itoa(v.DelegationCount()) + " [" + v.DomainsProse() + "]"
+		}, want: "0 []"},
 		{
-			name: "the domains and their labels as HCL, in name order, with the zones' names and project",
-			placement: Placement{Kind: ZonesKind, Prefix: "acme", Projects: map[string]string{"boot": "acme-boot-gbl-core-1a2b"}, Domains: map[string]Domain{
+			name: "the domains and their labels in name order, with the zones' names and project",
+			placement: Placement{Kind: RootKind, Prefix: "acme", Projects: map[string]string{"root": "acme-root-gbl-core-1a2b"}, Domains: map[string]Domain{
 				"b.example": {Labels: map[string]Delegation{
 					"z": {Organization: "rgb", NameServers: []string{"ns-cloud-d1.googledomains.com.", "ns-cloud-d2.googledomains.com."}},
 					"a": {Organization: "imp", NameServers: []string{"ns-cloud-c1.googledomains.com.", "ns-cloud-c2.googledomains.com."}},
@@ -1751,9 +1705,9 @@ func TestViewPhrases(t *testing.T) {
 				"a.example": {},
 			}},
 			check: func(v *view) string {
-				return v.DomainsHCL() + "\n" + v.DomainsProse() + " " + strconv.Itoa(v.DelegationCount()) + " " + v.ZoneName("b.example") + " " + v.ZoneProject()
+				return v.DomainsProse() + " " + strconv.Itoa(v.DelegationCount()) + " " + v.ZoneName("b.example") + " " + v.ZoneProject()
 			},
-			want: "{\n  \"a.example\" = {\n    labels = {}\n  }\n  \"b.example\" = {\n    labels = {\n      \"a\" = { organization = \"imp\", name_servers = [\"ns-cloud-c1.googledomains.com.\", \"ns-cloud-c2.googledomains.com.\"] }\n      \"z\" = { organization = \"rgb\", name_servers = [\"ns-cloud-d1.googledomains.com.\", \"ns-cloud-d2.googledomains.com.\"] }\n    }\n  }\n}\n`a.example` and `b.example` 2 acme-boot-gbl-dns-b-example acme-boot-gbl-core-1a2b",
+			want: "`a.example` and `b.example` 2 acme-root-gbl-dns-b-example acme-root-gbl-core-1a2b",
 		},
 		{name: "the approving reviews, left out and at 0, 2 and 12, as a count and as prose", placement: Placement{}, check: func(v *view) string {
 			parts := []string{strconv.Itoa(v.ApprovingReviewCount()) + " " + v.ApprovingReviewsProse()}
@@ -1773,12 +1727,12 @@ func TestViewPhrases(t *testing.T) {
 			want: "acme-boot-usc-github acme-boot-usc-infrastructure-repo acme-boot-usc-layers-plan acme-boot-usc-layers-apply",
 		},
 		{
-			name:      "the boot project, the repository and the two key containers",
-			placement: Placement{Prefix: "acme", GithubOrganization: "acme", SourceRepo: "acme-infrastructure", Projects: map[string]string{"boot": "acme-boot-gbl-core-1a2b"}},
+			name:      "the boot project, the repository and two of the root organization's key secrets",
+			placement: Placement{Prefix: "acme", GithubOrganization: "acme", SourceRepo: "acme-infrastructure", Projects: map[string]string{"boot": "acme-boot-gbl-core-1a2b"}, Root: &RootPlace{Organization: "zo", Project: "zo-boot-gbl-core-9f8e"}},
 			check: func(v *view) string {
 				return v.BootProject() + " " + v.InfrastructureRepository() + " " + v.InfrastructureKeySecret() + " " + v.DeployerKeySecret()
 			},
-			want: "acme-boot-gbl-core-1a2b acme/acme-infrastructure acme-boot-gbl-github-infrastructure-key acme-boot-gbl-github-deployer-key",
+			want: "acme-boot-gbl-core-1a2b acme/acme-infrastructure zo-root-gbl-github-infrastructure-key zo-root-gbl-github-deployer-key",
 		},
 		{name: "the boot project before the seed", placement: Placement{Prefix: "acme"}, check: func(v *view) string { return v.BootProject() }, want: "acme-boot-gbl-core-REPLACEME"},
 		{
@@ -1794,12 +1748,12 @@ func TestViewPhrases(t *testing.T) {
 			placement: Placement{
 				Prefix: "acme", Projects: map[string]string{"boot": "acme-boot-gbl-core-1a2b"}, ProjectNumbers: map[string]string{"boot": "42", "tst": "43", "prd": "45"},
 				CloudBuildInstallationID: "12345678", CloudBuildTokenSecretVersion: "projects/acme-boot-gbl-core-1a2b/locations/us-central1/secrets/github-token/versions/1",
-				GithubDeployerAppID: "5080800", GithubDeployerKeyVersion: "3",
+				GithubDeployerAppID: "5080800", Root: &RootPlace{Organization: "zo", Project: "zo-boot-gbl-core-9f8e"},
 			},
 			check: func(v *view) string {
 				return v.CloudBuildInstallationIDHCL() + " " + v.CloudBuildTokenSecretVersionHCL() + " " + v.GithubDeployerAppIDHCL() + " " + v.DeployerKeyVersionNameHCL() + " " + v.EnvironmentProjectNumbersHCL()
 			},
-			want: "12345678 \"projects/acme-boot-gbl-core-1a2b/locations/us-central1/secrets/github-token/versions/1\" 5080800 \"projects/acme-boot-gbl-core-1a2b/secrets/acme-boot-gbl-github-deployer-key/versions/3\" {\n    tst = \"43\"\n    prd = \"45\"\n  }",
+			want: "12345678 \"projects/acme-boot-gbl-core-1a2b/locations/us-central1/secrets/github-token/versions/1\" 5080800 \"projects/zo-boot-gbl-core-9f8e/secrets/zo-root-gbl-github-deployer-key/versions/current\" {\n    tst = \"43\"\n    prd = \"45\"\n  }",
 		},
 		{
 			name:      "identities, backends and hosts under the recorded projects, REPLACEME for the rest",
@@ -2144,7 +2098,7 @@ func TestRegistrationRender(t *testing.T) {
 
 	const (
 		repositories  = `applications = ["harbor", "beacon"]`
-		publicInvoker = `"serviceAccount:imp-tst-gbl-beacon-tofu@imp-tst-gbl-core-1a2b.iam.gserviceaccount.com",`
+		publicInvoker = `tst = "serviceAccount:imp-tst-gbl-beacon-tofu@imp-tst-gbl-core-1a2b.iam.gserviceaccount.com"`
 		pusher        = `"serviceAccount:imp-tst-gbl-beacon-deploy@imp-tst-gbl-core-1a2b.iam.gserviceaccount.com",`
 		admin         = `"serviceAccount:imp-stg-gbl-beacon-tofu@imp-stg-gbl-core-3c4d.iam.gserviceaccount.com" = { environment = "stg", application = "beacon", restore_from = "prd" }`
 		host          = `"beacon-tst.apps.imp.example"`
@@ -2585,13 +2539,9 @@ func TestLayerRuns(t *testing.T) {
 			},
 		},
 		{
-			name:     "a zones organization's two layers, both in the boot project",
-			kind:     ZonesKind,
-			projects: map[string]string{"boot": "acme-boot-gbl-core-1a2b"},
-			want: []string{
-				"0-bootstrap|0-bootstrap|acme-boot-gbl-tofu@acme-boot-gbl-core-1a2b.iam.gserviceaccount.com|acme-boot-gbl-plan@acme-boot-gbl-core-1a2b.iam.gserviceaccount.com",
-				"1-dns|1-dns|acme-dns-gbl-tofu@acme-boot-gbl-core-1a2b.iam.gserviceaccount.com|acme-dns-gbl-plan@acme-boot-gbl-core-1a2b.iam.gserviceaccount.com",
-			},
+			name:     "a root organization has no layer run",
+			kind:     RootKind,
+			projects: map[string]string{"root": "acme-root-gbl-core-1a2b"},
 		},
 	}
 	for _, tt := range tests {
@@ -2641,7 +2591,7 @@ func TestTriggers(t *testing.T) {
 			name:   "the connection and the repository link, from the placement's authorization",
 			mutate: func(*Placement) {},
 			want: []string{
-				"  cloud_build_installation_id      = 12345678\n  cloud_build_token_secret_version = \"projects/imp-boot-gbl-core-a1b2/locations/us-central1/secrets/github-github-oauthtoken-abcdef/versions/1\"\n  connected                        = local.cloud_build_installation_id != null && local.cloud_build_token_secret_version != null\n",
+				"  cloud_build_installation_id      = 12345678\n  cloud_build_token_secret_version = \"projects/imr-root-gbl-core-c3d4/secrets/imr-root-gbl-github-token/versions/current\"\n  connected                        = local.cloud_build_installation_id != null && local.cloud_build_token_secret_version != null\n",
 				"resource \"google_cloudbuildv2_connection\" \"github\" {\n  count = local.connected ? 1 : 0\n\n  project  = module.boot_project.project_id\n  location = local.region\n  name     = \"${var.prefix}-boot-${local.region_code}-github\"\n\n  github_config {\n    app_installation_id = local.cloud_build_installation_id\n\n    authorizer_credential {\n      oauth_token_secret_version = local.cloud_build_token_secret_version\n    }\n  }\n",
 				"resource \"google_cloudbuildv2_repository\" \"infrastructure\" {\n  count = local.connected ? 1 : 0\n\n  project           = module.boot_project.project_id\n  location          = local.region\n  name              = \"${var.prefix}-boot-${local.region_code}-infrastructure-repo\"\n  parent_connection = google_cloudbuildv2_connection.github[0].id\n  remote_uri        = \"https://github.com/${var.github_organization}/${var.infrastructure_repository}.git\"\n}\n",
 				"  environment_project_numbers = {\n    tst = \"100000000002\"\n    stg = \"100000000003\"\n    prd = \"100000000004\"\n  }\n  token_readers = local.connected ? merge(\n    { boot = module.boot_project.project_number },\n    local.environment_project_numbers,\n  ) : {}\n",
@@ -2748,7 +2698,7 @@ func TestTriggers(t *testing.T) {
 // identities 0-bootstrap creates with what each holds itself (the logs, the connection's
 // read token, the apps' keys, the markers for the applier), the applier's impersonation
 // of the two apply identities 0-bootstrap owns and the planner's of the two boot layers'
-// plan identities, which 0-bootstrap makes with their organization-level reads (a
+// plan identities, which 0-bootstrap makes with their reads on the organization's folder (a
 // binding at the organization node is 0-bootstrap's, since 1-org's identity sets no
 // policy there), 1-org's grants letting the planner impersonate every plan identity it
 // creates and the applier every apply identity, and the boot identity's organization
@@ -2772,7 +2722,7 @@ func TestRunnerIdentities(t *testing.T) {
 				"resource \"google_project_iam_member\" \"runner_builds\" {\n  for_each = local.runners\n\n  project = module.boot_project.project_id\n  role    = \"roles/cloudbuild.builds.viewer\"\n  member  = each.value.member\n}\n",
 				"resource \"google_service_account_iam_member\" \"runner_agent_user\" {\n  for_each = local.runners\n\n  service_account_id = each.value.name\n  role               = \"roles/iam.serviceAccountUser\"\n  member             = \"serviceAccount:service-${module.boot_project.project_number}@gcp-sa-cloudbuild.iam.gserviceaccount.com\"\n",
 				"resource \"google_cloudbuildv2_connection_iam_member\" \"runner_read_token\" {\n  for_each = local.connected ? local.runners : {}\n\n  project  = module.boot_project.project_id\n  location = google_cloudbuildv2_connection.github[0].location\n  name     = google_cloudbuildv2_connection.github[0].name\n  role     = \"roles/cloudbuild.readTokenAccessor\"\n  member   = each.value.member\n}\n",
-				"resource \"google_secret_manager_secret_iam_member\" \"runner_keys\" {\n  for_each = local.runner_keys\n\n  project   = module.boot_project.project_id\n  secret_id = local.key_containers[each.value.key]\n  role      = \"roles/secretmanager.secretAccessor\"\n  member    = local.runners[each.value.runner].member\n}\n",
+				"resource \"google_secret_manager_secret_iam_member\" \"runner_keys\" {\n  for_each = local.runner_keys\n\n  project   = local.keys_project\n  secret_id = local.key_secrets[each.value.key]\n  role      = \"roles/secretmanager.secretAccessor\"\n  member    = local.runners[each.value.runner].member\n}\n",
 				"resource \"google_storage_bucket_iam_member\" \"applier_markers\" {\n  bucket = var.state_bucket\n  role   = \"roles/storage.objectUser\"\n  member = google_service_account.applier.member\n\n  condition {\n    title       = \"${var.prefix}-org-gbl-applied-markers\"\n    description = \"The markers of the layers' last successful applies.\"\n    expression  = \"resource.name.startsWith(\\\"${local.state_bucket_objects}/applied/\\\")\"\n  }\n}\n",
 			},
 		},
@@ -2788,21 +2738,21 @@ func TestRunnerIdentities(t *testing.T) {
 			absent: []string{"member             = google_service_account.planner.member\n}\n\nresource \"google_service_account_iam_member\" \"applier"},
 		},
 		{
-			name: "0-bootstrap makes the boot layers' plan identities, their organization-level reads, their quota project and the entitlements' read",
+			name: "0-bootstrap makes the boot layers' plan identities, their reads on the organization's folder, their quota project and the entitlements' read",
 			path: "0-bootstrap/bootstrap.tf",
 			want: []string{
 				"    boot = { layer = \"0-bootstrap\", reads = [\"0-bootstrap\"] }\n    org  = { layer = \"1-org\", reads = [\"0-bootstrap\", \"1-org\"] }\n",
 				"resource \"google_service_account\" \"boot_plan\" {\n  for_each = local.boot_plans\n\n  project      = module.boot_project.project_id\n  account_id   = \"${var.prefix}-${each.key}-gbl-plan\"\n",
-				"resource \"google_organization_iam_member\" \"boot_plan\" {\n  for_each = {\n    for pair in setproduct(keys(local.boot_plans), var.boot_plan_roles) :\n    \"${pair[0]}__${pair[1]}\" => { plan = pair[0], role = pair[1] }\n  }\n\n  org_id = local.org_id\n  role   = each.value.role\n  member = google_service_account.boot_plan[each.value.plan].member\n}\n",
+				"resource \"google_folder_iam_member\" \"boot_plan\" {\n  for_each = {\n    for pair in setproduct(keys(local.boot_plans), var.boot_plan_roles) :\n    \"${pair[0]}__${pair[1]}\" => { plan = pair[0], role = pair[1] }\n  }\n\n  folder = google_folder.organization.name\n  role   = each.value.role\n  member = google_service_account.boot_plan[each.value.plan].member\n}\n",
 				"resource \"google_project_iam_member\" \"boot_plan_quota\" {\n  for_each = local.boot_plans\n\n  project = module.boot_project.project_id\n  role    = \"roles/serviceusage.serviceUsageConsumer\"\n  member  = google_service_account.boot_plan[each.key].member\n}\n",
 				"resource \"google_project_iam_member\" \"org_plan_entitlements\" {\n  project = module.boot_project.project_id\n  role    = \"roles/privilegedaccessmanager.viewer\"\n  member  = google_service_account.boot_plan[\"org\"].member\n}\n",
 			},
 		},
 		{
-			name: "the org plan identity reads the infrastructure app's key, granted where the key lives",
+			name: "the org plan identity reads the infrastructure app's key, granted where the key lives, in the root organization's project",
 			path: "0-bootstrap/github.tf",
 			want: []string{
-				"resource \"google_secret_manager_secret_iam_member\" \"org_plan_infrastructure_key\" {\n  project   = module.boot_project.project_id\n  secret_id = google_secret_manager_secret.github_infrastructure_key.secret_id\n  role      = \"roles/secretmanager.secretAccessor\"\n  member    = google_service_account.boot_plan[\"org\"].member\n}\n",
+				"resource \"google_secret_manager_secret_iam_member\" \"org_plan_infrastructure_key\" {\n  project   = local.keys_project\n  secret_id = local.key_secrets.infrastructure\n  role      = \"roles/secretmanager.secretAccessor\"\n  member    = google_service_account.boot_plan[\"org\"].member\n}\n",
 			},
 		},
 		{
@@ -2810,19 +2760,21 @@ func TestRunnerIdentities(t *testing.T) {
 			path: "0-bootstrap/variables.tf",
 			want: []string{
 				"variable \"boot_plan_roles\" {\n",
-				"    \"roles/browser\",                         # the organization, its folders and projects\n",
+				"    \"roles/browser\",                         # the organization's folder, its folders and projects\n",
 				"    \"roles/serviceusage.serviceUsageViewer\", # each project's enabled APIs\n  ]\n}\n",
 			},
 			absent: []string{"workloadIdentityPoolViewer"},
 		},
 		{
-			name: "the two key containers, administered by the org identity, and no workload identity pool",
+			name: "the root organization's three key secrets, named; the org identity's policy administration of two; no workload identity pool",
 			path: "0-bootstrap/github.tf",
 			want: []string{
-				`secret_id = "${var.prefix}-boot-gbl-github-infrastructure-key"`,
-				`secret_id = "${var.prefix}-boot-gbl-github-deployer-key"`,
-				"resource \"google_secret_manager_secret_iam_member\" \"org_tofu_infrastructure_key\" {\n  project   = module.boot_project.project_id\n  secret_id = google_secret_manager_secret.github_infrastructure_key.secret_id\n  role      = \"roles/secretmanager.admin\"\n  member    = google_service_account.org_tofu.member\n}\n",
-				"resource \"google_secret_manager_secret_iam_member\" \"org_tofu_deployer_key\" {\n  project   = module.boot_project.project_id\n  secret_id = google_secret_manager_secret.github_deployer_key.secret_id\n  role      = \"roles/secretmanager.admin\"\n  member    = google_service_account.org_tofu.member\n}\n",
+				`    infrastructure = "imr-root-gbl-github-infrastructure-key"`,
+				`    deployer       = "imr-root-gbl-github-deployer-key"`,
+				`    release        = "imr-root-gbl-github-release-key"`,
+				`  keys_project = "imr-root-gbl-core-c3d4"`,
+				"resource \"google_secret_manager_secret_iam_member\" \"org_tofu_keys\" {\n  for_each = toset([\"deployer\", \"release\"])\n\n  project   = local.keys_project\n  secret_id = local.key_secrets[each.key]\n  role      = local.keys_policy_admin_role\n  member    = google_service_account.org_tofu.member\n}\n",
+				"resource \"google_secret_manager_secret_iam_member\" \"boot_plan_keys\" {\n  for_each = local.boot_plan_key_reads\n\n  project   = local.keys_project\n  secret_id = local.key_secrets[each.value.key]\n  role      = \"roles/secretmanager.viewer\"\n  member    = google_service_account.boot_plan[each.value.plan].member\n}\n",
 			},
 			absent: []string{"resource \"google_iam_workload_identity_pool\"", "workloadIdentityUser", "attribute.purpose", "token.actions.githubusercontent.com"},
 		},
@@ -2832,24 +2784,23 @@ func TestRunnerIdentities(t *testing.T) {
 			want: []string{
 				"resource \"google_service_account_iam_member\" \"tofu_applier\" {\n  for_each = local.layers\n\n  service_account_id = google_service_account.tofu[each.key].name\n  role               = \"roles/iam.serviceAccountTokenCreator\"\n  member             = local.boot.applier_member\n}\n",
 				"resource \"google_service_account_iam_member\" \"plan_planner\" {\n  for_each = local.layers\n\n  service_account_id = google_service_account.plan[each.key].name\n  role               = \"roles/iam.serviceAccountTokenCreator\"\n  member             = local.boot.planner_member\n}\n",
-				"resource \"google_secret_manager_secret_iam_member\" \"environment_tofu_deployer_key\" {\n  for_each = local.environment_layers\n\n  project   = var.boot_project_id\n  secret_id = local.boot.github_deployer_key_secret\n  role      = google_organization_iam_custom_role.secret_container_admin.id\n  member    = google_service_account.tofu[each.key].member\n}\n",
-				"resource \"google_secret_manager_secret_iam_member\" \"environment_plan_deployer_key\" {\n  for_each = local.environment_layers\n\n  project   = var.boot_project_id\n  secret_id = local.boot.github_deployer_key_secret\n  role      = \"roles/secretmanager.viewer\"\n  member    = google_service_account.plan[each.key].member\n}\n",
+				"resource \"google_secret_manager_secret_iam_member\" \"environment_tofu_deployer_key\" {\n  for_each = local.environment_layers\n\n  project   = local.keys_project\n  secret_id = local.key_secrets.deployer\n  role      = local.keys_policy_admin_role\n  member    = google_service_account.tofu[each.key].member\n}\n",
+				"resource \"google_secret_manager_secret_iam_member\" \"environment_plan_deployer_key\" {\n  for_each = local.environment_layers\n\n  project   = local.keys_project\n  secret_id = local.key_secrets.deployer\n  role      = \"roles/secretmanager.viewer\"\n  member    = google_service_account.plan[each.key].member\n}\n",
 			},
 			absent: []string{"workflow_plan", "workflow_apply", "workloadIdentityUser", "github_pool_name", "resource \"google_service_account\" \"boot_plan\"", "var.boot_plan_roles", "local.boot_plans"},
 		},
 		{
-			name: "1-org reads 0-bootstrap's state for the runners and the containers",
+			name: "1-org reads 0-bootstrap's state for the runners",
 			path: "1-org/initialize.tf",
 			want: []string{"data \"terraform_remote_state\" \"boot\" {\n  backend = \"gcs\"\n  config = {\n    bucket = var.state_bucket\n    prefix = \"0-bootstrap\"\n  }\n}\n"},
 		},
 		{
-			name: "0-bootstrap publishes the runners and the containers for 1-org",
+			name: "0-bootstrap publishes the runners for 1-org",
 			path: "0-bootstrap/outputs.tf",
 			want: []string{
 				"output \"planner_member\" {\n", "  value       = google_service_account.planner.member\n",
 				"output \"applier_member\" {\n", "  value       = google_service_account.applier.member\n",
 				"output \"boot_plan_service_accounts\" {\n", "  value       = { for k, sa in google_service_account.boot_plan : k => sa.email }\n",
-				"output \"github_deployer_key_secret\" {\n", "  value       = google_secret_manager_secret.github_deployer_key.secret_id\n",
 				"output \"connection_name\" {\n", "  value       = one(google_cloudbuildv2_connection.github[*].name)\n",
 				"output \"plan_trigger_name\" {\n", "  value       = one(google_cloudbuild_trigger.plan[*].name)\n",
 				"output \"apply_trigger_name\" {\n", "  value       = one(google_cloudbuild_trigger.apply[*].name)\n",
@@ -2857,9 +2808,9 @@ func TestRunnerIdentities(t *testing.T) {
 			absent: []string{"github_pool_name", "github_provider_name"},
 		},
 		{
-			name:   "the boot identity's organization roles carry the connection administration, not the pool's; the org identity's the tag role",
+			name:   "the boot identity's folder roles carry the connection administration, not the pool's; the org identity's the tag role",
 			path:   "0-bootstrap/variables.tf",
-			want:   []string{`"roles/cloudbuild.builds.editor",          # the two triggers that plan and apply the layers (cloud-build.tf)`, `"roles/cloudbuild.connectionAdmin",        # the connection and the repository link the triggers watch (cloud-build.tf)`, `"roles/resourcemanager.tagAdmin",        # the public-invoker tag and the grants on its value`},
+			want:   []string{`"roles/cloudbuild.builds.editor",        # the two triggers that plan and apply the layers (cloud-build.tf)`, `"roles/cloudbuild.connectionAdmin",      # the connection and the repository link the triggers watch (cloud-build.tf)`, `"roles/resourcemanager.tagAdmin",        # the public-invoker tag key in each environment project and the grants on its value (1-org tags.tf)`},
 			absent: []string{"workloadIdentityPoolAdmin"},
 		},
 		{
@@ -2911,7 +2862,7 @@ func TestStateBucketGrants(t *testing.T) {
 			name: "the policy role sets a bucket's policy and nothing else",
 			path: "0-bootstrap/state-bucket.tf",
 			want: []string{
-				"resource \"google_organization_iam_custom_role\" \"state_bucket_policy_admin\" {\n  org_id      = local.org_id\n  role_id     = \"stateBucketPolicyAdmin_${random_id.organization.hex}\"\n",
+				"resource \"google_project_iam_custom_role\" \"state_bucket_policy_admin\" {\n  project     = module.boot_project.project_id\n  role_id     = \"stateBucketPolicyAdmin\"\n",
 				"  permissions = [\n    \"storage.buckets.get\",\n    \"storage.buckets.getIamPolicy\",\n    \"storage.buckets.setIamPolicy\",\n  ]\n",
 			},
 		},
@@ -2923,7 +2874,7 @@ func TestStateBucketGrants(t *testing.T) {
 				"resource \"google_storage_bucket_iam_member\" \"boot_plan_state_read\" {\n  for_each = local.boot_plans\n\n  bucket = var.state_bucket\n  role   = \"roles/storage.objectViewer\"\n  member = google_service_account.boot_plan[each.key].member\n",
 				`expression  = join(" || ", [for p in each.value.reads : "resource.name.startsWith(\"${local.state_bucket_objects}/${p}/\")"])`,
 				"    boot = { member = google_service_account.boot_tofu.member, prefix = \"0-bootstrap\" }\n    org  = { member = google_service_account.org_tofu.member, prefix = \"1-org\" }\n",
-				"resource \"google_storage_bucket_iam_member\" \"policy_admin\" {\n  for_each = local.own_identities\n\n  bucket = var.state_bucket\n  role   = google_organization_iam_custom_role.state_bucket_policy_admin.id\n",
+				"resource \"google_storage_bucket_iam_member\" \"policy_admin\" {\n  for_each = local.own_identities\n\n  bucket = var.state_bucket\n  role   = google_project_iam_custom_role.state_bucket_policy_admin.id\n",
 				"resource \"google_storage_bucket_iam_member\" \"state_list\" {\n  for_each = local.own_identities\n\n  bucket = var.state_bucket\n  role   = \"roles/storage.legacyBucketReader\"\n",
 				"resource \"google_storage_bucket_iam_member\" \"state_own\" {\n  for_each = local.own_identities\n\n  bucket = var.state_bucket\n  role   = \"roles/storage.objectUser\"\n",
 				`expression  = "resource.name.startsWith(\"${local.state_bucket_objects}/${each.value.prefix}/\")"`,
@@ -2952,7 +2903,7 @@ func TestStateBucketGrants(t *testing.T) {
 			name: "the environment layers' plan identities read the bucket's policy, which the slots refresh through",
 			path: "1-org/runners.tf",
 			want: []string{
-				"resource \"google_storage_bucket_iam_member\" \"environment_plan_policy_reader\" {\n  for_each = local.environment_layers\n\n  bucket = var.state_bucket\n  role   = google_organization_iam_custom_role.bucket_policy_reader.id\n  member = google_service_account.plan[each.key].member\n}\n",
+				"resource \"google_storage_bucket_iam_member\" \"environment_plan_policy_reader\" {\n  for_each = local.environment_layers\n\n  bucket = var.state_bucket\n  role   = google_project_iam_custom_role.bucket_policy_reader[\"boot\"].id\n  member = google_service_account.plan[each.key].member\n}\n",
 			},
 		},
 	}
@@ -2971,8 +2922,9 @@ func TestStateBucketGrants(t *testing.T) {
 }
 
 // TestPublicInvoker reads where the tagUser grant on the public-invoker tag lives: 1-org,
-// which owns the tag, from the members its public-invokers.auto.tfvars renders per
-// application and environment; 2-env, which created the identities, no longer grants it.
+// which owns each environment project's tag, from the members its public-invokers.auto.tfvars
+// renders per application and environment; 2-env, which created the identities, no longer
+// grants it.
 func TestPublicInvoker(t *testing.T) {
 	t.Parallel()
 
@@ -2985,19 +2937,19 @@ func TestPublicInvoker(t *testing.T) {
 		{
 			name: "1-org grants tagUser from the public invokers",
 			path: "1-org/tags.tf",
-			want: []string{"resource \"google_tags_tag_value_iam_member\" \"public_invoker\" {\n  for_each = toset(flatten(values(var.public_invokers)))\n\n  tag_value = google_tags_tag_value.public_invoker.id\n  role      = \"roles/resourcemanager.tagUser\"\n  member    = each.value\n}\n"},
+			want: []string{"resource \"google_tags_tag_value_iam_member\" \"public_invoker\" {\n  for_each = {\n    for pair in flatten([\n      for app, envs in var.public_invokers : [\n        for env, member in envs : { key = \"${app}__${env}\", env = env, member = member }\n      ]\n    ]) : pair.key => pair\n  }\n\n  tag_value = google_tags_tag_value.public_invoker[each.value.env].id\n  role      = \"roles/resourcemanager.tagUser\"\n  member    = each.value.member\n}\n"},
 		},
 		{
 			name: "the public invokers are each application's apply identities in every environment",
 			path: "1-org/public-invokers.auto.tfvars",
 			want: []string{
-				"public_invokers = {\n  harbor = [\n    \"serviceAccount:imp-tst-gbl-harbor-tofu@imp-tst-gbl-core-1a2b.iam.gserviceaccount.com\",\n    \"serviceAccount:imp-stg-gbl-harbor-tofu@imp-stg-gbl-core-3c4d.iam.gserviceaccount.com\",\n    \"serviceAccount:imp-prd-gbl-harbor-tofu@imp-prd-gbl-core-5e6f.iam.gserviceaccount.com\",\n  ]\n  beacon = [\n",
+				"public_invokers = {\n  harbor = {\n    tst = \"serviceAccount:imp-tst-gbl-harbor-tofu@imp-tst-gbl-core-1a2b.iam.gserviceaccount.com\"\n    stg = \"serviceAccount:imp-stg-gbl-harbor-tofu@imp-stg-gbl-core-3c4d.iam.gserviceaccount.com\"\n    prd = \"serviceAccount:imp-prd-gbl-harbor-tofu@imp-prd-gbl-core-5e6f.iam.gserviceaccount.com\"\n  }\n  beacon = {\n    tst = \"serviceAccount:imp-tst-gbl-beacon-tofu@imp-tst-gbl-core-1a2b.iam.gserviceaccount.com\"\n    stg = \"serviceAccount:imp-stg-gbl-beacon-tofu@imp-stg-gbl-core-3c4d.iam.gserviceaccount.com\"\n    prd = \"serviceAccount:imp-prd-gbl-beacon-tofu@imp-prd-gbl-core-5e6f.iam.gserviceaccount.com\"\n  }\n}\n",
 			},
 		},
 		{
 			name: "the variable",
 			path: "1-org/variables.tf",
-			want: []string{"variable \"public_invokers\" {", "  type        = map(list(string))\n  default     = {}\n"},
+			want: []string{"variable \"public_invokers\" {", "  type        = map(map(string))\n  default     = {}\n"},
 		},
 		{
 			name:   "2-env no longer grants it",
@@ -3150,6 +3102,14 @@ resource "github_repository" "infrastructure" {
   repository  = github_repository.infrastructure.name
   target      = "branch"
   enforcement = "active"
+
+  # bedrock itself, acting as the infrastructure app, bypasses these rules, which it
+  # writes: the same actor the root organization's ruleset names.
+  bypass_actors {
+    actor_id    = var.github_infrastructure_app_id
+    actor_type  = "Integration"
+    bypass_mode = "always"
+  }
 
   conditions {
     ref_name {
@@ -3497,7 +3457,7 @@ func TestAppsZone(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			project, zone := tt.placement.AppsZone()
+			project, zone := tt.placement.AppsZoneName()
 			if project != tt.wantProject || zone != tt.wantZone {
 				t.Errorf("AppsZone() = %q, %q, want %q, %q", project, zone, tt.wantProject, tt.wantZone)
 			}
@@ -3883,5 +3843,34 @@ func TestHostRowsVanity(t *testing.T) {
 	}
 	if got := p.Hostnames["harbor"]["prd"]["harborlights.example"]; got == "" {
 		t.Error("a refused record replaced the one before it")
+	}
+}
+
+// TestRenderNoApplications: an organization with no application renders 1-org's lists
+// empty, adopted_applications among them, which the layer's validation then accepts (a
+// list of one empty string is refused there).
+func TestRenderNoApplications(t *testing.T) {
+	t.Parallel()
+
+	p, err := ReadPlacement("testdata/imp/placement.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	p.Applications = nil
+	p.Registration = nil
+	files, err := Render(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var tfvars string
+	for _, f := range files {
+		if f.Path == "1-org/applications.auto.tfvars" {
+			tfvars = string(f.Content)
+		}
+	}
+	for _, want := range []string{"applications = []\n", "adopted_applications = []\n", "applied_applications = []\n", "application_repositories = {}\n", "application_environments = {}\n"} {
+		if !strings.Contains(tfvars, want) {
+			t.Errorf("1-org/applications.auto.tfvars lacks %q:\n%s", want, tfvars)
+		}
 	}
 }

@@ -1,6 +1,9 @@
 locals {
-  org_id   = trimprefix(data.google_organization.this.name, "organizations/")
-  org_name = data.google_organization.this.name
+  # The organization, from placement.json rather than looked up: an identity of
+  # this organization holds nothing at the organization node, not even the read
+  # that resolves the domain.
+  org_id   = "123456789012"
+  org_name = "organizations/123456789012"
 
   # Naming convention: {prefix}-{environment}-{region}-{purpose}
   # Use "gbl" only for truly global resources: projects, folders, service
@@ -63,18 +66,25 @@ locals {
 
   layer_names = { for k, v in local.layers : k => "${var.prefix}-${k}-gbl" }
 
-  # Custom organization roles a role set may name by bare ID. A variable
-  # default cannot reference a resource, so var.layer_roles and var.plan_roles
-  # carry the ID and service-accounts.tf resolves it through this map.
+  # The projects the custom roles are created in (custom-roles.tf): every
+  # project of this layer, by key, with its id.
+  custom_role_projects = { for k, v in local.projects : k => module.project[k].project_id }
+
+  # Custom roles a role set may name by bare ID, by project key then by ID. A
+  # variable default cannot reference a resource, so var.layer_roles and
+  # var.plan_roles carry the ID and service-accounts.tf resolves it through
+  # this map, in the project the identity is granted on.
   custom_roles = {
-    secretContainerAdmin        = google_organization_iam_custom_role.secret_container_admin.id
-    identityPlatformInitializer = google_organization_iam_custom_role.identity_platform_initializer.id
-    secretOperator              = google_organization_iam_custom_role.secret_operator.id
-    storageBucketCreator        = google_organization_iam_custom_role.storage_bucket_creator.id
-    runJobPolicyAdmin           = google_organization_iam_custom_role.run_job_policy_admin.id
-    environmentLayerPlanReader  = google_organization_iam_custom_role.environment_layer_plan_reader.id
-    servicesLayerPlanReader     = google_organization_iam_custom_role.services_layer_plan_reader.id
-    networkLayerPlanReader      = google_organization_iam_custom_role.network_layer_plan_reader.id
-    spannerLayerPlanReader      = google_organization_iam_custom_role.spanner_layer_plan_reader.id
+    for k in keys(local.projects) : k => {
+      secretContainerAdmin        = google_project_iam_custom_role.secret_container_admin[k].id
+      identityPlatformInitializer = google_project_iam_custom_role.identity_platform_initializer[k].id
+      secretOperator              = google_project_iam_custom_role.secret_operator[k].id
+      storageBucketCreator        = google_project_iam_custom_role.storage_bucket_creator[k].id
+      runJobPolicyAdmin           = google_project_iam_custom_role.run_job_policy_admin[k].id
+      environmentLayerPlanReader  = google_project_iam_custom_role.environment_layer_plan_reader[k].id
+      servicesLayerPlanReader     = google_project_iam_custom_role.services_layer_plan_reader[k].id
+      networkLayerPlanReader      = google_project_iam_custom_role.network_layer_plan_reader[k].id
+      spannerLayerPlanReader      = google_project_iam_custom_role.spanner_layer_plan_reader[k].id
+    }
   }
 }

@@ -18,10 +18,10 @@
 # boot identity because it applies this layer through the workflow, the org
 # identity so 1-org can grant for the fourteen identities it creates and hand
 # the environment layer identities the same authority for the application
-# identities 2-env creates. The first-time order holds by itself: the seed
-# makes the bucket, this layer grants on it as the bootstrap administrator,
-# 1-org grants on it as the same person, and from then on each layer's own
-# identity holds what its grants need. The apply trigger's runner keeps the
+# identities 2-env creates. The first-time order holds by itself: the
+# creation makes the bucket, this layer grants on it as the creation
+# identity, 1-org grants on it as the same identity, and from then on each
+# layer's own identity holds what its grants need. The apply trigger's runner keeps the
 # markers of the layers' last applies under applied/ (cloud-build.tf).
 #
 # The bucket itself is seeded and stays outside OpenTofu (bootstrap.tf).
@@ -41,10 +41,11 @@ locals {
 # that grants on the state bucket for identities it creates holds there.
 # roles/storage.admin would carry every object with it. Whoever sets a
 # bucket's policy could grant themselves the rest; the role names the intent
-# and keeps the day-to-day reach at the prefixes granted.
-resource "google_organization_iam_custom_role" "state_bucket_policy_admin" {
-  org_id      = local.org_id
-  role_id     = "stateBucketPolicyAdmin_${random_id.organization.hex}"
+# and keeps the day-to-day reach at the prefixes granted. A role in the boot
+# project, where the bucket is (bootstrap.tf, project_updater).
+resource "google_project_iam_custom_role" "state_bucket_policy_admin" {
+  project     = module.boot_project.project_id
+  role_id     = "stateBucketPolicyAdmin"
   title       = "State Bucket Policy Admin"
   description = "Reads and sets a bucket's IAM policy, for the layers that grant state-bucket access to the identities they create."
   permissions = [
@@ -58,7 +59,7 @@ resource "google_storage_bucket_iam_member" "policy_admin" {
   for_each = local.own_identities
 
   bucket = var.state_bucket
-  role   = google_organization_iam_custom_role.state_bucket_policy_admin.id
+  role   = google_project_iam_custom_role.state_bucket_policy_admin.id
   member = each.value.member
 }
 
@@ -84,8 +85,8 @@ resource "google_storage_bucket_iam_member" "state_own" {
   }
 }
 
-# 1-org reads this layer's state: the runner identities it grants on, the
-# policy role it grants, the key containers it grants on.
+# 1-org reads this layer's state: the runner identities it grants on and the
+# policy role it grants.
 resource "google_storage_bucket_iam_member" "org_tofu_state_upstream" {
   bucket = var.state_bucket
   role   = "roles/storage.objectViewer"

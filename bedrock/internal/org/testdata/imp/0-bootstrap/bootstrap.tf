@@ -1,6 +1,9 @@
 locals {
-  org_id   = trimprefix(data.google_organization.this.name, "organizations/")
-  org_name = data.google_organization.this.name
+  # The organization, from placement.json rather than looked up: an identity of
+  # this organization holds nothing at the organization node, not even the read
+  # that resolves the domain.
+  org_id   = "123456789012"
+  org_name = "organizations/123456789012"
 
   # A layer is one directory of this repository, applied as one identity. Layer
   # names follow {prefix}-{environment}-gbl; their service accounts add -tofu.
@@ -21,10 +24,10 @@ locals {
 # Seeded resources
 #
 # The folder, project, and boot service account below already exist. They are
-# created by hand with gcloud during first-time setup, because this layer
-# cannot create the identity it will later run as. They are adopted here so
+# made by the root organization's creation, because this layer cannot create
+# the identity it will later run as. They are adopted here so
 # that from the first run onward they are ordinary managed resources rather
-# than undocumented console state. The commands are in this layer's README.
+# than undocumented console state. The README says what the creation made.
 #
 # The state bucket is seeded too, and is the one seeded resource deliberately
 # left outside OpenTofu: this layer's own state lives in it, and a stack that
@@ -40,23 +43,16 @@ locals {
 # hierarchy means an environment folder can be reorganized without touching the
 # identity that provisions it, and the org policies 1-org applies to the
 # environment folders never reach the identities that manage them.
-# The organization's suffix: a random value born with this state on the first
-# apply and gone with it, telling this bedrock organization from another in
-# the same GCP organization and from its own predecessor. It is the suffix of
-# every name the layers put at the organization node, where names must differ
-# between organizations and where Google holds a deleted name for weeks: the
-# custom roles (here and in 1-org) and the public-invoker tag key (1-org).
-# Nothing inside a project carries it; the project ids carry their own.
-resource "random_id" "organization" {
-  byte_length = 2
-}
 
 # The organization's folder, named after its prefix, holds everything the
 # layers make under the GCP organization: the terraform folder here, the
 # environment folders 1-org creates. Sibling folders must differ in name, so
 # two bedrock organizations in one GCP organization each keep their own tree.
-# Seeded, like the terraform folder, since the boot project must exist before
-# this layer can run.
+# It is also the whole of this organization's reach: every role a layer
+# identity holds is granted on this folder, none at the organization node, so
+# a mistake or a compromise in one organization's pipeline stops at its own
+# folder (README.md, "Several organizations"). Seeded, like the terraform
+# folder, since the boot project must exist before this layer can run.
 resource "google_folder" "organization" {
   display_name        = var.prefix
   parent              = local.org_name
@@ -81,7 +77,7 @@ import {
 
 # The boot project hosts the layer identities, the state bucket, the Cloud
 # Build connection and triggers that plan and apply the layers (cloud-build.tf),
-# the two GitHub Apps' keys (github.tf), and acts as the quota and billing
+# acts as the quota and billing
 # project for every downstream layer.
 #
 # random_project_id is off and the ID comes from a variable: the project already
@@ -93,7 +89,10 @@ module "boot_project" {
   source  = "terraform-google-modules/project-factory/google"
   version = "18.3.0"
 
-  name                       = var.boot_project_id
+  # The display name carries no suffix; the id does, and the seed gave the
+  # project both.
+  name                       = "${var.prefix}-boot-gbl-core"
+  project_id                 = var.boot_project_id
   folder_id                  = var.terraform_folder_id
   billing_account            = var.billing_account_id
   random_project_id          = false
@@ -147,7 +146,7 @@ import {
 }
 
 # The identity this layer runs as through the apply trigger, after the
-# bootstrap administrator's first apply (cloud-build.tf). The seed script
+# creating identity's first apply (cloud-build.tf). The seed
 # creates it; it is adopted rather than recreated, because destroying it
 # mid-run would cut off the run doing the destroying.
 resource "google_service_account" "boot_tofu" {
@@ -162,20 +161,43 @@ import {
   to = google_service_account.boot_tofu
 }
 
-# The gcloud seed grants this same list so the identity can run this layer at
-# all. Declaring it here makes the grants visible and reviewable instead of
-# leaving them as console state nobody can audit. Keep the two lists in sync:
-# shrinking boot_layer_roles revokes permissions from the identity running the
-# apply, and the run that does it may not survive to finish.
-resource "google_organization_iam_member" "boot_tofu" {
-  # checkov:skip=CKV_GCP_117: the boot layer identity has to create folders, projects, org-level IAM bindings, and custom roles before any narrower scope exists. It has no keys and runs only from the infrastructure repository's apply trigger, on its default branch.
-  # checkov:skip=CKV_GCP_49: See CKV_GCP_117 above.
-  # checkov:skip=CKV_GCP_45: iam.serviceAccountAdmin is granted at the org node because this layer creates service accounts in a project that is itself created here.
+# The gcloud seed grants this same list on the organization's folder so the
+# identity can run this layer at all. Declaring it here makes the grants
+# visible and reviewable instead of leaving them as console state nobody can
+# audit. Keep the two lists in sync: shrinking boot_layer_roles revokes
+# permissions from the identity running the apply, and the run that does it
+# may not survive to finish. Nothing is granted at the organization node.
+resource "google_folder_iam_member" "boot_tofu" {
+  # checkov:skip=CKV_GCP_44: iam.serviceAccountAdmin is granted on the organization's folder because this layer creates service accounts in a project that is itself adopted here. The identity has no keys and runs only from the infrastructure repository's apply trigger, on its default branch.
   for_each = toset(var.boot_layer_roles)
 
-  org_id = local.org_id
+  folder = google_folder.organization.name
   role   = each.value
   member = google_service_account.boot_tofu.member
+}
+
+# Custom Roles Administrator binds on a project or at the organization node,
+# never on a folder (IAM refuses the binding), so the identity holds it on the
+# boot project alone, where the custom roles this layer makes live. The seed
+# grants the same list (var.boot_project_roles); keep the two in sync.
+resource "google_project_iam_member" "boot_tofu_project" {
+  for_each = toset(var.boot_project_roles)
+
+  project = module.boot_project.project_id
+  role    = each.value
+  member  = google_service_account.boot_tofu.member
+}
+
+# The org layer identity holds Custom Roles Administrator on the boot project
+# too: 1-org creates the custom role bucketPolicyReader there, for the grants
+# on the state bucket, and grants itself the same on each project it makes;
+# the boot project is this layer's to grant on.
+resource "google_project_iam_member" "org_tofu_project" {
+  for_each = toset(var.org_project_roles)
+
+  project = module.boot_project.project_id
+  role    = each.value
+  member  = google_service_account.org_tofu.member
 }
 
 # roles/billing.user rather than the roles/billing.admin tf-gcp-setup grants:
@@ -193,9 +215,10 @@ resource "google_billing_account_iam_member" "boot_tofu" {
 # ---------------------------------------------------------------------------
 # Org layer identity
 #
-# 1-org creates folders, projects, org policies, a custom role, and per-project
-# service accounts. Those grants have to sit at the org node because the
-# resources they act on do not exist yet.
+# 1-org creates folders, projects, org policies, custom roles, a tag key and
+# per-project service accounts. Those grants sit on the organization's folder
+# because the projects they act on do not exist yet, and nowhere higher: the
+# folder is the whole of this organization's reach.
 # ---------------------------------------------------------------------------
 
 resource "google_service_account" "org_tofu" {
@@ -205,13 +228,11 @@ resource "google_service_account" "org_tofu" {
   description  = "Layer identity for ${local.org_layer_name}. Applies the 1-org layer from the infrastructure repository's apply trigger."
 }
 
-resource "google_organization_iam_member" "org_tofu" {
-  # checkov:skip=CKV_GCP_117: the org layer identity must manage folders, projects, org policies, IAM, and a custom role across the hierarchy this repo owns. It has no keys and runs only from the infrastructure repository's apply trigger, on its default branch.
-  # checkov:skip=CKV_GCP_49: See CKV_GCP_117 above.
-  # checkov:skip=CKV_GCP_45: iam.serviceAccountAdmin is granted at the org node because 1-org creates service accounts inside projects that do not exist at bootstrap time, so project-level scoping is not possible.
+resource "google_folder_iam_member" "org_tofu" {
+  # checkov:skip=CKV_GCP_44: iam.serviceAccountAdmin is granted on the organization's folder because 1-org creates service accounts inside projects that do not exist at bootstrap time, so project-level scoping is not possible. The identity has no keys and runs only from the infrastructure repository's apply trigger, on its default branch.
   for_each = toset(var.org_layer_roles)
 
-  org_id = local.org_id
+  folder = google_folder.organization.name
   role   = each.value
   member = google_service_account.org_tofu.member
 }
@@ -222,10 +243,9 @@ resource "google_organization_iam_member" "org_tofu" {
 # A pull request plans this layer and 1-org as read-only identities of their
 # own, in the boot project beside the apply identities: a plan as an apply
 # identity would run a pull request's code with the power to apply. They are
-# this layer's to make, with the apply identities, and their organization-level
-# reads are this layer's to grant: a binding at the organization node is, like
-# every one of them, since the org layer identity holds no role there that
-# sets the organization's policy (var.org_layer_roles), by design.
+# this layer's to make, with the apply identities, and their reads on the
+# organization's folder are this layer's to grant, like every binding on the
+# folder: what the identities hold there is declared here, in one place.
 # ---------------------------------------------------------------------------
 
 locals {
@@ -246,15 +266,15 @@ resource "google_service_account" "boot_plan" {
   description  = "Read-only plan identity for ${var.prefix}-${each.key}-gbl. Plans ${each.value.layer} on a pull request of the infrastructure repository and never applies."
 }
 
-# Organization-level reads (var.boot_plan_roles): the layers they plan declare
-# folders, projects, tags and custom roles across the organization.
-resource "google_organization_iam_member" "boot_plan" {
+# Reads on the organization's folder (var.boot_plan_roles): the layers they
+# plan declare folders, projects, tags and custom roles under it.
+resource "google_folder_iam_member" "boot_plan" {
   for_each = {
     for pair in setproduct(keys(local.boot_plans), var.boot_plan_roles) :
     "${pair[0]}__${pair[1]}" => { plan = pair[0], role = pair[1] }
   }
 
-  org_id = local.org_id
+  folder = google_folder.organization.name
   role   = each.value.role
   member = google_service_account.boot_plan[each.value.plan].member
 }
@@ -268,29 +288,27 @@ resource "google_project_iam_member" "boot_plan_quota" {
   member  = google_service_account.boot_plan[each.key].member
 }
 
-# resourcemanager.projects.update is not carried by any narrow predefined role
-# at org scope, so a custom role is the only way to grant it short of owner.
-resource "google_organization_iam_custom_role" "project_updater" {
-  org_id      = local.org_id
-  role_id     = "orgProjectUpdater_${random_id.organization.hex}"
+# resourcemanager.projects.update is not carried by any narrow predefined role,
+# so a custom role is the only way to grant it short of owner: a role in the
+# boot project, like every custom role the layers make (one in each project
+# that needs it, nothing at the organization node, whose names are shared by
+# every organization under it and held after a delete). The boot identity
+# manages the boot project's labels and metadata through the project module
+# when this layer runs through the apply trigger; the creating identity's
+# Owner covered the first apply. 1-org makes the same role in each project
+# it creates, for the org layer identity.
+resource "google_project_iam_custom_role" "project_updater" {
+  project     = module.boot_project.project_id
+  role_id     = "projectUpdater"
   title       = "Project Updater"
-  description = "Grants resourcemanager.projects.update so the org layer identity can manage project labels and metadata."
+  description = "Grants resourcemanager.projects.update so a layer identity can manage the project's labels and metadata."
   permissions = ["resourcemanager.projects.update"]
 }
 
-resource "google_organization_iam_member" "org_tofu_project_updater" {
-  org_id = local.org_id
-  role   = google_organization_iam_custom_role.project_updater.id
-  member = google_service_account.org_tofu.member
-}
-
-# The boot identity manages the boot project's labels and metadata through the
-# project module when this layer runs through the apply trigger; the bootstrap
-# administrator's Owner covered the first apply.
-resource "google_organization_iam_member" "boot_tofu_project_updater" {
-  org_id = local.org_id
-  role   = google_organization_iam_custom_role.project_updater.id
-  member = google_service_account.boot_tofu.member
+resource "google_project_iam_member" "boot_tofu_project_updater" {
+  project = module.boot_project.project_id
+  role    = google_project_iam_custom_role.project_updater.id
+  member  = google_service_account.boot_tofu.member
 }
 
 # 1-org declares on this project each environment's layer state entitlement:

@@ -2,41 +2,62 @@
   "prefix": "imp",
   "organizationDomain": "imp.example",
   "organizationId": "123456789012",
+  "directoryCustomerId": "C0a1b2c3d",
   "billingAccount": "012345-6789AB-CDEF01",
   "appsDomain": "apps.imp.example",
-  "vanityDomains": ["harborlights.example"],
+  "vanityDomains": [
+    "harborlights.example"
+  ],
   "githubOrganization": "imp-example",
-  "githubMachineAccount": "imp-machine",
+  "githubBotAccount": "imp-bot",
   "githubReleaseAppId": "5080645",
   "githubReleaseAppSlug": "imp-release",
   "githubDefaultBranch": "master",
   "githubInfrastructureAppId": "5080700",
-  "githubInfrastructureKeyVersion": "1",
   "githubDeployerAppId": "5080800",
-  "githubDeployerKeyVersion": "1",
+  "root": {
+    "organization": "imr",
+    "project": "imr-root-gbl-core-c3d4"
+  },
   "cloudBuildInstallationId": "12345678",
-  "cloudBuildTokenSecretVersion": "projects/imp-boot-gbl-core-a1b2/locations/us-central1/secrets/github-github-oauthtoken-abcdef/versions/1",
+  "cloudBuildTokenSecretVersion": "projects/imr-root-gbl-core-c3d4/secrets/imr-root-gbl-github-token/versions/current",
   "bedrockVersion": "v0.5.0",
   "bedrockSha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
-  "ciLargeRunner": "ci-large",
-  "ciLargeRunnerSize": "8-core",
-  "ciLargeRunnerMaximum": 10,
   "sourceRepo": "imp-impulse-infrastructure",
   "stateBucket": "imp-boot-gbl-state-a1b2",
-  "operator": "seed@imp.example",
+  "breakGlassAccount": "seed@imp.example",
   "teamGroups": {
     "tst": "team-tst@imp.example",
     "stg": "team-stg@imp.example",
     "prd": "team-prd@imp.example"
   },
-  "entitlementDurations": {"spannerViewer": "8h"},
+  "entitlementDurations": {
+    "spannerViewer": "8h"
+  },
   "regions": [
-    {"name": "us-central1", "code": "uc1"},
-    {"name": "us-west3", "code": "uw3"}
+    {
+      "name": "us-central1",
+      "code": "uc1"
+    },
+    {
+      "name": "us-west3",
+      "code": "uw3"
+    }
   ],
-  "spanner": {"config": "nam10"},
-  "contactDomains": ["@imp.example"],
-  "applications": ["harbor", "beacon"],
+  "spanner": {
+    "config": "nam10"
+  },
+  "contactDomains": [
+    "@imp.example"
+  ],
+  "applications": [
+    "harbor",
+    {
+      "code": "beacon",
+      "repository": "beacon",
+      "adopted": true
+    }
+  ],
   "projects": {
     "boot": "imp-boot-gbl-core-a1b2",
     "shr": "imp-shr-gbl-core-7a8b",
@@ -46,6 +67,42 @@
     "stg": "imp-stg-gbl-core-3c4d",
     "prd": "imp-prd-gbl-core-5e6f"
   },
-  "projectNumbers": {"boot": "100000000001", "tst": "100000000002", "stg": "100000000003", "prd": "100000000004"},
-  "labels": {"bedrock-lab": "true"}
+  "projectNumbers": {
+    "boot": "100000000001",
+    "tst": "100000000002",
+    "stg": "100000000003",
+    "prd": "100000000004"
+  },
+  "folders": {
+    "shared": "900000000011",
+    "tst": "900000000012",
+    "stg": "900000000013",
+    "prd": "900000000014"
+  },
+  "publicInvokerTags": {
+    "tst": {
+      "key": "tagKeys/281000000001",
+      "value": "tagValues/282000000001"
+    },
+    "stg": {
+      "key": "tagKeys/281000000002",
+      "value": "tagValues/282000000002"
+    },
+    "prd": {
+      "key": "tagKeys/281000000003",
+      "value": "tagValues/282000000003"
+    }
+  },
+  "appsZone": {
+    "name": "imp-net-gbl-dns-apps",
+    "nameServers": [
+      "ns-cloud-e1.googledomains.com.",
+      "ns-cloud-e2.googledomains.com.",
+      "ns-cloud-e3.googledomains.com.",
+      "ns-cloud-e4.googledomains.com."
+    ]
+  },
+  "labels": {
+    "bedrock-lab": "true"
+  }
 }

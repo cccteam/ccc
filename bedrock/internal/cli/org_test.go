@@ -151,55 +151,138 @@ func unauthorizeConnection(t *testing.T, dir string) {
 	})
 }
 
-// fakePolicyReader answers every project's IAM policy from one map; a project it lacks
-// has no bindings.
+// fakePolicyReader answers every project's and folder's IAM policy from one map each; a
+// project or folder it lacks has no bindings. The organization's folder is found when
+// folder names it, with children listed under it.
 type fakePolicyReader struct {
 	byProject map[string][]org.Binding
+	byFolder  map[string][]org.Binding
+	folder    string
+	children  []org.Folder
 }
 
 func (f *fakePolicyReader) ProjectPolicy(_ context.Context, project string) ([]org.Binding, error) {
 	return f.byProject[project], nil
 }
 
+func (f *fakePolicyReader) OrganizationFolder(context.Context, string, string) (string, error) {
+	return f.folder, nil
+}
+
+func (f *fakePolicyReader) ChildFolders(context.Context, string) ([]org.Folder, error) {
+	return f.children, nil
+}
+
+func (f *fakePolicyReader) FolderPolicy(_ context.Context, folder string) ([]org.Binding, error) {
+	return f.byFolder[folder], nil
+}
+
 func (*fakePolicyReader) Close() error {
 	return nil
 }
 
-// TestOrgCheckOwners: org check lists each person holding roles/owner on an environment
-// project, with the project, and says what it does when it has no credentials; neither
+// TestOrgCheckLeftovers: org check lists each grant a hand apply left a person
+// with, with its place: a person's Owner on a project, a person's Folder Admin or Folder
+// Editor on a folder under the organization's, and every role the break-glass account
+// holds on the organization's folder but Folder Admin, the one it keeps. It says what it
+// does when it has no credentials or the seed has not made the folder yet; none of it
 // fails the check.
-func TestOrgCheckOwners(t *testing.T) {
+func TestOrgCheckLeftovers(t *testing.T) {
 	t.Parallel()
 
+	const (
+		tst       = "imp-tst-gbl-core-1a2b"
+		account   = "user:seed@imp.example"
+		trimmed   = `; it is temporary, removed once the apply trigger applies the layers (0-bootstrap/README.md, "Recovery, by hand").`
+		organized = "111111111111"
+		terraform = "222222222222"
+	)
 	tests := []struct {
 		name     string
 		policies org.PolicyReaderFunc
 		wantOut  []string
+		absent   []string
 	}{
 		{
-			name: "a person on roles/owner is reported with the project; a service account is not",
+			name: "each leftover grant is reported with its place; a service account and the kept Folder Admin are not",
 			policies: func(context.Context) (org.PolicyReader, error) {
-				return &fakePolicyReader{byProject: map[string][]org.Binding{
-					"imp-tst-gbl-core-1a2b": {{Role: "roles/owner", Members: []string{"user:seed@imp.example", "serviceAccount:imp-tst-gbl-tofu@imp-tst-gbl-core-1a2b.iam.gserviceaccount.com"}}},
-				}}, nil
+				return &fakePolicyReader{
+					byProject: map[string][]org.Binding{
+						tst: {{Role: "roles/owner", Members: []string{account, "serviceAccount:imp-tst-gbl-tofu@imp-tst-gbl-core-1a2b.iam.gserviceaccount.com"}}},
+					},
+					folder: organized,
+					byFolder: map[string][]org.Binding{
+						organized: {
+							{Role: "roles/resourcemanager.folderAdmin", Members: []string{account}},
+							{Role: "roles/resourcemanager.projectCreator", Members: []string{account}},
+						},
+						terraform: {
+							{Role: "roles/resourcemanager.folderAdmin", Members: []string{account}},
+							{Role: "roles/resourcemanager.folderEditor", Members: []string{account}},
+						},
+					},
+					children: []org.Folder{{ID: terraform, Name: "terraform"}},
+				}, nil
 			},
 			wantOut: []string{
-				"tst (imp-tst-gbl-core-1a2b): user:seed@imp.example holds roles/owner, the creator's grant from the first apply of 1-org by hand; it is temporary, removed once the apply trigger applies the layers (1-org/README.md, Applying).",
+				"project tst (" + tst + "): " + account + " holds roles/owner, the creator's grant from the first applies by hand" + trimmed,
+				"folder imp (" + organized + "): " + account + " holds roles/resourcemanager.projectCreator, a grant for a hand apply of 1-org" + trimmed,
+				"folder terraform (" + terraform + "): " + account + " holds roles/resourcemanager.folderAdmin, the creator's grant from the first applies by hand" + trimmed,
+				"folder terraform (" + terraform + "): " + account + " holds roles/resourcemanager.folderEditor, the creator's grant from the first applies by hand" + trimmed,
 				"owned file(s) match the placement",
+			},
+			absent: []string{
+				"folder imp (" + organized + "): " + account + " holds roles/resourcemanager.folderAdmin",
+				"serviceAccount:imp-tst-gbl-tofu",
+				"No grant of a hand apply is left",
 			},
 		},
 		{
-			name: "nobody on roles/owner",
+			name: "a principal outside the organization on its folder is listed as such; its own identities are not",
+			policies: func(context.Context) (org.PolicyReader, error) {
+				return &fakePolicyReader{
+					folder: organized,
+					byFolder: map[string][]org.Binding{organized: {
+						{Role: "roles/resourcemanager.folderAdmin", Members: []string{account, "serviceAccount:imp-boot-gbl-tofu@imp-boot-gbl-core-a1b2.iam.gserviceaccount.com"}},
+						{Role: "roles/resourcemanager.projectCreator", Members: []string{"serviceAccount:imr-create-gbl-tofu@imr-root-gbl-core-c3d4.iam.gserviceaccount.com"}},
+					}},
+				}, nil
+			},
+			wantOut: []string{
+				"folder imp (" + organized + "): serviceAccount:imr-create-gbl-tofu@imr-root-gbl-core-c3d4.iam.gserviceaccount.com holds roles/resourcemanager.projectCreator, and is outside this organization (not the break-glass account, not an identity in one of its projects); nothing of the organization's grants to an outsider on its folder, and a root organization's creating identity takes its own grants off at the creation's end, so this one is to remove, or to explain in JOURNAL.md.",
+				"owned file(s) match the placement",
+			},
+			absent: []string{"imp-boot-gbl-tofu", "No grant of a hand apply is left", "it is temporary"},
+		},
+		{
+			name: "nothing left but the kept Folder Admin",
+			policies: func(context.Context) (org.PolicyReader, error) {
+				return &fakePolicyReader{
+					folder:   organized,
+					byFolder: map[string][]org.Binding{organized: {{Role: "roles/resourcemanager.folderAdmin", Members: []string{account}}}},
+				}, nil
+			},
+			wantOut: []string{
+				"No grant of a hand apply is left: nobody holds roles/owner on a project, nobody Folder Admin or Folder Editor on a folder under the organization's, the break-glass account holds Folder Admin on the organization's folder alone, and nothing on that folder is granted to a principal outside the organization.",
+				"owned file(s) match the placement",
+			},
+			absent: []string{"Leftover grants not checked"},
+		},
+		{
+			name: "before the creation there is no folder to read",
 			policies: func(context.Context) (org.PolicyReader, error) {
 				return &fakePolicyReader{}, nil
 			},
-			wantOut: []string{"No person holds roles/owner on an environment project.", "owned file(s) match the placement"},
+			wantOut: []string{
+				"Leftover grants not checked on the folders: no folder named imp under organization 123456789012 (the creation makes it).",
+				"owned file(s) match the placement",
+			},
 		},
 		{
 			name:     "without credentials the check says what it would do",
 			policies: noPolicies,
 			wantOut: []string{
-				"Owners not checked (no Google credentials in this test): org check lists each person (a user: member) holding roles/owner on an environment project, the creator's temporary grant, when it runs with Google credentials that read the projects' IAM policies (gcloud auth application-default login).",
+				"Leftover grants not checked (no Google credentials in this test): org check lists each grant a hand apply left a person with (a person's roles/owner on a project, a person's Folder Admin or Folder Editor on a folder under the organization's, and the break-glass account's roles beyond its Folder Admin on the organization's folder) and each grant on the organization's folder to a principal outside the organization (neither the break-glass account nor an identity in one of its projects), when it runs with Google credentials that read the projects' and folders' IAM policies (gcloud auth application-default login).",
 				"owned file(s) match the placement",
 			},
 		},
@@ -221,6 +304,11 @@ func TestOrgCheckOwners(t *testing.T) {
 			for _, want := range tt.wantOut {
 				if !strings.Contains(out, want) {
 					t.Errorf("output lacks %q:\n%s", want, out)
+				}
+			}
+			for _, absent := range tt.absent {
+				if strings.Contains(out, absent) {
+					t.Errorf("output carries %q:\n%s", absent, out)
 				}
 			}
 		})
@@ -536,34 +624,35 @@ func TestOrgPreflight(t *testing.T) {
 				return grantedTester{}, nil
 			},
 			wantOut: []string{
+				"Organization Administrator (roles/resourcemanager.organizationAdmin), on organization 123456789012: holds resourcemanager.organizations.getIamPolicy, resourcemanager.organizations.setIamPolicy",
 				"Folder Creator (roles/resourcemanager.folderCreator), on organization 123456789012: holds resourcemanager.folders.create",
-				"Billing Account User (roles/billing.user), on billing account 012345-6789AB-CDEF01: holds billing.resourceAssociations.create",
-				"These credentials hold every permission",
+				"Billing Account Administrator (roles/billing.admin), on billing account 012345-6789AB-CDEF01: holds billing.accounts.getIamPolicy, billing.accounts.setIamPolicy, billing.resourceAssociations.create",
+				"These credentials hold every permission bedrock org bootstrap needs",
 			},
 		},
 		{
 			name: "a role missing exits 1",
 			permissions: func(context.Context) (org.PermissionTester, error) {
-				return grantedTester{lacks: []string{"resourcemanager.tagValues.setIamPolicy"}}, nil
+				return grantedTester{lacks: []string{"resourcemanager.folders.create"}}, nil
 			},
 			wantCode: 1,
 			wantOut: []string{
-				"Tag Administrator (roles/resourcemanager.tagAdmin), on organization 123456789012: missing resourcemanager.tagValues.setIamPolicy",
-				"1 of 7 role(s) missing",
+				"Folder Creator (roles/resourcemanager.folderCreator), on organization 123456789012: missing resourcemanager.folders.create",
+				"1 of 3 role(s) missing",
 			},
 		},
 		{
 			name:        "no credentials exits 1 and says so",
 			permissions: noPermissions,
 			wantCode:    1,
-			wantOut:     []string{"Permissions not checked (no Google credentials in this test): org preflight asks Google"},
+			wantOut:     []string{"Permissions not checked (no Google credentials in this test): the preflight asks Google"},
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			dir := orgRepo(t)
+			dir := rootRepo(t)
 			d := orgDeps(dir)
 			d.org = &orgClients{policies: noPolicies, keys: noKeys, permissions: tt.permissions}
 			out, err := execute(d, "", "org", "preflight", "--dir", dir)
@@ -587,9 +676,29 @@ func TestOrgPreflight(t *testing.T) {
 	}
 }
 
-// TestOrgRegisterNeedsAuthorization: the first application is registered after the Cloud
-// Build GitHub App's browser authorization, so register refuses while 2-env's placement
-// leaves either connection value unset, and changes nothing.
+// TestOrgPreflightHosting: a hosting organization has no preflight, since its root
+// organization creates it; the command refuses with its kind named, before any
+// permission is asked about.
+func TestOrgPreflightHosting(t *testing.T) {
+	t.Parallel()
+
+	dir := orgRepo(t)
+	d := orgDeps(dir)
+	d.org = &orgClients{policies: noPolicies, keys: noKeys, permissions: func(context.Context) (org.PermissionTester, error) {
+		t.Error("the permissions were asked about for a hosting organization")
+
+		return grantedTester{}, nil
+	}}
+	_, err := execute(d, "", "org", "preflight", "--dir", dir)
+	want := "the imp organization is a hosting organization (kind in placement.json, left out), which its root organization creates from its record as the creating identity bedrock org bootstrap granted: bedrock org preflight is a root organization's command, run in its repository; nothing is bootstrapped by hand for a hosting organization"
+	if err == nil || !strings.Contains(err.Error(), want) {
+		t.Errorf("org preflight error = %v, want %q", err, want)
+	}
+}
+
+// TestOrgRegisterNeedsAuthorization: the first application is registered after the root
+// organization's Cloud Build authorization is in the placement (the creation copies it), so
+// register refuses while either connection value is unset, and changes nothing.
 func TestOrgRegisterNeedsAuthorization(t *testing.T) {
 	t.Parallel()
 
@@ -599,7 +708,7 @@ func TestOrgRegisterNeedsAuthorization(t *testing.T) {
 	}
 	unauthorizeConnection(t, dir)
 	_, err := execute(orgDeps(dir), "", "org", "register", "quill", "--dir", dir, appCheckout(t, "github.com/"+orgOrganization+"/quill"))
-	want := `placement.json leaves cloudBuildInstallationId and cloudBuildTokenSecretVersion unset: the Cloud Build GitHub App's browser authorization in the boot project comes before the first application (0-bootstrap/README.md, "The Cloud Build GitHub authorization"); record both and register again`
+	want := `placement.json leaves cloudBuildInstallationId and cloudBuildTokenSecretVersion unset: the root organization's Cloud Build authorization, which the creation copies into this placement, comes before the first application (0-bootstrap/README.md, "Created by the root organization"); record both and register again`
 	if err == nil || !strings.Contains(err.Error(), want) {
 		t.Fatalf("Execute() error = %v, want %q", err, want)
 	}
@@ -629,28 +738,19 @@ func TestOrgCommands(t *testing.T) {
 				return runOrg(t, "org", "new", dir)
 			},
 			wantOut: []string{
-				"Rendered the imp foundation", "69 owned file(s)", "seeded .gitignore, 0-bootstrap/terraform.tfvars",
-				"By hand, before the Cloud Build triggers can run", "0. In the Workspace Admin console: one team group per environment, named in\n     placement.json (teamGroups",
-				"its role groups (<group prefix><role>@imp.example), each created with\n     \"Who can view members\" set so that its members can",
-				"On GitHub, as an organization owner: the organization, its machine account\n     (imp-machine, an owner of the organization, named in placement.json as\n     githubMachineAccount)",
-				"has made their three containers in the boot project: bedrock secret add\n     github-infrastructure-key and bedrock secret pin github-infrastructure-key\n     <version>; the same with github-deployer-key and github-release-key. No key reaches\n     GitHub",
-				"In a terminal, in this repository, the apps' keys, never by hand, once 0-bootstrap\n     has made their three containers in the boot project: bedrock secret add\n     github-infrastructure-key and bedrock secret pin github-infrastructure-key\n     <version>; the same with github-deployer-key and github-release-key. No key reaches\n     GitHub: the release trigger of each application's stack mints the release app's\n     token from the pinned version in Cloud Build.",
-				"1. In a terminal, as seed@imp.example, after gcloud auth application-default login:\n     bedrock org preflight, which must find each of these roles held:\n" +
-					"       - Folder Creator (roles/resourcemanager.folderCreator), on the organization\n" +
-					"       - Project Creator (roles/resourcemanager.projectCreator), on the organization\n" +
-					"       - Organization Administrator (roles/resourcemanager.organizationAdmin), on the organization\n" +
-					"       - Organization Policy Administrator (roles/orgpolicy.policyAdmin), on the organization\n" +
-					"       - Organization Role Administrator (roles/iam.organizationRoleAdmin), on the organization\n" +
-					"       - Tag Administrator (roles/resourcemanager.tagAdmin), on the organization\n" +
-					"       - Billing Account User (roles/billing.user), on the billing account\n" +
-					"     then the seed: the terraform folder at the organization root (123456789012)",
-				"imp-boot-gbl-tofu", "projects.boot, projectNumbers.boot",
-				"3. In the boot project's Cloud Build console, as seed@imp.example (the bootstrap\n     administrator, Owner on the boot project from the seed), signed in to GitHub as the\n     organization's machine account (imp-machine): the Cloud Build GitHub App's authorization\n     (0-bootstrap/README.md, \"The Cloud Build GitHub authorization\"), a connection named\n     imp-boot-uc1-github in us-central1; its installation id and the token secret's version go\n     into placement.json (cloudBuildInstallationId, cloudBuildTokenSecretVersion). Then,\n     in a terminal, in this repository: bedrock upgrade, which pins the bedrock the\n     triggers run (bedrockVersion) and renders. bedrock org register refuses the first\n     application until the two values are set.",
-				"4. In a terminal, in 0-bootstrap: the apply on local state, the connection imported\n     into it first, then the migration of its state into the bucket.",
-				"5. In a terminal, as a billing administrator of 012345-6789AB-CDEF01: roles/billing.user on\n     it for the two identities. In the Billing console, as the same administrator: the\n     spend budget on the account (0-bootstrap/README.md, step 5)",
-				"6. In a terminal, in 1-org: the apply, with GITHUB_TOKEN", "a creator's grants,\n     temporary, removed by hand once the apply trigger applies the layers",
-				"7. In each environment project's Google Cloud console, before the first application's\n     OAuth client is made there: the consent screen (APIs & Services, OAuth consent\n     screen), with the audience Internal",
-				"From then on the two Cloud Build triggers in the boot project (imp-boot-uc1-layers-plan and imp-boot-uc1-layers-apply)\napply every layer, these two included: a pull request plans the layers it touches as their\nplan identities and posts the plans on it, the merge applies them as their apply\nidentities, in layer order.",
+				"Rendered the imp foundation", "68 owned file(s)", "seeded .gitignore, 0-bootstrap/terraform.tfvars",
+				"A hosting organization is created by its root organization (imr, root.organization in\nplacement.json), from that organization's repository, by pull request; nothing here is seeded\nor applied by hand",
+				"0. In the Workspace Admin console, before the record: one team group per environment, named\n     in placement.json (teamGroups",
+				"its role groups (<group prefix><role>@imp.example), each created with \"Who can view\n     members\" set so that its members can",
+				"On GitHub, nothing: the organization imp-example, its Bot Account (imp-bot), the release, deployer\n     and infrastructure apps with their keys and the Cloud Build authorization are the root\n     organization's",
+				"the root organization's root project imr-root-gbl-core-c3d4, one secret per app, and every run here reads\n     each secret's alias current",
+				"1. In a terminal, in the root organization's repository: bedrock org create imp, which\n     writes the record (organizations/imp/placement.json)",
+				"2. The merge, as the root organization's creating identity: the organization's folder at\n     the organization root (123456789012), the terraform folder under it, the boot project\n     imp-boot-gbl-core-<suffix>, the boot identity imp-boot-gbl-tofu with its roles on the\n     organization's folder and on the boot project, the break-glass account's (seed@imp.example) Folder Admin on it and the state\n     bucket imp-boot-gbl-state-<suffix>",
+				"the repository imp-example/imp-impulse-infrastructure with the rendered\n     foundation as its first push",
+				"3. In the Billing console, as a billing administrator of 012345-6789AB-CDEF01: the spend budget on the\n     account (0-bootstrap/README.md, \"The spend budget\"); nothing renders it. The boot and\n     org identities (imp-boot-gbl-tofu, imp-org-gbl-tofu) hold Billing Account User on it\n     already, granted by the creation",
+				"4. In each environment project's Google Cloud console, before the first application's\n     OAuth client is made there: the consent screen (APIs & Services, OAuth consent\n     screen), with the audience Internal",
+				"From then on the two Cloud Build triggers in the boot project (imp-boot-uc1-layers-plan and imp-boot-uc1-layers-apply)\napply every layer: a pull request plans the layers it touches as their plan identities and\nposts the plans on it",
+				"bedrock org check lists\nany grant on the organization's folder to a principal outside the organization.",
 				"Pinned bedrock " + headVersion + " in ",
 				"\nAfter the first apply of 2-net: bedrock domain check prints what the apps domain, and each vanity domain, still needs, and where.\n",
 			},
@@ -671,7 +771,7 @@ func TestOrgCommands(t *testing.T) {
 
 				return runOrg(t, "org", "check", "--dir", dir)
 			},
-			wantOut: []string{"69 owned file(s) match the placement"},
+			wantOut: []string{"68 owned file(s) match the placement"},
 		},
 		{
 			name: "register adds an application, renders the values and prints the sequence",
@@ -713,11 +813,10 @@ func TestOrgCommands(t *testing.T) {
 			},
 			wantOut: []string{
 				"Registered quill-service under the code quill in", "at its identities, placed in tst, stg, prd; rendered", "1-org/public-invokers.auto.tfvars among them", "Register through the Cloud Build triggers, as pull requests into master",
-				"1. This render, quill-service at its identities: its repository",
-				"2. The apply trigger by hand with 2-env, in a terminal:\n     gcloud builds triggers run imp-boot-uc1-layers-apply --region=us-central1 --project=imp-boot-gbl-core-a1b2 --branch=master --substitutions=_LAYER=2-env\n     each environment but the last of them grants the next environment's deploy identity\n     read on its records bucket, from state the first pass did not have.",
-				"3. bedrock org register quill --next, then the pull request it renders: the public-invoker\n     tag (1-org), the registry grants (2-shr) and the database admins (2-spn)",
-				"5. bedrock org register quill --next once more, then the pull request it renders: the\n     hostnames (2-net)",
-				"\n  6. After 2-net's apply: bedrock domain check, which passes when the apps domain and each vanity domain resolve to their zones.\n",
+				"1. This render, quill-service at its identities: its repository", "the same apply then runs 2-env\n     once more, each environment in order",
+				"2. bedrock org register quill --next, then the pull request it renders: the public-invoker\n     tag (1-org), the registry grants (2-shr) and the database admins (2-spn)",
+				"4. bedrock org register quill --next once more, then the pull request it renders: the\n     hostnames (2-net)",
+				"\n  5. After 2-net's apply: bedrock domain check, which passes when the apps domain and each vanity domain resolve to their zones.\n",
 			},
 		},
 		{
@@ -740,7 +839,7 @@ func TestOrgCommands(t *testing.T) {
 
 				return runOrg(t, "org", "render", "--dir", dir)
 			},
-			wantOut: []string{"69 owned file(s) written", "The triggers cannot run every layer yet: record projects.boot in placement.json and run bedrock org render."},
+			wantOut: []string{"68 owned file(s) written", "The triggers cannot run every layer yet: record projects.boot in placement.json and run bedrock org render."},
 		},
 		{
 			name: "render says what the triggers' runs still lack: the pin and the authorization",
@@ -758,7 +857,7 @@ func TestOrgCommands(t *testing.T) {
 			},
 			wantOut: []string{
 				"placement.json pins no bedrock (bedrockVersion), and the triggers' runs fetch the pinned one: run bedrock upgrade in this repository, which records the pin and renders.\n",
-				"0-bootstrap renders the Cloud Build connection and the triggers once placement.json records cloudBuildInstallationId and cloudBuildTokenSecretVersion, from the GitHub authorization in the boot project (0-bootstrap/README.md, \"The Cloud Build GitHub authorization\").\n",
+				"0-bootstrap renders the Cloud Build connection and the triggers once placement.json records cloudBuildInstallationId and cloudBuildTokenSecretVersion, the root organization's Cloud Build authorization, which the creation copies from its placement (0-bootstrap/README.md, \"Created by the root organization\").\n",
 			},
 		},
 		{
@@ -816,7 +915,7 @@ func TestOrgCommands(t *testing.T) {
 				return runOrg(t, "org", "check", "--dir", dir)
 			},
 			wantCode: 1,
-			wantOut:  []string{"2-shr/registry.tf: line 1 differs", "1 finding(s) against the 69 owned file(s) the placement renders"},
+			wantOut:  []string{"2-shr/registry.tf: line 1 differs", "1 finding(s) against the 68 owned file(s) the placement renders"},
 		},
 		{
 			name: "check reports a .tf file added by hand",
@@ -834,7 +933,7 @@ func TestOrgCommands(t *testing.T) {
 			wantCode: 1,
 			wantOut: []string{
 				"2-env/extra.tf: not rendered by bedrock: every .tf file of a layer comes from the placement, and a file added by hand would run as the layer's identity; move what it declares into the placement, or remove it\n",
-				"1 finding(s) against the 69 owned file(s) the placement renders\n",
+				"1 finding(s) against the 68 owned file(s) the placement renders\n",
 			},
 		},
 		{
@@ -859,7 +958,7 @@ func TestOrgCommands(t *testing.T) {
 
 				return code, out
 			},
-			wantOut: []string{"69 owned file(s) written"},
+			wantOut: []string{"68 owned file(s) written"},
 		},
 	}
 	for _, tt := range tests {
@@ -1249,7 +1348,7 @@ func TestOrgRegisterNext(t *testing.T) {
 	const (
 		bucket  = "imp-boot-gbl-state-a1b2"
 		host    = `"quill-tst.apps.imp.example"`
-		invoker = `"serviceAccount:imp-tst-gbl-quill-tofu@imp-tst-gbl-core-1a2b.iam.gserviceaccount.com",`
+		invoker = `tst = "serviceAccount:imp-tst-gbl-quill-tofu@imp-tst-gbl-core-1a2b.iam.gserviceaccount.com"`
 	)
 	type step struct {
 		// objects are added to the store before the run.
@@ -1537,7 +1636,7 @@ func TestOrgDestroy(t *testing.T) {
 			name:        "destroys when the prefix is typed, and writes the journal",
 			interactive: always,
 			in:          "imp\n",
-			wantOut:     []string{warning, "Took github_repository.infrastructure out of 1-org's state", "Destroyed 1-org.", "Destroyed 0-bootstrap.", "Deleted the imp organization's projects; a line went into JOURNAL.md.", "To start over: a new seed"},
+			wantOut:     []string{warning, "Took github_repository.infrastructure out of 1-org's state", "Destroyed 1-org.", "Destroyed 0-bootstrap.", "Deleted the imp organization's projects; a line went into JOURNAL.md.", "To start over: the organization's entry out of the root organization's placement.json"},
 			wantRan:     11,
 			wantJournal: "bedrock org destroy deleted the organization's projects (imp-boot-gbl-core-a1b2, imp-shr-gbl-core-7a8b, imp-net-gbl-core-9c0d, imp-spn-gbl-core-2e3f, imp-tst-gbl-core-1a2b, imp-stg-gbl-core-3c4d, imp-prd-gbl-core-5e6f): Google holds them for 30 days, their ids never return. The GitHub repositories stay.\n",
 		},
@@ -1689,6 +1788,83 @@ func TestOrgCheckCapacity(t *testing.T) {
 			}
 			if strings.Contains(out, notice) != tt.wantNotice {
 				t.Errorf("output carries the notice: %v, want %v:\n%s", !tt.wantNotice, tt.wantNotice, out)
+			}
+		})
+	}
+}
+
+// TestOrgRegisterAdopted: register asks GitHub whether the application's repository
+// exists; one that does is recorded adopted, so 1-org adopts it on its first apply instead
+// of making it, and the render lists it; one that does not is made; a refusal to read
+// stops the registration.
+func TestOrgRegisterAdopted(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name        string
+		repository  string
+		exists      bool
+		refuse      bool
+		wantAdopted bool
+		wantErr     string
+	}{
+		{name: "an existing repository is adopted", repository: "quill", exists: true, wantAdopted: true},
+		{name: "a repository not on GitHub yet is made", repository: "quill-service"},
+		{name: "GitHub unreadable", repository: "quill", refuse: true, wantErr: "reading whether " + orgOrganization + "/quill exists on GitHub, which decides whether 1-org adopts the repository or makes it"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			dir := orgRepo(t)
+			if code, out := runOrg(t, "org", "new", dir); code != 0 {
+				t.Fatalf("org new: %d %s", code, out)
+			}
+			server := githubtest.New(t)
+			if tt.exists {
+				server.AddRepo(orgOrganization, tt.repository, &githubtest.Repo{})
+			}
+			d := orgDeps(dir)
+			d.github = func(context.Context) (*github.Client, error) {
+				if tt.refuse {
+					return nil, errors.New("no token in this test")
+				}
+
+				return server.Client(), nil
+			}
+			out, err := execute(d, "", "org", "register", "quill", "--dir", dir, appCheckout(t, "github.com/"+orgOrganization+"/"+tt.repository))
+			if tt.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+					t.Fatalf("org register error = %v, want %q", err, tt.wantErr)
+				}
+
+				return
+			}
+			if err != nil {
+				t.Fatalf("org register error = %v; output:\n%s", err, out)
+			}
+			adoptedLine := orgOrganization + "/" + tt.repository + " exists on GitHub already: 1-org adopts the repository on its first apply (adopted in placement.json) instead of making it; a ruleset or Environment made on it by hand is imported by hand first (1-org/README.md)."
+			if strings.Contains(out, adoptedLine) != tt.wantAdopted {
+				t.Errorf("adopted line printed = %v, want %v:\n%s", !tt.wantAdopted, tt.wantAdopted, out)
+			}
+			p, err := org.ReadPlacement(filepath.Join(dir, "placement.json"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got := p.Adopted(); slices.Contains(got, "quill") != tt.wantAdopted {
+				t.Errorf("Adopted() = %v, want quill adopted %v", got, tt.wantAdopted)
+			}
+			tfvars, err := os.ReadFile(filepath.Join(dir, "1-org", "applications.auto.tfvars"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			// The fixture registers beacon adopted already.
+			want := `adopted_applications = ["beacon"]`
+			if tt.wantAdopted {
+				want = `adopted_applications = ["beacon", "quill"]`
+			}
+			if !strings.Contains(string(tfvars), want) {
+				t.Errorf("1-org/applications.auto.tfvars lacks %q:\n%s", want, tfvars)
 			}
 		})
 	}
