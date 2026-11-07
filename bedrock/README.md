@@ -737,8 +737,9 @@ It also refuses:
   the registration and the file.
 
 It also warns, without failing, about the maintenance windows (Maintenance windows,
-below): production with no maintenance setting in `placement.json`, so that the refusal
-of a breaking release at the start of its run is never the first sign; no release file
+below): production with no maintenance setting in `placement.json`, when the application
+is placed there, so that the refusal of a breaking release at the start of its run is never
+the first sign; no release file
 (`zz_gen_release.json`) in the router package, so that no release of the checkout is
 breaking and the window never holds a run; a release file that does not read; and a
 dated slot that has passed. A malformed setting (a time zone that does not load, a slot

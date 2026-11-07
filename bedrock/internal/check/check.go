@@ -524,14 +524,14 @@ func (r *Report) scanImage(appDir string, m *derive.Model) error {
 }
 
 // scanMaintenance warns about the maintenance windows at now: production without a
-// setting (a breaking release to it is refused at run start until one is written), no
-// release file in the router package (no outlet declares an oldest answered release, so
-// no release is breaking and the window never holds a run), a release file that does not
-// read, and a dated slot that has passed.
+// setting (a breaking release to it is refused at run start until one is written), when
+// the application is placed there, no release file in the router package (no outlet
+// declares an oldest answered release, so no release is breaking and the window never
+// holds a run), a release file that does not read, and a dated slot that has passed.
 func scanMaintenance(m *derive.Model, appDir string, now time.Time) []MaintenanceFinding {
 	var findings []MaintenanceFinding
 	p := m.Placement
-	if _, ok := p.MaintenanceSetting(p.Production()); !ok {
+	if _, ok := p.MaintenanceSetting(p.Production()); !ok && p.InProduction() {
 		findings = append(findings, MaintenanceFinding{Problem: fmt.Sprintf("%s has no maintenance setting (placement.json \"maintenance\": {%q: ...}): a breaking release to %s is refused at the start of its run until one is written; %q is a setting, and so are the client's windows", p.Production(), p.Production(), p.Production(), derive.MaintenanceAnytime)})
 	}
 	for _, env := range p.Environments {

@@ -30,10 +30,18 @@ func TestScanMaintenance(t *testing.T) {
 		// maintenance is the placement's block; routerDir the model's router package;
 		// releaseFile the file's content, written under appDir when set.
 		maintenance map[string]derive.MaintenanceWindow
-		routerDir   string
-		releaseFile string
-		want        []string
+		// environments are the application's, the whole order when nil.
+		environments []string
+		routerDir    string
+		releaseFile  string
+		want         []string
 	}{
+		{
+			name:         "an application placed in tst alone is not in production, so no setting is asked of it",
+			environments: []string{"tst"},
+			routerDir:    "pkg/router",
+			releaseFile:  `{"outlets": {"default": {"oldestAnswered": "1.5.0"}}}`,
+		},
 		{
 			name:      "production without a setting and no release file earn two warnings",
 			routerDir: "pkg/router",
@@ -82,7 +90,11 @@ func TestScanMaintenance(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			m := &derive.Model{RouterDir: tt.routerDir, Placement: &derive.Placement{Environments: []string{"tst", "stg", "prd"}, Maintenance: tt.maintenance}}
+			environments := tt.environments
+			if environments == nil {
+				environments = []string{"tst", "stg", "prd"}
+			}
+			m := &derive.Model{RouterDir: tt.routerDir, Placement: &derive.Placement{Environments: environments, ProductionEnvironment: "prd", Maintenance: tt.maintenance}}
 			findings := scanMaintenance(m, appDir, now)
 			if len(findings) != len(tt.want) {
 				t.Fatalf("scanMaintenance() = %+v, want %d finding(s): %v", findings, len(tt.want), tt.want)
