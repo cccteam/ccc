@@ -92,7 +92,10 @@ var recordLabelRE = regexp.MustCompile(`^_?[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$`)
 // itself, to send and receive mail, and to answer an address. NS is not among them:
 // the zone's own NS records are Cloud DNS's, and the others are the labels handed
 // onward (labels).
-var recordTypes = []string{"A", "AAAA", "CAA", "CNAME", "MX", "SRV", "TXT"}
+var recordTypes = []string{"A", "AAAA", "CAA", recordTypeCNAME, "MX", "SRV", "TXT"}
+
+// recordTypeCNAME is the one record type DNS keeps off the apex and holds to one value.
+const recordTypeCNAME = "CNAME"
 
 // Delegation is where a label is handed: the hosting organization that serves the name
 // (by its prefix) and the four name servers of the zone it serves it from, as Cloud DNS
@@ -347,9 +350,9 @@ func (p *Placement) validateRecords(domain string) error {
 			return errors.Newf("domains.%s.records[%d]: ttl %d is negative; leave it out for 300 seconds", domain, i, r.TTL)
 		case len(r.Data) == 0:
 			return errors.Newf("domains.%s.records[%d]: data is empty; a record set carries at least one value", domain, i)
-		case r.Type == "CNAME" && r.Name == RecordApex:
+		case r.Type == recordTypeCNAME && r.Name == RecordApex:
 			return errors.Newf("domains.%s.records[%d]: a CNAME at the apex is not allowed by DNS; the apex holds the zone's own records", domain, i)
-		case r.Type == "CNAME" && len(r.Data) > 1:
+		case r.Type == recordTypeCNAME && len(r.Data) > 1:
 			return errors.Newf("domains.%s.records[%d]: a CNAME carries one value, not %d", domain, i, len(r.Data))
 		case seen[r.Name+"/"+r.Type]:
 			return errors.Newf("domains.%s.records[%d]: %s %s is declared twice; several values go in one record's data", domain, i, r.Name, r.Type)

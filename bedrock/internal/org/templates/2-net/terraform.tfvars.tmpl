@@ -22,3 +22,8 @@ registrations = {}
 # Records the apps domain needs beyond the load balancer's, such as mail or
 # verification records if the domain ever carries them.
 extra_records = []
+
+# Records a vanity domain's zone needs beyond the load balancer's, keyed by the
+# domain: a null SPF and a DMARC policy for a domain that sends no mail, a
+# verification record, a CAA record. Never a mail-exchanger record.
+vanity_extra_records = {}

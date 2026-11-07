@@ -150,3 +150,18 @@ resource "google_dns_record_set" "extra" {
   ttl          = each.value.ttl
   rrdatas      = each.value.rrdatas
 }
+
+# What else a vanity domain's zone needs: the records a domain delegated whole
+# publishes to prove itself and to say it sends no mail (a null SPF, a DMARC
+# policy, a verification record, a CAA record). See var.vanity_extra_records;
+# never a mail-exchanger record.
+resource "google_dns_record_set" "vanity_extra" {
+  for_each = { for e in flatten([for d, rs in var.vanity_extra_records : [for r in rs : merge(r, { domain = d })]]) : "${e.domain}/${e.name}/${e.type}" => e }
+
+  project      = local.project_id
+  managed_zone = google_dns_managed_zone.vanity[each.value.domain].name
+  name         = each.value.name == "@" ? "${each.value.domain}." : "${each.value.name}.${each.value.domain}."
+  type         = each.value.type
+  ttl          = each.value.ttl
+  rrdatas      = each.value.rrdatas
+}

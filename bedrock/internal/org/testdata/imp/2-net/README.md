@@ -268,6 +268,16 @@ set, the third step above), the application's hostnames then on that label.
 The `vanity_domains` output carries each zone's name servers and
 authorization record.
 
+A vanity domain delegated whole often needs a few records of its own beside
+the load balancer's: the null SPF (`v=spf1 -all`) and DMARC reject policy a
+domain that sends no mail publishes against spoofing, a site-verification
+TXT record, a CAA record admitting `pki.goog`. `vanity_extra_records` in
+`terraform.tfvars`, keyed by the domain, takes them as `extra_records` takes
+the apps domain's, rendered into that domain's zone. Never a mail-exchanger
+record: a zone here carries no customer's mail, and a domain that carries
+mail is delegated as a label, which the check's refusal of an occupied apex
+already decides.
+
 A domain bought here before it was declared a vanity domain had a parked
 zone (`domains.tf`); declaring it moves that zone, under the same name, to
 `dns.tf`'s vanity zones (a `moved` block per declared domain), so the
@@ -393,6 +403,7 @@ tofu apply
 | `serving` | Whether the listeners stand and hosts route; `bedrock org teardown` renders it false. | `bool` | `true` | no |
 | `ssl_policy_profile` | Cipher profile of the SSL policy. | `string` | `"MODERN"` | no |
 | `vanity_domains` | Domains delegated whole beside the apps domain, each with a zone and a certificate of its own; rendered from `placement.json`. | `list(string)` | `["harborlights.example"]` | no |
+| `vanity_extra_records` | Further records in a vanity domain's zone, keyed by the domain (a null SPF, a DMARC policy, verification, CAA; never a mail-exchanger record). | `map(list(object))` | `{}` | no |
 
 Project ID and number, the layer identity, the boot project, and the prefix
 are read from `1-org`'s state rather than declared.
