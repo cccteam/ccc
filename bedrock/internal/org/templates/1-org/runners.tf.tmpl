@@ -223,3 +223,18 @@ resource "google_storage_bucket_iam_member" "environment_plan_policy_reader" {
   role   = google_project_iam_custom_role.bucket_policy_reader["boot"].id
   member = google_service_account.plan[each.key].member
 }
+
+# org check, which the triggers run before a plan and an apply, lists each
+# environment project's API keys that carry no restriction (bedrock's
+# apikeys.go), and each list is billed to the project it reads: the runners
+# hold serviceUsageConsumer on each environment project for that read, as
+# they hold it on the boot project for the layers' calls.
+resource "google_project_iam_member" "runner_keys_quota" {
+  for_each = {
+    for pair in setproduct(["applier", "planner"], [for k, v in local.layers : k if v.role_set == "app"]) : "${pair[0]}__${pair[1]}" => { runner = pair[0], proj = pair[1] }
+  }
+
+  project = module.project[each.value.proj].project_id
+  role    = "roles/serviceusage.serviceUsageConsumer"
+  member  = each.value.runner == "applier" ? local.boot.applier_member : local.boot.planner_member
+}
