@@ -47,7 +47,8 @@ type Google interface {
 	// RevokeFolder takes the member out of each of the roles on the folder's policy;
 	// a role the member is not in is left as it is.
 	RevokeFolder(ctx context.Context, folder, member string, roles []string) error
-	// ProjectExists reports whether the project exists (and is readable).
+	// ProjectExists reports whether the project stands, active and readable; one Google holds
+	// after its deletion is not there, to use or to delete again.
 	ProjectExists(ctx context.Context, id string) (bool, error)
 	// FindProject is the id of the active project directly under the folder (its numeric
 	// id) whose id starts with idPrefix, empty when there is none; two or more are an
@@ -329,7 +330,7 @@ func revoke(ctx context.Context, p policy, member string, roles []string) error 
 }
 
 func (g *google) ProjectExists(ctx context.Context, id string) (bool, error) {
-	_, err := g.projects.GetProject(ctx, &resourcemanagerpb.GetProjectRequest{Name: "projects/" + id})
+	project, err := g.projects.GetProject(ctx, &resourcemanagerpb.GetProjectRequest{Name: "projects/" + id})
 	if status.Code(err) == codes.NotFound || status.Code(err) == codes.PermissionDenied {
 		return false, nil
 	}
@@ -337,7 +338,10 @@ func (g *google) ProjectExists(ctx context.Context, id string) (bool, error) {
 		return false, errors.Wrapf(err, "resourcemanager.ProjectsClient.GetProject(): %s", id)
 	}
 
-	return true, nil
+	// A project Google holds after its deletion (thirty days, in which the console can
+	// restore it) answers the read but is not there to use, nor to delete again: a
+	// destroy run again finds it gone, and a bootstrap makes its own under a new id.
+	return project.GetState() == resourcemanagerpb.Project_ACTIVE, nil
 }
 
 func (g *google) FindProject(ctx context.Context, folder, idPrefix string) (string, error) {
