@@ -603,7 +603,11 @@ func registrationReport(ctx context.Context, d deps, p *org.Placement, dir strin
 		open = d.org.registrations
 	}
 	project, _ := p.AppsZoneName()
-	r, err := domain.Registrations(ctx, open, domain.RegistrationsRequest{Dir: dir, Project: project, Now: time.Now()})
+	req := domain.RegistrationsRequest{Dir: dir, Project: project, Now: time.Now()}
+	if d.lookups != nil {
+		req.OpenZones = d.lookups.OpenZones
+	}
+	r, err := domain.Registrations(ctx, open, req)
 	if err != nil {
 		fmt.Fprintf(out, "Registrations not checked (%v): %s.\n", errors.Cause(err), does)
 
@@ -1647,8 +1651,12 @@ pause while it fails (a folder refuses for a while after its last project's dele
 project and goes with it. Google keeps a deleted project for 30 days, in which the console can
 restore it; its id never returns after. A layer whose state holds nothing is skipped. When 2-net
 registers domains (registrations in 2-net/terraform.tfvars) the network project is kept, with
-its folder and the organization's, since a registration cannot move to another project: that
-project is a person's to deal with (1-org/README.md, "Removing a project"). It refuses a layer
+its folder and the organization's, since a registration cannot move to another project; 2-net
+is destroyed inside it first, on a copy rendered without the zones' prevent_destroy and with
+the registrations taken out of its state, so the project holds the registrations and nothing
+else, the domains stop resolving until a zone stands elsewhere and each registration is
+pointed at it, and the registrations are a person's to transfer out or give up (the rendered
+0-bootstrap/README.md, "Destroying the organization"). It refuses a layer
 rendered by an earlier bedrock, which declares no destroy variable. It ends with a line in
 JOURNAL.md and what starting over takes.`,
 		Args: cobra.NoArgs,
@@ -1710,7 +1718,7 @@ func (d deps) destroyOrg(cmd *cobra.Command, dir string, yes bool) error {
 		if d.deploy != nil {
 			exec = d.deploy.Exec
 		}
-		req := &layers.DestroyRequest{Dir: dir, GithubToken: d.githubToken, KeepNet: keepNet, Pause: layers.DestroyPause}
+		req := &layers.DestroyRequest{Dir: dir, Placement: p, GithubToken: d.githubToken, KeepNet: keepNet, Pause: layers.DestroyPause}
 		if err := layers.Destroy(cmd.Context(), exec, req, out); err != nil {
 			return err
 		}
@@ -1748,7 +1756,7 @@ func destroyWarning(p *org.Placement, registered []string) string {
 	}
 	b.WriteString("\nAlso gone: the folders, the custom roles and the tags, the org policies, the entitlements, the audit log sink, and on GitHub the rulesets, the operations environments, the runner group and the organization variable. The repositories stay, with their code, pull requests and releases.\n")
 	if len(registered) > 0 {
-		fmt.Fprintf(&b, "\nKept: the network project %s, with its folder and the organization's, since 2-net registers %s there (registrations in 2-net/terraform.tfvars) and a registration cannot move to another project; it is a person's to deal with (1-org/README.md, \"Removing a project\").\n", p.Projects[netKey], strings.Join(registered, ", "))
+		fmt.Fprintf(&b, "\nKept: the network project %s, with its folder and the organization's, since 2-net registers %s there (registrations in 2-net/terraform.tfvars) and a registration cannot move to another project. Everything else in it goes: 2-net is destroyed inside it first, so its zones and records, the load balancer and its address and the certificates are gone, and %s stop resolving until a zone stands elsewhere and each registration is pointed at it. The registrations are a person's: transfer each out (sixty days after it was registered, after an unlock, with a year added at the new registrar's price), or give it up by deleting the registration or the project (Google's thirty-day restore window, then nothing but the registrant contact and support).\n", p.Projects[netKey], strings.Join(registered, ", "), strings.Join(registered, ", "))
 	}
 	b.WriteString("\nGoogle keeps a deleted project for 30 days, in which the console can restore it; its id never returns after. The Spanner instance and every backup on it (the release backups, the schedules' and the final backups bedrock destroy took) go with the Spanner project and come back with it in those days, and are gone after. Nothing here is undone by bedrock.\n\n")
 
@@ -1809,7 +1817,7 @@ func destroyJournalLine(p *org.Placement, keepNet bool, now time.Time) string {
 	}
 	line := fmt.Sprintf("- %s: bedrock org destroy deleted the organization's projects (%s): Google holds them for 30 days, their ids never return. The GitHub repositories stay.", now.Format("2006-01-02 15:04Z"), strings.Join(ids, ", "))
 	if keepNet {
-		line += fmt.Sprintf(" The network project %s was kept with its registrations, for a person.", p.Projects[netKey])
+		line += fmt.Sprintf(" The network project %s was kept with its registrations and nothing else: 2-net was destroyed inside it.", p.Projects[netKey])
 	}
 
 	return line + "\n"
@@ -1840,7 +1848,7 @@ func destroyEpilogue(p *org.Placement, keepNet bool) string {
 	}
 	fmt.Fprintf(&b, "\nDeleted the %s organization's projects; a line went into %s. Google holds them for 30 days (their ids never return); the GitHub repositories are as they were, without the rulesets, environments and runners 1-org made.\n", p.Prefix, journalFile)
 	if keepNet {
-		fmt.Fprintf(&b, "The network project %s stays with its registrations, for a person.\n", p.Projects[netKey])
+		fmt.Fprintf(&b, "The network project %s stays with its registrations and nothing else: 2-net's zones, load balancer and certificates are gone, and the domains registered there do not resolve until a zone stands elsewhere and each registration is pointed at it. A registration cannot move to another project: transfer it out (sixty days after it was registered, after an unlock, with a year added at the new registrar's price), or give it up by deleting it or the project (Google's thirty-day restore window). bedrock org check here lists each registration, where it points and whether a zone answers for it.\n", p.Projects[netKey])
 	}
 	b.WriteString("To start over: the organization's entry out of the root organization's placement.json (hostingOrganizations), then bedrock org create there again, which chooses a new boot project suffix, and its pull request (0-bootstrap/README.md, \"Destroying the organization\").\n")
 

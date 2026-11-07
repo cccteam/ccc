@@ -44,6 +44,16 @@ func (z zonesByName) RecordSets(_ context.Context, _, zone string) ([]domain.Rec
 	}, nil
 }
 
+func (z zonesByName) ZoneByDNSName(_ context.Context, _, dnsName string) (string, *domain.Zone, error) {
+	for zone, name := range z {
+		if name+"." == dnsName {
+			return zone, &domain.Zone{DNSName: dnsName, NameServers: []string{checkServer}}, nil
+		}
+	}
+
+	return "", nil, nil
+}
+
 func (zonesByName) Close() error {
 	return nil
 }

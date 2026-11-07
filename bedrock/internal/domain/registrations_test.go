@@ -80,6 +80,10 @@ func TestRegistrations(t *testing.T) {
 		held    map[string]RegistrationStatus
 		fails   string
 		noOpen  bool
+		// zone, when set, is the one zone Cloud DNS holds in the network project, read
+		// through OpenZones; zones leaves OpenZones wired with none.
+		zone  *Zone
+		zones bool
 		// noLayer leaves the repository without a network layer placement.
 		noLayer bool
 		// wantLines are the report's lines, in order, when wantFirst is set the first
@@ -152,6 +156,44 @@ func TestRegistrations(t *testing.T) {
 			},
 		},
 		{
+			name:    "the registration points at the zone's name servers",
+			mailbox: mailbox, domains: []string{"example.app"}, project: checkProject, zones: true,
+			zone: &Zone{DNSName: "example.app.", NameServers: []string{"ns-cloud-b1.googledomains.com.", "ns-cloud-b2.googledomains.com."}},
+			held: map[string]RegistrationStatus{"example.app": {State: "ACTIVE", Created: registered, Expires: nextYear, NameServers: []string{"ns-cloud-b2.googledomains.com.", "ns-cloud-b1.googledomains.com."}}},
+			wantLines: []string{
+				"example.app: ACTIVE, expires on 2027-09-26.",
+				"example.app: the registration points at ns-cloud-b2.googledomains.com., ns-cloud-b1.googledomains.com., the name servers of zone ex-net-gbl-dns-apps in ex-net-gbl-core-1a2b.",
+			},
+		},
+		{
+			name:    "no zone answers for the registered domain: destroyed with its organization",
+			mailbox: mailbox, domains: []string{"example.app"}, project: checkProject, zones: true,
+			held: map[string]RegistrationStatus{"example.app": {State: "ACTIVE", Created: registered, Expires: nextYear, NameServers: []string{"ns-cloud-b1.googledomains.com."}}},
+			wantLines: []string{
+				"example.app: ACTIVE, expires on 2027-09-26.",
+				"example.app: the registration points at ns-cloud-b1.googledomains.com., and no zone in ex-net-gbl-core-1a2b answers for it: the zone was destroyed with its organization or made again elsewhere, so the domain does not resolve; point the registration at a zone that stands (2-net/README.md, \"Making a zone again\"), or transfer the domain out, since a registration cannot move to another project.",
+			},
+		},
+		{
+			name:    "the zone stands on other name servers than the registration points at",
+			mailbox: mailbox, domains: []string{"example.app"}, project: checkProject, zones: true,
+			zone: &Zone{DNSName: "example.app.", NameServers: []string{"ns-cloud-c1.googledomains.com."}},
+			held: map[string]RegistrationStatus{"example.app": {State: "ACTIVE", Created: registered, Expires: nextYear, NameServers: []string{"ns-cloud-b1.googledomains.com."}}},
+			wantLines: []string{
+				"example.app: ACTIVE, expires on 2027-09-26.",
+				"example.app: the registration points at ns-cloud-b1.googledomains.com., and zone ex-net-gbl-dns-apps in ex-net-gbl-core-1a2b stands on ns-cloud-c1.googledomains.com.: point the registration at it (2-net/README.md, \"Making a zone again\").",
+			},
+		},
+		{
+			name:    "zones not wired: where the registration points, and no more",
+			mailbox: mailbox, domains: []string{"example.app"}, project: checkProject,
+			held: map[string]RegistrationStatus{"example.app": {State: "ACTIVE", Created: registered, Expires: nextYear, NameServers: []string{"ns-cloud-b1.googledomains.com."}}},
+			wantLines: []string{
+				"example.app: ACTIVE, expires on 2027-09-26.",
+				"example.app: the registration points at ns-cloud-b1.googledomains.com..",
+			},
+		},
+		{
 			name:    "a registration the apply has not made yet",
 			mailbox: mailbox, domains: []string{"example.app"}, project: checkProject,
 			wantLines: []string{"example.app: Cloud Domains holds no registration of it in ex-net-gbl-core-1a2b; the apply of 2-net registers it."},
@@ -198,7 +240,11 @@ func TestRegistrations(t *testing.T) {
 					return &fakeRegistrations{byDomain: tt.held, fails: tt.fails}, nil
 				}
 			}
-			r, err := Registrations(context.Background(), open, RegistrationsRequest{Dir: dir, Project: tt.project, Now: now})
+			req := RegistrationsRequest{Dir: dir, Project: tt.project, Now: now}
+			if tt.zones {
+				req.OpenZones = func(context.Context) (ZoneReader, error) { return &fakeZones{zone: tt.zone}, nil }
+			}
+			r, err := Registrations(context.Background(), open, req)
 			if tt.wantErr != "" {
 				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
 					t.Fatalf("Registrations() error = %v, wantErr %q", err, tt.wantErr)

@@ -13,6 +13,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"time"
 
 	domains "cloud.google.com/go/domains/apiv1beta1"
@@ -74,10 +75,17 @@ type RegistrationStatus struct {
 	// Issues are the issues the registrar raises, as Cloud Domains names them
 	// (UNVERIFIED_EMAIL, CONTACT_SUPPORT).
 	Issues []string
+	// NameServers are the name servers the registration points the domain at.
+	NameServers []string
+	// ZoneChecked reports whether the network project was read for a zone of the domain;
+	// ZoneName and ZoneNameServers are that zone's, empty when the project holds none.
+	ZoneChecked     bool
+	ZoneName        string
+	ZoneNameServers []string
 }
 
 // unverified reports a registration whose registrant mailbox is not verified yet.
-func (s RegistrationStatus) unverified() bool {
+func (s *RegistrationStatus) unverified() bool {
 	return slices.Contains(s.Issues, IssueUnverifiedEmail)
 }
 
@@ -134,6 +142,14 @@ func (r *registrations) Registration(ctx context.Context, project, domain string
 	for _, issue := range reg.GetIssues() {
 		s.Issues = append(s.Issues, issue.String())
 	}
+	if settings := reg.GetDnsSettings(); settings != nil {
+		switch {
+		case settings.GetCustomDns() != nil:
+			s.NameServers = settings.GetCustomDns().GetNameServers()
+		case settings.GetGoogleDomainsDns() != nil:
+			s.NameServers = settings.GetGoogleDomainsDns().GetNameServers()
+		}
+	}
 
 	return s, nil
 }
@@ -157,6 +173,10 @@ type RegistrationsRequest struct {
 	Project string
 	// Now is the time the expiry dates and the verification deadline are measured from.
 	Now time.Time
+	// OpenZones opens Cloud DNS, through which the report reads whether a zone of each
+	// registered domain stands in the network project and on which name servers; nil
+	// leaves the zones unread.
+	OpenZones ZoneReaderFunc
 }
 
 // RegistrationReport is each registration the network layer makes, as Cloud Domains
@@ -197,11 +217,28 @@ func Registrations(ctx context.Context, open RegistrationReaderFunc, req Registr
 		return nil, err
 	}
 	defer reader.Close()
+	var zones ZoneReader
+	if req.OpenZones != nil {
+		if zones, err = req.OpenZones(ctx); err != nil {
+			return nil, err
+		}
+		defer zones.Close()
+	}
 
 	for _, name := range names {
 		s, err := reader.Registration(ctx, req.Project, name)
 		if err != nil {
 			return nil, err
+		}
+		if zones != nil && s.Found {
+			zoneName, zone, err := zones.ZoneByDNSName(ctx, req.Project, name+".")
+			if err != nil {
+				return nil, err
+			}
+			s.ZoneChecked = true
+			if zone != nil {
+				s.ZoneName, s.ZoneNameServers = zoneName, zone.NameServers
+			}
 		}
 		r.Registrations = append(r.Registrations, *s)
 	}
@@ -256,19 +293,19 @@ func (r *RegistrationReport) Write(w io.Writer) {
 
 		return
 	}
-	for _, s := range r.Registrations {
-		if s.unverified() {
+	for i := range r.Registrations {
+		if s := &r.Registrations[i]; s.unverified() {
 			r.writeUnverified(w, s)
 		}
 	}
-	for _, s := range r.Registrations {
-		r.writeState(w, s)
+	for i := range r.Registrations {
+		r.writeState(w, &r.Registrations[i])
 	}
 }
 
 // writeUnverified names the mailbox the registrar's verification mail went to and the
 // date its link must be followed by.
-func (r *RegistrationReport) writeUnverified(w io.Writer, s RegistrationStatus) {
+func (r *RegistrationReport) writeUnverified(w io.Writer, s *RegistrationStatus) {
 	mailbox := fmt.Sprintf("%s, %s.%s in %s", r.Mailbox, registrantKey, emailKey, netValues)
 	if r.Mailbox == "" {
 		mailbox = fmt.Sprintf("%s.%s in %s, which names none", registrantKey, emailKey, netValues)
@@ -286,7 +323,7 @@ func (r *RegistrationReport) writeUnverified(w io.Writer, s RegistrationStatus) 
 
 // writeState prints one registration's state and expiry date, then the issues other than
 // the mailbox's.
-func (r *RegistrationReport) writeState(w io.Writer, s RegistrationStatus) {
+func (r *RegistrationReport) writeState(w io.Writer, s *RegistrationStatus) {
 	if !s.Found {
 		fmt.Fprintf(w, "%s: Cloud Domains holds no registration of it in %s; the apply of %s registers it.\n", s.Domain, r.Project, DefaultLayer)
 
@@ -303,6 +340,7 @@ func (r *RegistrationReport) writeState(w io.Writer, s RegistrationStatus) {
 		}
 	}
 	fmt.Fprintln(w, line+".")
+	r.writeNameServers(w, s)
 	for _, issue := range s.Issues {
 		switch issue {
 		case IssueUnverifiedEmail:
@@ -313,6 +351,28 @@ func (r *RegistrationReport) writeState(w io.Writer, s RegistrationStatus) {
 			fmt.Fprintf(w, "%s: Cloud Domains reports the issue %s.\n", s.Domain, issue)
 		}
 	}
+}
+
+// writeNameServers prints where the registration points the domain and, when the network
+// project was read, whether a zone of the domain stands there on those servers: a
+// registration that points at a zone destroyed with its organization, or made again on
+// other servers, is the one thing the destroy and a zone made again leave for a person.
+func (r *RegistrationReport) writeNameServers(w io.Writer, s *RegistrationStatus) {
+	if len(s.NameServers) == 0 {
+		return
+	}
+	line := fmt.Sprintf("%s: the registration points at %s", s.Domain, strings.Join(s.NameServers, ", "))
+	switch {
+	case !s.ZoneChecked:
+		line += "."
+	case s.ZoneName == "":
+		line += fmt.Sprintf(", and no zone in %s answers for it: the zone was destroyed with its organization or made again elsewhere, so the domain does not resolve; point the registration at a zone that stands (%s/README.md, \"Making a zone again\"), or transfer the domain out, since a registration cannot move to another project.", r.Project, DefaultLayer)
+	case sameNames(s.NameServers, s.ZoneNameServers):
+		line += fmt.Sprintf(", the name servers of zone %s in %s.", s.ZoneName, r.Project)
+	default:
+		line += fmt.Sprintf(", and zone %s in %s stands on %s: point the registration at it (%s/README.md, \"Making a zone again\").", s.ZoneName, r.Project, strings.Join(s.ZoneNameServers, ", "), DefaultLayer)
+	}
+	fmt.Fprintln(w, line)
 }
 
 // daysPhrase says how many whole days a span is: "less than a day", "1 day", "12 days".

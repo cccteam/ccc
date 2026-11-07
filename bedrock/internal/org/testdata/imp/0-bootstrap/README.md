@@ -487,9 +487,20 @@ deleting a project takes everything in it, whatever its resources' own
 protections say.
 
 When `2-net` registers domains (`registrations` in `2-net/terraform.tfvars`),
-the network project is kept, with its folder and the organization's: a
-registration cannot move to another project, and that project is a person's to
-deal with (`1-org/README.md`, "Removing a project"). The command refuses a
+the network project is kept, with its folder and the organization's, because a
+registration cannot move to another project; everything else in it goes.
+`2-net` is destroyed inside it first, on a copy of the layer rendered without
+the zones' `prevent_destroy` (as `zoneReplacement` renders it) and with the
+registrations taken out of its state, so the project holds the registrations
+and nothing else: its zones and records, the load balancer and its address and
+the certificates are gone, and the domains registered there stop resolving
+until a zone stands elsewhere and each registration is pointed at it. The
+registrations are then a person's: transfer each out (sixty days after it was
+registered, after an unlock, with a year added at the new registrar's price),
+or give it up by deleting the registration or the project (Google's thirty-day
+restore window, then nothing but the registrant contact and support); bedrock
+never deletes a registration. `bedrock org check` here lists each registration,
+where it points and whether a zone answers for it. The command refuses a
 checkout rendered by an earlier bedrock, which declares no `destroy` variable:
 `bedrock org render` first.
 

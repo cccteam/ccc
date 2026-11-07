@@ -1571,6 +1571,8 @@ func (f *destroyTofu) Output(_ context.Context, c deploy.Command, _ io.Writer) (
 		return []byte(`{"version": 4}`), nil
 	case filepath.Base(c.Dir) == "1-org":
 		return []byte("github_repository.infrastructure\nmodule.project[\"tst\"].module.project-factory.google_project.main\n"), nil
+	case filepath.Base(c.Dir) == "2-net":
+		return []byte("google_clouddomains_registration.this[\"example.dev\"]\ngoogle_dns_managed_zone.apps\n"), nil
 	default:
 		return []byte("module.boot_project.module.project-factory.google_project.main\n"), nil
 	}
@@ -1645,9 +1647,15 @@ func TestOrgDestroy(t *testing.T) {
 			registered:  true,
 			interactive: never,
 			args:        []string{"--yes"},
-			wantOut:     []string{"Kept: the network project imp-net-gbl-core-9c0d, with its folder and the organization's, since 2-net registers example.dev there", "The network project imp-net-gbl-core-9c0d stays with its registrations, for a person."},
-			wantRan:     11,
-			wantJournal: "(imp-boot-gbl-core-a1b2, imp-shr-gbl-core-7a8b, imp-spn-gbl-core-2e3f, imp-tst-gbl-core-1a2b, imp-stg-gbl-core-3c4d, imp-prd-gbl-core-5e6f): Google holds them for 30 days, their ids never return. The GitHub repositories stay. The network project imp-net-gbl-core-9c0d was kept with its registrations, for a person.\n",
+			wantOut: []string{
+				"Kept: the network project imp-net-gbl-core-9c0d, with its folder and the organization's, since 2-net registers example.dev there",
+				"and example.dev stop resolving until a zone stands elsewhere",
+				`Took google_clouddomains_registration.this["example.dev"] out of 2-net's state`,
+				"Destroyed 2-net.",
+				"The network project imp-net-gbl-core-9c0d stays with its registrations and nothing else: 2-net's zones, load balancer and certificates are gone",
+			},
+			wantRan:     15,
+			wantJournal: "(imp-boot-gbl-core-a1b2, imp-shr-gbl-core-7a8b, imp-spn-gbl-core-2e3f, imp-tst-gbl-core-1a2b, imp-stg-gbl-core-3c4d, imp-prd-gbl-core-5e6f): Google holds them for 30 days, their ids never return. The GitHub repositories stay. The network project imp-net-gbl-core-9c0d was kept with its registrations and nothing else: 2-net was destroyed inside it.\n",
 		},
 	}
 	for _, tt := range tests {

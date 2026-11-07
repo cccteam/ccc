@@ -16,6 +16,8 @@ import (
 	"github.com/go-playground/errors/v5"
 
 	"github.com/cccteam/ccc/bedrock/internal/deploy"
+	"github.com/cccteam/ccc/bedrock/internal/org"
+	"github.com/cccteam/ccc/bedrock/internal/render"
 )
 
 // What the destroy runs and sets, and what it keeps.
@@ -48,6 +50,14 @@ const (
 	// state, kept with it since the network project's folder stays inside.
 	netProjectAddress         = `module.project["net"]`
 	organizationFolderAddress = "google_folder.organization"
+	// netLayer is the network layer, destroyed on its own inside the network project when
+	// the project is kept for its registrations, since the project's deletion would have
+	// taken it; registrationType is the resource type of the registrations 2-net declares,
+	// taken out of the state before that destroy: a registration cannot move to another
+	// project and bedrock never deletes one, so it stays in the kept project, a person's to
+	// transfer out or give up.
+	netLayer         = "2-net"
+	registrationType = "google_clouddomains_registration"
 	// What the apply before the destroy targets, by their state addresses: every project
 	// (the project-factory module's, under its key), every service of a project (the
 	// module's too, its disabling on destroy) and every folder.
@@ -77,13 +87,15 @@ const (
 // with them, since a version manager reads it from the directory it runs in.
 var layerFiles = []string{"*.tf", "*.tfvars", "*.tfvars.json", lockFile}
 
-// DestroyRequest is what org destroy runs with: the checkout, where the GitHub token for
-// the GitHub provider comes from (asked for only when 1-org's state holds something),
-// whether the network project is kept (the layer registers domains there), and the pause
-// between two attempts of a destroy. A root organization has no layers: bedrock org
-// destroy deletes it by API (internal/root).
+// DestroyRequest is what org destroy runs with: the checkout and its placement, where the
+// GitHub token for the GitHub provider comes from (asked for only when 1-org's state
+// holds something), whether the network project is kept (the layer registers domains
+// there; 2-net is then destroyed inside it, on a copy rendered from the placement), and
+// the pause between two attempts of a destroy. A root organization has no layers: bedrock
+// org destroy deletes it by API (internal/root).
 type DestroyRequest struct {
 	Dir         string
+	Placement   *org.Placement
 	GithubToken func(ctx context.Context) (string, error)
 	KeepNet     bool
 	Pause       time.Duration
@@ -110,11 +122,110 @@ func Destroy(ctx context.Context, exec deploy.Runner, req *DestroyRequest, out i
 		return errors.Wrap(err, "os.MkdirTemp()")
 	}
 	defer os.RemoveAll(work)
+	if req.KeepNet {
+		if err := destroyNetLayer(ctx, exec, req, work, out); err != nil {
+			return err
+		}
+	}
 	if err := destroyOrgLayer(ctx, exec, req, work, out); err != nil {
 		return err
 	}
 
 	return destroyBootstrapLayer(ctx, exec, req, work, out)
+}
+
+// destroyNetLayer destroys 2-net inside the network project kept for its registrations,
+// so the project holds the registrations and nothing else after: its zones and records,
+// the load balancer and its address, the certificates all go, as they would have with the
+// project. It runs on a working copy of the layer rendered from the placement with
+// zoneReplacement set, which writes the zones without prevent_destroy (2-net/README.md,
+// "Making a zone again"), against the layer's state in the bucket, with the registrations
+// taken out of the state first: bedrock never deletes a registration, and the domains
+// registered there stop resolving until a zone stands elsewhere and each registration is
+// pointed at it.
+func destroyNetLayer(ctx context.Context, exec deploy.Runner, req *DestroyRequest, work string, out io.Writer) error {
+	fmt.Fprintf(out, "=== destroy of %s, inside the network project kept for its registrations ===\n", netLayer)
+	if req.Placement == nil {
+		return errors.Newf("no placement is wired: %s is rendered from it for its destroy", netLayer)
+	}
+	dir := filepath.Join(work, netLayer)
+	if err := renderNetForDestroy(req.Placement, req.Dir, dir); err != nil {
+		return err
+	}
+	h := &handTofu{exec: exec, layer: netLayer, dir: dir, data: filepath.Join(work, netLayer+".data"), out: out}
+	if err := h.init(ctx); err != nil {
+		return err
+	}
+	addresses, err := h.stateList(ctx)
+	if err != nil {
+		return err
+	}
+	if len(addresses) == 0 {
+		fmt.Fprintf(out, "%s's state holds nothing: nothing to destroy there.\n", netLayer)
+
+		return nil
+	}
+	for _, address := range addresses {
+		if resourceType(address) != registrationType {
+			continue
+		}
+		if err := h.run(ctx, "state", "rm", address); err != nil {
+			return errors.Wrapf(err, "taking %s out of %s's state failed; the log says why", address, netLayer)
+		}
+		fmt.Fprintf(out, "Took %s out of %s's state: the registration stays in the kept project, a person's to transfer out or give up.\n", address, netLayer)
+	}
+	if err := h.destroy(ctx, nil, req.Pause); err != nil {
+		return err
+	}
+	fmt.Fprintf(out, "The network project holds the registrations and nothing else now: %s's zones and records, load balancer and certificates are gone, and the domains registered there stop resolving until a zone stands elsewhere and each registration is pointed at it.\n", netLayer)
+
+	return nil
+}
+
+// renderNetForDestroy renders 2-net into the directory from the placement with
+// zoneReplacement set, so its zones carry no prevent_destroy there and nothing else
+// differs from the checkout, and brings the layer's own files from the checkout beside
+// the render (the values and the provider lock) with the OpenTofu version pin; the
+// backend is the bucket's, as in the checkout, so the copy runs on the layer's state.
+func renderNetForDestroy(p *org.Placement, checkout, into string) error {
+	unguarded := *p
+	unguarded.ZoneReplacement = true
+	files, err := org.Render(&unguarded)
+	if err != nil {
+		return errors.Wrapf(err, "rendering %s for its destroy", netLayer)
+	}
+	if err := os.MkdirAll(into, 0o750); err != nil {
+		return errors.Wrap(err, "os.MkdirAll()")
+	}
+	prefix := netLayer + "/"
+	for _, f := range files {
+		name, ok := strings.CutPrefix(f.Path, prefix)
+		if !ok || f.Tier != render.Owned || strings.Contains(name, "/") {
+			continue
+		}
+		if err := os.WriteFile(filepath.Join(into, name), f.Content, 0o600); err != nil {
+			return errors.Wrapf(err, "os.WriteFile(): %s", f.Path)
+		}
+	}
+	entries, err := os.ReadDir(filepath.Join(checkout, netLayer))
+	if err != nil && !errors.Is(err, os.ErrNotExist) {
+		return errors.Wrap(err, "os.ReadDir()")
+	}
+	for _, e := range entries {
+		if e.IsDir() || !layerFile(e.Name()) || strings.HasSuffix(e.Name(), ".tf") {
+			continue
+		}
+		if err := copyFile(filepath.Join(checkout, netLayer, e.Name()), into, e.Name()); err != nil {
+			return err
+		}
+	}
+	if _, err := os.Stat(filepath.Join(checkout, tofuVersionFile)); err == nil {
+		if err := copyFile(filepath.Join(checkout, tofuVersionFile), into, tofuVersionFile); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 // keptOut reports whether a resource of 1-org's state is taken out of it before the

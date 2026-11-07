@@ -45,6 +45,14 @@ func (f *fakeZones) RecordSets(context.Context, string, string) ([]Record, error
 	return f.records, nil
 }
 
+func (f *fakeZones) ZoneByDNSName(_ context.Context, project, dnsName string) (string, *Zone, error) {
+	if f.zone == nil || project != checkProject || !sameName(f.zone.DNSName, dnsName) {
+		return "", nil, nil
+	}
+
+	return checkZone, f.zone, nil
+}
+
 func (*fakeZones) Close() error {
 	return nil
 }

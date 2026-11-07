@@ -2896,8 +2896,11 @@ deletion). Google keeps a deleted project for 30 days; its id never returns. The
 instance and every backup on it (the release backups, the schedules' and the final backups
 `bedrock destroy` took) go with the Spanner project and come back with it in those days,
 and are gone after. A layer whose state holds nothing is skipped. When 2-net registers domains the network project is kept,
-with its folder and the organization's, for a person: a registration cannot move to another
-project. It refuses a layer rendered by an earlier bedrock, which declares no `destroy`
+with its folder and the organization's, since a registration cannot move to another project,
+and 2-net is destroyed inside it first (on a copy rendered without the zones' `prevent_destroy`,
+the registrations out of its state), so the project holds the registrations and nothing else
+and the domains stop resolving until a zone stands elsewhere; the registrations are a person's
+to transfer out or give up. It refuses a layer rendered by an earlier bedrock, which declares no `destroy`
 variable, and ends with a line in `JOURNAL.md` and what starting over takes (the rendered
 `0-bootstrap/README.md`, "Destroying the organization"). In a root organization, which has
 no terraform, it deletes the root project (and with it the secrets, the zones, the

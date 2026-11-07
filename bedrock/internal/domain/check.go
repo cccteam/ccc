@@ -106,6 +106,9 @@ type ZoneReader interface {
 	ManagedZone(ctx context.Context, project, zone string) (*Zone, error)
 	// RecordSets are every record set of the zone.
 	RecordSets(ctx context.Context, project, zone string) ([]Record, error)
+	// ZoneByDNSName is the project's zone for the DNS name (example.app., with the
+	// trailing dot), by its name, or "" and nil when the project holds none.
+	ZoneByDNSName(ctx context.Context, project, dnsName string) (string, *Zone, error)
 	// Close releases the connection.
 	Close() error
 }
@@ -164,6 +167,21 @@ func (c *cloudDNS) ManagedZone(ctx context.Context, project, zone string) (*Zone
 	}
 
 	return &Zone{DNSName: z.DnsName, NameServers: z.NameServers}, nil
+}
+
+// ZoneByDNSName lists the project's zones for the DNS name (managedZones.list filtered by
+// dnsName) and answers the first; a project without one answers none.
+func (c *cloudDNS) ZoneByDNSName(ctx context.Context, project, dnsName string) (string, *Zone, error) {
+	list, err := c.service.ManagedZones.List(project).DnsName(dnsName).Context(ctx).Do()
+	if err != nil {
+		return "", nil, errors.Wrapf(err, "dns.ManagedZonesService.List(): %s in %s", dnsName, project)
+	}
+	if len(list.ManagedZones) == 0 {
+		return "", nil, nil
+	}
+	z := list.ManagedZones[0]
+
+	return z.Name, &Zone{DNSName: z.DnsName, NameServers: z.NameServers}, nil
 }
 
 // RecordSets lists the zone's record sets (resourceRecordSets.list), every page.
