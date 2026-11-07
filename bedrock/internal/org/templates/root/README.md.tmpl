@@ -191,8 +191,10 @@ holds as the domains' owner, with a Token Creator on it and on the creating
 identity that the run grants itself and takes off at its end; last its own
 Owner off the root project, and the check. No key and no token touches the computer's disk.
 
-What it leaves: the break-glass account's Folder Admin on the folder and its
-BigQuery Admin on the root project, this repository at its first commit, from
+What it leaves: the break-glass account's Folder Admin on the folder, its
+BigQuery Admin and Service Usage Consumer on the root project (the one for the
+billing export's console step, the other for the quota its checks at a terminal
+bill to the project), this repository at its first commit, from
 which every change goes by pull request, and one step after it, once per
 billing account: the billing export, pointed at the dataset the bootstrap made,
 in the Billing console ("Spend budgets and the billing export", below).
@@ -249,7 +251,8 @@ and lists each grant on the folder or the project to a person, beside the
 break-glass account's Folder Admin. Recovery by hand is `bedrock org bootstrap`
 again, in a clone: it finds everything that stands and makes the rest.
 Destroying the organization, project and all, is `bedrock org destroy`, by
-hand, refused while a hosting organization is recorded as created; it leaves
+hand, refused while a hosting organization is recorded as created; it deletes
+the zones ahead of the project ("Making a zone again" says why); it leaves
 this repository and the three apps on GitHub, takes the plan trigger's check
 out of the repository's ruleset (the trigger is gone with the project, and the
 journal line's pull request merges on the review alone until a bootstrap again
@@ -644,6 +647,20 @@ names the application's servers, not this zone's. So do the two identities'
 tokens, which the apply writes again; Google checks an owner's record now and
 then, not at the moment the zone is gone, so the applier's ownership holds
 across the gap and Cloud DNS accepts the zone made again.
+
+A zone that went with a deleted project holds its name servers until the
+project purges, thirty days later, and Cloud DNS gives a name and its
+subdomains five name-server sets in all, across every project and user of
+Google Cloud: a sixth zone of the name, or of a name under or above it, is
+refused ("no DNS name server shards remaining"), and the last set takes a
+verified owner. `bedrock org destroy` deletes the zones ahead of the project for
+that reason. When a project deleted otherwise still holds a zone of the name,
+as the break-glass account: restore the project's folders from the top down and
+then the project (`gcloud resource-manager folders undelete`, `gcloud projects
+undelete`; a folder whose name an active folder carries is restored once that
+one is renamed for the while), link billing to it again, delete the zone (its
+record sets first) and delete the project and its folders again; or wait for
+the purge.
 
 ## Creating a hosting organization
 

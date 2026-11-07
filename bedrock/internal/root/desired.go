@@ -43,7 +43,6 @@ const (
 	roleObjectUser           = "roles/storage.objectUser"
 	roleFolderCreator        = "roles/resourcemanager.folderCreator"
 	roleBillingAdmin         = "roles/billing.admin"
-	roleBigQueryAdmin        = "roles/bigquery.admin"
 	roleBigQueryMetadata     = "roles/bigquery.metadataViewer"
 	roleBigQueryUser         = "roles/bigquery.user"
 	rolePolicyAdmin          = "roles/orgpolicy.policyAdmin"
@@ -153,15 +152,24 @@ func (d *Desired) ProjectRoles() map[string][]string {
 	}
 }
 
-// ExportOperatorGrant is the break-glass account's BigQuery Admin on the root project,
-// which the apply keeps beside its Folder Admin on the folder: pointing the billing
-// account's pricing export at the dataset makes a transfer configuration in the project,
-// which takes that role of whoever does it, and the break-glass account is the one
-// principal that holds the Billing Account Administrator the step takes too. It reaches
-// nothing the Folder Admin does not already: that role sets any project's policy under
+// OperatorGrants are the break-glass account's roles on the root project, which the
+// apply keeps beside its Folder Admin on the folder (org.Placement.BreakGlassProjectRoles):
+// BigQuery Admin, since pointing the billing account's pricing export at the dataset
+// makes a transfer configuration in the project, which takes that role of whoever does
+// it, and the break-glass account is the one principal that holds the Billing Account
+// Administrator the step takes too; and Service Usage Consumer, so a check or a
+// recovery run at its terminal bills its calls' quota to the project (the Org Policy,
+// Budgets and Cloud Billing APIs want one when the caller is a person). Neither reaches
+// anything the Folder Admin does not already: that role sets any project's policy under
 // the folder.
-func (d *Desired) ExportOperatorGrant() Grant {
-	return Grant{Resource: d.Project(), Role: roleBigQueryAdmin, Member: "user:" + d.p.BreakGlassAccount}
+func (d *Desired) OperatorGrants() []Grant {
+	roles := d.p.BreakGlassProjectRoles()
+	grants := make([]Grant, 0, len(roles))
+	for _, role := range roles {
+		grants = append(grants, Grant{Resource: d.Project(), Role: role, Member: "user:" + d.p.BreakGlassAccount})
+	}
+
+	return grants
 }
 
 // TotalBudget is the root organization's spend budget, on every project of the billing
@@ -224,6 +232,8 @@ func VerificationRecord(domain, token string) RecordSet {
 const (
 	// recordTypeNS is the type of the record sets that hand a label onward.
 	recordTypeNS = "NS"
+	// recordTypeSOA is the type of the apex record set Cloud DNS makes with the zone.
+	recordTypeSOA = "SOA"
 	// recordTypeTXT is the type of the apex record set that carries the owners' tokens.
 	recordTypeTXT = "TXT"
 	// defaultRecordTTL is a declared record's time to live when it names none.

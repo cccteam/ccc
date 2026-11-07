@@ -46,7 +46,13 @@ type Fake struct {
 
 	// ZoneMap holds the zones by project then name; Records by "project/zone".
 	ZoneMap map[string]map[string]root.Zone
-	Records map[string][]root.RecordSet
+	// Deletions records each zone and project deletion in order ("zone project/name",
+	// "project id"), so a test sees the zones go ahead of the project.
+	Deletions []string
+	// QuotaProjects records the quota project each opening of the creation seam named
+	// (empty for none), in order.
+	QuotaProjects []string
+	Records       map[string][]root.RecordSet
 
 	// Connections by resource name; Links by resource name to the remote URI; Triggers
 	// by "project/location/name"; ConnectionPolicies by resource name.
@@ -127,7 +133,13 @@ func New() *Fake {
 
 // Clients wires the stand-in into every seam of the engine's clients it stands in for.
 func (f *Fake) Clients(c *root.Clients) {
-	c.Google = func(context.Context) (create.Google, error) { return f, nil }
+	c.Google = func(_ context.Context, quotaProject string) (create.Google, error) {
+		f.mu.Lock()
+		defer f.mu.Unlock()
+		f.QuotaProjects = append(f.QuotaProjects, quotaProject)
+
+		return f, nil
+	}
 	c.OrgPolicies = func(context.Context, string) (root.OrgPolicies, error) { return f, nil }
 	c.Secrets = func(context.Context) (root.Secrets, error) { return f, nil }
 	c.DNS = func(context.Context) (root.DNS, error) { return f, nil }
@@ -480,6 +492,20 @@ func (f *Fake) CreateZone(_ context.Context, project string, zone root.Zone) err
 		{Name: zone.DNSName, Type: "NS", TTL: 21600, Data: zone.NameServers},
 		{Name: zone.DNSName, Type: "SOA", TTL: 21600, Data: []string{zone.NameServers[0] + " cloud-dns-hostmaster.google.com. 1 21600 3600 259200 300"}},
 	}
+
+	return nil
+}
+
+// DeleteZone deletes the zone and its record sets.
+func (f *Fake) DeleteZone(_ context.Context, project, zone string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if err := f.call("DeleteZone", project, zone); err != nil {
+		return err
+	}
+	delete(f.ZoneMap[project], zone)
+	delete(f.Records, project+"/"+zone)
+	f.Deletions = append(f.Deletions, "zone "+project+"/"+zone)
 
 	return nil
 }
@@ -920,6 +946,7 @@ func (f *Fake) DeleteProject(_ context.Context, project string) error {
 		return err
 	}
 	delete(f.Projects, project)
+	f.Deletions = append(f.Deletions, "project "+project)
 
 	return nil
 }

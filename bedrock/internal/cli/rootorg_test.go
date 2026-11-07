@@ -375,13 +375,13 @@ func TestRootOrgDestroy(t *testing.T) {
 			wantOut: []string{
 				warning,
 				"Took the creating identity's and the runners' grants off the organization node, and the creating identity's off billing account 012345-6789AB-CDEF01.",
-				"Deleted the project imr-root-gbl-core-c3d4, with the secrets, the zones, the connection, the triggers, the identities and the state bucket: Google holds it for 30 days, and its id never returns.",
+				"Deleted the project imr-root-gbl-core-c3d4, with the secrets, the connection, the triggers, the identities and the state bucket: Google holds it for 30 days, and its id never returns.",
 				"Deleted the folder imr (100).",
 				"Deleted the imr root organization's root project and folder; a line went into JOURNAL.md. Google holds the project for 30 days (its id never returns); the GitHub repository is as it was, with its settings and ruleset, and the three GitHub Apps stay installed, their keys in nobody's hands until a bootstrap stores them again.",
 				"To start over: bedrock org bootstrap <dir> again, in an empty directory, with the apps brought (--infrastructure-app and --infrastructure-key, and the others) or made anew; every domain delegated here is then delegated again, to the new zones' name servers.",
 			},
 			deleted:     true,
-			wantJournal: "bedrock org destroy deleted the root organization's root project (imr-root-gbl-core-c3d4) and folder, with its zones: Google holds the project for 30 days, its id never returns. The GitHub repository and the apps stay.\n",
+			wantJournal: "bedrock org destroy deleted the root organization's root project (imr-root-gbl-core-c3d4) and folder, its zones deleted ahead of it (their name servers free at once): Google holds the project for 30 days, its id never returns. The GitHub repository and the apps stay.\n",
 		},
 		{
 			name:        "destroys with --yes and no terminal",
@@ -389,7 +389,7 @@ func TestRootOrgDestroy(t *testing.T) {
 			args:        []string{"--yes"},
 			wantOut:     []string{"Deleted the project imr-root-gbl-core-c3d4", "Deleted the folder imr (100)."},
 			deleted:     true,
-			wantJournal: "and folder, with its zones: Google holds the project for 30 days, its id never returns. The GitHub repository and the apps stay.\n",
+			wantJournal: "and folder, its zones deleted ahead of it (their name servers free at once): Google holds the project for 30 days, its id never returns. The GitHub repository and the apps stay.\n",
 		},
 	}
 	for _, tt := range tests {

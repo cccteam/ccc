@@ -17,6 +17,7 @@ package org
 import (
 	"context"
 	"fmt"
+	"slices"
 	"strings"
 
 	"cloud.google.com/go/iam/apiv1/iampb"
@@ -34,6 +35,14 @@ const (
 	FolderAdminRole = "roles/resourcemanager.folderAdmin"
 	// FolderEditorRole is the other role a folder's creator receives on it.
 	FolderEditorRole = "roles/resourcemanager.folderEditor"
+	// BigQueryAdminRole is the role the break-glass account keeps on a root
+	// organization's root project for the billing export's console step
+	// (BreakGlassProjectRoles).
+	BigQueryAdminRole = "roles/bigquery.admin"
+	// ServiceUsageConsumerRole is the role the break-glass account keeps on a root
+	// organization's root project for the quota its checks bill to it
+	// (BreakGlassProjectRoles).
+	ServiceUsageConsumerRole = "roles/serviceusage.serviceUsageConsumer"
 	// userPrefix starts a member that is a person.
 	userPrefix = "user:"
 	// serviceAccountPrefix starts a member that is a service account.
@@ -143,7 +152,8 @@ func Leftovers(ctx context.Context, p *Placement, read PolicyReader) (leftovers 
 }
 
 // projectLeftovers is the grants left on the projects the placement records, in its
-// order: each person's Owner and each other role the break-glass account holds.
+// order: each person's Owner and each other role the break-glass account holds, but
+// the ones it keeps on a root project (BreakGlassProjectRoles).
 func projectLeftovers(ctx context.Context, p *Placement, read PolicyReader, account string) ([]Leftover, error) {
 	var leftovers []Leftover
 	for _, key := range p.ProjectKeys() {
@@ -157,7 +167,7 @@ func projectLeftovers(ctx context.Context, p *Placement, read PolicyReader, acco
 		}
 		for _, b := range bindings {
 			for _, member := range b.Members {
-				if (b.Role == OwnerRole && strings.HasPrefix(member, userPrefix)) || (b.Role != OwnerRole && member == account) {
+				if (b.Role == OwnerRole && strings.HasPrefix(member, userPrefix)) || (b.Role != OwnerRole && member == account && !p.keepsProjectRole(key, b.Role)) {
 					leftovers = append(leftovers, Leftover{On: OnProject, Key: key, ID: project, Member: member, Role: b.Role})
 				}
 			}
@@ -342,4 +352,24 @@ func (c *policies) Close() error {
 	}
 
 	return nil
+}
+
+// BreakGlassProjectRoles are the roles the break-glass account keeps on a root
+// organization's root project beside its Folder Admin on the folder, which the apply
+// keeps and the leftover report passes over: BigQuery Admin, with which it points the
+// billing account's export at the dataset the bootstrap made, and Service Usage
+// Consumer, so a check or a recovery run at its terminal bills its calls' quota to the
+// project. A hosting organization keeps it nothing on a project.
+func (p *Placement) BreakGlassProjectRoles() []string {
+	if !p.IsRoot() {
+		return nil
+	}
+
+	return []string{BigQueryAdminRole, ServiceUsageConsumerRole}
+}
+
+// keepsProjectRole reports whether the role is one the break-glass account keeps on the
+// project with the key: the root project's kept roles alone.
+func (p *Placement) keepsProjectRole(key, role string) bool {
+	return key == RootProjectKey && slices.Contains(p.BreakGlassProjectRoles(), role)
 }

@@ -343,6 +343,14 @@ func (d *cloudDNS) CreateZone(ctx context.Context, project string, zone Zone) er
 	return nil
 }
 
+func (d *cloudDNS) DeleteZone(ctx context.Context, project, zone string) error {
+	if err := d.service.ManagedZones.Delete(project, zone).Context(ctx).Do(); err != nil {
+		return errors.Wrapf(err, "dns.ManagedZonesService.Delete(): %s in %s", zone, project)
+	}
+
+	return nil
+}
+
 func (d *cloudDNS) RecordSets(ctx context.Context, project, zone string) ([]RecordSet, error) {
 	var records []RecordSet
 	err := d.service.ResourceRecordSets.List(project, zone).Pages(ctx, func(page *dns.ResourceRecordSetsListResponse) error {

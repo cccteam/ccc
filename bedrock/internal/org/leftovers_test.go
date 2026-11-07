@@ -199,3 +199,30 @@ func TestLeftovers(t *testing.T) {
 		})
 	}
 }
+
+// TestLeftoversPassOverKeptProjectRoles: the roles the break-glass account keeps on a
+// root organization's root project (BreakGlassProjectRoles) are not leftovers, and any
+// other role it holds there still is.
+func TestLeftoversPassOverKeptProjectRoles(t *testing.T) {
+	t.Parallel()
+
+	p := rootPlacement(t)
+	account := "user:" + p.BreakGlassAccount
+	project := p.Projects[RootProjectKey]
+	policies := &fakePolicies{byProject: map[string][]Binding{project: {
+		{Role: BigQueryAdminRole, Members: []string{account}},
+		{Role: ServiceUsageConsumerRole, Members: []string{account}},
+		{Role: "roles/dns.admin", Members: []string{account}},
+	}}}
+	leftovers, _, _, err := Leftovers(context.Background(), p, policies)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []Leftover{{On: OnProject, Key: RootProjectKey, ID: project, Member: account, Role: "roles/dns.admin"}}
+	if diff := cmp.Diff(want, leftovers); diff != "" {
+		t.Errorf("Leftovers() (-want +got):\n%s", diff)
+	}
+	if got := (&Placement{}).BreakGlassProjectRoles(); got != nil {
+		t.Errorf("a hosting organization's BreakGlassProjectRoles() = %v, want none", got)
+	}
+}

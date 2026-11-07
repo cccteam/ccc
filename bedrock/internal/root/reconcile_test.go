@@ -849,3 +849,59 @@ func TestEngineBillingExport(t *testing.T) {
 		t.Errorf("findings = %q, want the stale usage table alone", stale.Findings)
 	}
 }
+
+// TestDestroyDeletesZonesAheadOfTheProject: the destroy deletes each zone of the root
+// project, its record sets first, before the project, so the zones' name servers are
+// free at once (a zone deleted with its project holds them until the project purges);
+// and the apply that stood the organization up kept the break-glass account's two roles
+// on the project.
+func TestDestroyDeletesZonesAheadOfTheProject(t *testing.T) {
+	t.Parallel()
+
+	w := newWorld(t)
+	_, out := w.run(t, root.Apply, true)
+	if strings.Contains(out, "finding") {
+		t.Fatalf("the first apply:\n%s", out)
+	}
+	project := w.p.Projects[org.RootProjectKey]
+	for _, want := range []string{
+		"grants user:" + w.p.BreakGlassAccount + " roles/bigquery.admin on project " + project + ", for pointing the billing export at its dataset",
+		"grants user:" + w.p.BreakGlassAccount + " roles/serviceusage.serviceUsageConsumer on project " + project + ", for the quota its checks at a terminal bill to the project",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("the apply printed:\n%s\nwant %q", out, want)
+		}
+	}
+	if len(w.fake.ZoneMap[project]) == 0 {
+		t.Fatalf("the apply made no zone in %s", project)
+	}
+	ctx := context.Background()
+	token := func(context.Context) (string, error) { return "test-token", nil }
+	w.p.HostingOrganizations = nil
+	var buf bytes.Buffer
+	if err := root.Destroy(ctx, w.clients, &root.DestroyRequest{Placement: w.p, GithubToken: token}, &buf); err != nil {
+		t.Fatalf("Destroy() = %v\n%s", err, buf.String())
+	}
+	if !strings.Contains(buf.String(), "Deleted the zone ") || !strings.Contains(buf.String(), "ahead of the project") {
+		t.Errorf("Destroy() printed:\n%s\nwant each zone deleted ahead of the project", buf.String())
+	}
+	if n := len(w.fake.ZoneMap[project]); n != 0 {
+		t.Errorf("%d zone(s) left in %s after the destroy", n, project)
+	}
+	projectAt := slices.Index(w.fake.Deletions, "project "+project)
+	if projectAt < 0 {
+		t.Fatalf("the project's deletion is not recorded: %v", w.fake.Deletions)
+	}
+	zones := 0
+	for i, d := range w.fake.Deletions {
+		if strings.HasPrefix(d, "zone "+project+"/") {
+			zones++
+			if i > projectAt {
+				t.Errorf("%s was deleted after the project: %v", d, w.fake.Deletions)
+			}
+		}
+	}
+	if zones == 0 {
+		t.Errorf("no zone deletion recorded: %v", w.fake.Deletions)
+	}
+}
