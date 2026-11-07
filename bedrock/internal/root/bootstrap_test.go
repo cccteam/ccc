@@ -81,7 +81,7 @@ func registerApp(t *testing.T, srv *githubtest.Server, m org.AppManifest, id int
 	if installed {
 		app.Installations = []github.Installation{{ID: id + 1, AppID: id, Account: github.Account{Login: "imp-example", Type: "Organization"}, RepositorySelection: github.AllRepositories}}
 	}
-	srv.Apps[fmt.Sprint(id)] = app
+	srv.Update(func() { srv.Apps[fmt.Sprint(id)] = app })
 
 	return keyPEM
 }
@@ -309,10 +309,13 @@ func TestBootstrapBrowserFlow(t *testing.T) {
 			}
 			id := int64(6000 + i)
 			registerApp(t, srv, m, id, false)
-			srv.Conversions["code-"+m.Name] = &srv.Apps[fmt.Sprint(id)].Record
+			srv.Update(func() { srv.Conversions["code-"+m.Name] = &srv.Apps[fmt.Sprint(id)].Record })
 			get(t, url+"/made?code=code-"+m.Name+"&state="+form[1])
-			// The install: the app's installation appears in its own listing.
-			srv.Apps[fmt.Sprint(id)].Installations = []github.Installation{{ID: id + 1, AppID: id, Account: github.Account{Login: "imp-example", Type: "Organization"}, RepositorySelection: github.AllRepositories}}
+			// The install: the app's installation appears in its own listing. The stand-in is
+			// changed under its lock, as the bootstrap is calling it from its own goroutines.
+			srv.Update(func() {
+				srv.Apps[fmt.Sprint(id)].Installations = []github.Installation{{ID: id + 1, AppID: id, Account: github.Account{Login: "imp-example", Type: "Organization"}, RepositorySelection: github.AllRepositories}}
+			})
 			get(t, url+"/installed?installation_id="+fmt.Sprint(id+1)+"&setup_action=install")
 		}
 	}()

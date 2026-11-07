@@ -218,6 +218,16 @@ func (s *Server) AddRepo(owner, name string, repo *Repo) *Repo {
 	return s.addRepo(owner, name, repo)
 }
 
+// Update runs fn with the stand-in's lock held, for a test that changes the stand-in
+// while the code under test is calling it: a browser flow's goroutine registering the
+// app GitHub would have made, as the serving goroutines read the same maps.
+func (s *Server) Update(fn func()) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	fn()
+}
+
 // addRepo is AddRepo with the lock held, for a repository made through the API.
 func (s *Server) addRepo(owner, name string, repo *Repo) *Repo {
 	if repo.Refs == nil {
