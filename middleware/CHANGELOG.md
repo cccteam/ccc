@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.0.16](https://github.com/cccteam/ccc/compare/middleware/v0.0.15...middleware/v0.0.16) (2026-11-07)
+
+
+### Code Upgrade
+
+* **deps:** bump the go-dependencies group ([#1294](https://github.com/cccteam/ccc/issues/1294)) ([21651ab](https://github.com/cccteam/ccc/commit/21651ab74ea502d1154c2f7cc0123140abe933ce))
+
 ## [0.0.15](https://github.com/cccteam/ccc/compare/middleware/v0.0.14...middleware/v0.0.15) (2026-10-30)
 
 
