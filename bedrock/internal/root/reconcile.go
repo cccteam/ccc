@@ -23,6 +23,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
+	"github.com/cccteam/ccc/bedrock/internal/budgets"
 	"github.com/cccteam/ccc/bedrock/internal/create"
 	"github.com/cccteam/ccc/bedrock/internal/github"
 	"github.com/cccteam/ccc/bedrock/internal/org"
@@ -109,6 +110,8 @@ type engine struct {
 	dns            DNS
 	builds         Builds
 	iam            IAM
+	budgets        budgets.Client
+	datasets       Datasets
 	gh             *github.Client
 }
 
@@ -139,7 +142,7 @@ func Run(ctx context.Context, clients *Clients, req *Request, out io.Writer) (*R
 	if req.Mode == Apply && !req.Bootstrap {
 		sections = append(sections, e.creations)
 	}
-	sections = append(sections, e.orgPolicies)
+	sections = append(sections, e.orgPolicies, e.budgetsSection, e.billingExport)
 	if req.Bootstrap {
 		sections = append(sections, e.bootstrapWithdrawal)
 	}
@@ -182,6 +185,24 @@ func (e *engine) open(ctx context.Context) error {
 	if e.iam, err = e.clients.IAM(ctx); err != nil {
 		return err
 	}
+	if e.clients.Budgets == nil || e.clients.Datasets == nil {
+		return errors.New("no Budgets or BigQuery client is wired: the root organization keeps the spend budgets and the billing export's dataset")
+	}
+	if e.req.Mode == Apply && !e.req.Bootstrap && e.clients.BudgetsAs != nil {
+		// An apply trigger's run holds nothing on the billing account itself: it keeps
+		// the budgets as the creating identity, a Billing Account Administrator, which it
+		// impersonates for the creations too. The bootstrap is the break-glass account,
+		// an administrator of the account in its own right.
+		e.budgets, err = e.clients.BudgetsAs(ctx, e.d.Creator())
+	} else {
+		e.budgets, err = e.clients.Budgets(ctx, e.d.Project())
+	}
+	if err != nil {
+		return err
+	}
+	if e.datasets, err = e.clients.Datasets(ctx); err != nil {
+		return err
+	}
 	if e.req.GitHubToken != "" {
 		e.gh = e.clients.GitHub(e.req.GitHubToken)
 	}
@@ -190,7 +211,7 @@ func (e *engine) open(ctx context.Context) error {
 }
 
 func (e *engine) close() {
-	for _, c := range []io.Closer{e.iam, e.builds, e.dns, e.secrets, e.policies, e.google} {
+	for _, c := range []io.Closer{e.datasets, e.budgets, e.iam, e.builds, e.dns, e.secrets, e.policies, e.google} {
 		if c != nil {
 			_ = c.Close()
 		}
@@ -572,6 +593,9 @@ func (e *engine) grants(ctx context.Context) error {
 	if err := e.memberRoles(ctx, "project "+e.d.Project(), e.d.ProjectRoles(), e.iam.ProjectPolicy, e.d.Project(), e.google.GrantProject, e.google.RevokeProject); err != nil {
 		return err
 	}
+	if err := e.exportOperatorGrant(ctx); err != nil {
+		return err
+	}
 	folder, err := e.folder(ctx)
 	if err != nil {
 		return err
@@ -600,6 +624,25 @@ func (e *engine) grants(ctx context.Context) error {
 	}
 
 	return e.outerGrants(ctx)
+}
+
+// exportOperatorGrant keeps the break-glass account's BigQuery Admin on the root project
+// (Desired.ExportOperatorGrant), with which it points the billing export at the dataset;
+// the account's other roles on the project are not this run's to touch, so the grant is
+// made when missing and nothing is taken off.
+func (e *engine) exportOperatorGrant(ctx context.Context) error {
+	g := e.d.ExportOperatorGrant()
+	bindings, err := e.iam.ProjectPolicy(ctx, g.Resource)
+	if err != nil {
+		return err
+	}
+	if holds(bindings, g.Role, g.Member) {
+		return nil
+	}
+
+	return e.change(ctx, sectionGrants, fmt.Sprintf("grants %s %s on project %s, for pointing the billing export at its dataset", g.Member, g.Role, g.Resource), func(ctx context.Context) error {
+		return e.google.GrantProject(ctx, g.Resource, g.Role, g.Member)
+	})
 }
 
 // outerGrants are the grants above the root project: the creating identity's at the

@@ -10,6 +10,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"github.com/go-playground/errors/v5"
@@ -35,6 +36,7 @@ type bootstrapFlags struct {
 	domains, keyOperators                                                                                  []string
 	labels                                                                                                 map[string]string
 	approvingReviews                                                                                       int
+	monthlyBudget                                                                                          int64
 	brought                                                                                                map[org.AppRole]*broughtFlags
 	noBrowser                                                                                              bool
 }
@@ -100,6 +102,7 @@ triggers' runs fetch it.`,
 	cmd.Flags().StringVar(&f.organization, "organization", "", "the Google Cloud organization, by numeric id or domain, when the credentials see several")
 	cmd.Flags().StringVar(&f.billingAccount, "billing-account", "", "the billing account (XXXXXX-XXXXXX-XXXXXX) when the credentials see several")
 	cmd.Flags().StringVar(&f.githubOrganization, "github-organization", "", "the GitHub organization's login; asked for at the terminal when left out")
+	cmd.Flags().Int64Var(&f.monthlyBudget, "monthly-budget", 0, "the spend budget on the whole billing account, in whole units of its currency a month, with alerts at 50, 90 and 100 percent to its administrators and users; asked for at the terminal when left out")
 	cmd.Flags().StringVar(&f.defaultBranch, "default-branch", "master", "the default branch of the repository, and of every repository under the organization")
 	cmd.Flags().StringVar(&f.region, "region", defaultRegion, "the region the root project's connection, triggers and state bucket are in")
 	cmd.Flags().StringVar(&f.regionCode, "region-code", "", "the three-character code bedrock's names carry for the region (us-central1: uc1), when it is not the initials and the number")
@@ -195,6 +198,10 @@ func (d deps) bootstrapDraft(ctx context.Context, cmd *cobra.Command, dir string
 	if err != nil {
 		return nil, err
 	}
+	budget, err := monthlyBudget(f.monthlyBudget, ask)
+	if err != nil {
+		return nil, err
+	}
 	code := f.regionCode
 	if code == "" {
 		if code, err = org.RegionCode(f.region); err != nil {
@@ -205,7 +212,7 @@ func (d deps) bootstrapDraft(ctx context.Context, cmd *cobra.Command, dir string
 		Kind: org.RootKind, Prefix: prefix, OrganizationDomain: organization.Domain, OrganizationID: organization.ID, DirectoryCustomerID: organization.DirectoryCustomerID,
 		BillingAccount: billing, BreakGlassAccount: account, GithubOrganization: githubOrganization, GithubDefaultBranch: f.defaultBranch, GithubAppPrefix: f.appPrefix,
 		SourceRepo: prefix + "-root-infrastructure", Regions: []org.Region{{Name: f.region, Code: code}}, KeyOperators: f.keyOperators, Labels: f.labels,
-		BedrockVersion: version, BedrockSHA256: sum,
+		BedrockVersion: version, BedrockSHA256: sum, MonthlyBudget: budget,
 	}
 	if f.approvingReviews != 1 {
 		reviews := f.approvingReviews
@@ -336,6 +343,27 @@ func chooseBillingAccount(ctx context.Context, disc rootorg.Discovery, flag stri
 }
 
 // named is a value the flag gives, else the one typed at the terminal, else refused.
+// monthlyBudget is the spend budget on the whole billing account: the flag, or the
+// answer at the terminal, a positive whole number.
+func monthlyBudget(flag int64, ask *prompt.Prompter) (int64, error) {
+	if flag > 0 {
+		return flag, nil
+	}
+	if flag < 0 {
+		return 0, errors.Newf("--monthly-budget %d is not a positive whole number", flag)
+	}
+	answer, err := named("", "monthly-budget", "The spend budget on the whole billing account, in whole units of its currency a month (alerts at 50, 90 and 100 percent of it go to the account's administrators and users):", ask)
+	if err != nil {
+		return 0, err
+	}
+	budget, err := strconv.ParseInt(strings.TrimSpace(answer), 10, 64)
+	if err != nil || budget <= 0 {
+		return 0, errors.Newf("%q is not a positive whole number for --monthly-budget", answer)
+	}
+
+	return budget, nil
+}
+
 func named(flag, name, question string, ask *prompt.Prompter) (string, error) {
 	if flag != "" {
 		return flag, nil
@@ -414,10 +442,14 @@ Next, each where it happens:
   2. At each domain's registrar: point the delegation at its zone's name servers, which
      bedrock domain check prints here for each domain in placement.json (domains), and says
      when the world sees them.
-  3. In a terminal, here: bedrock org create <prefix> for the first hosting organization, then
+  3. In the Billing console, as the break-glass account, once for the billing account: point
+     its billing export (standard usage cost, detailed usage cost and pricing) at the dataset
+     %s in the root project %s (README.md, "Spend budgets and the billing export"); bedrock
+     org check reports a finding until the tables land.
+  4. In a terminal, here: bedrock org create <prefix> for the first hosting organization, then
      the pull request; the merge creates it as the creating identity (README.md, "Creating a
      hosting organization").
 The break-glass account keeps Folder Admin on the folder %s alone, its key for a recovery by
-hand; nothing else is done by hand.
-`, where, p.Prefix)
+hand, and BigQuery Admin on the root project for the export; nothing else is done by hand.
+`, where, org.ExportDataset, p.RootProject(), p.Prefix)
 }

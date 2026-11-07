@@ -45,9 +45,9 @@ to fill in and stops. With it, create fills it, lists the organization in placem
 (hostingOrganizations: its prefix and its boot project; the folder is recorded by the
 hand-off), renders, and says what the merge creates. Nobody grants anything by hand: the
 creating identity holds Folder Creator at the organization node and Billing Account
-Administrator on the billing account since the bootstrap, and grants the new organization's
-identities Billing Account User itself; a billing administrator sets the new organization's
-spend budget after the merge (its 0-bootstrap/README.md, "The spend budget").`,
+Administrator on the billing account since the bootstrap, grants the new organization's
+identities Billing Account User itself, and makes the new organization's spend budget, the
+amount its record names (monthlyBudget), on its folder.`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return d.orgCreate(cmd.Context(), dir, placement, args[0], cmd.OutOrStdout())
@@ -160,7 +160,9 @@ func writeSkeleton(root *org.Placement, prefix, path string, out io.Writer) erro
 spanner.config (the shared instance's configuration, nam10 for example), the second region
 (regions, the primary first; the primary is the root organization's, since the Cloud Build
 token is read in its region), teamGroups (one Workspace group per environment),
-contactDomains, and entitlementDurations, vanityDomains and labels as wanted. Then run
+contactDomains, monthlyBudget (its spend budget, whole units of the billing account's
+currency a month, which the creation makes on its folder), and entitlementDurations,
+vanityDomains and labels as wanted. Then run
 bedrock org create %s again: it fills in what the root organization supplies, chooses the
 boot project's suffix and lists the organization in placement.json.
 `, path, prefix)
@@ -177,6 +179,9 @@ The merge of this pull request creates %s, as the creating identity (%s):
     (its APIs, its billing link to %s), the boot identity %s-boot-gbl-tofu with its roles on
     the folder, the break-glass account's Folder Admin on the folder, and the state bucket
     %s;
+  - its spend budget on the billing account, %d a month in the account's currency on its
+    folder (monthlyBudget), with alerts at 50, 90 and 100 percent to the account's
+    administrators and users, which this organization's apply keeps;
   - the first applies of its 0-bootstrap and 1-org, against that bucket: its connection from
     the Cloud Build authorization this organization recorded, its repository link and its
     two triggers; its folders, its six projects with their identities, recorded in its
@@ -193,11 +198,11 @@ The merge of this pull request creates %s, as the creating identity (%s):
     NS record set.
 Nothing is granted by hand before the merge: the creating identity holds Folder Creator at the
 organization node and Billing Account Administrator on %s since the bootstrap, and it grants
-the new organization's boot and org identities Billing Account User itself. After the merge,
-for the new organization: a billing administrator sets its spend budget (that repository's
-0-bootstrap/README.md, "The spend budget"); its consent screen and role groups follow as its
-README says.
-`, h.Prefix, root.CreatingIdentity(), h.Prefix, h.Projects["boot"], h.BillingAccount, h.Prefix, h.StateBucket, h.AppsDomain, h.GithubOrganization, h.SourceRepo, h.BillingAccount)
+the new organization's boot and org identities Billing Account User itself and makes its
+spend budget (%d a month in the account's currency, monthlyBudget) on its folder, which the
+apply keeps. After the merge, for the new organization: its consent screen and role groups
+follow as its README says.
+`, h.Prefix, root.CreatingIdentity(), h.Prefix, h.Projects["boot"], h.BillingAccount, h.Prefix, h.StateBucket, h.MonthlyBudget, h.AppsDomain, h.GithubOrganization, h.SourceRepo, h.BillingAccount, h.MonthlyBudget)
 
 	return b.String()
 }

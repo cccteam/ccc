@@ -79,8 +79,8 @@ var BootstrapRoles = []BootstrapRole{
 		Title:       "Billing Account Administrator",
 		Role:        "roles/billing.admin",
 		On:          OnBillingAccount,
-		Permissions: []string{"billing.accounts.getIamPolicy", "billing.accounts.setIamPolicy", "billing.resourceAssociations.create"},
-		Needs:       "linking the root project to the billing account, and granting the creating identity the account's administration, with which each hosting organization's identities get their billing grants",
+		Permissions: []string{"billing.accounts.getIamPolicy", "billing.accounts.setIamPolicy", "billing.budgets.create", "billing.budgets.list", "billing.resourceAssociations.create"},
+		Needs:       "linking the root project to the billing account, making the account's spend budget, and granting the creating identity the account's administration, with which each hosting organization's identities get their billing grants and its budget is made",
 	},
 }
 

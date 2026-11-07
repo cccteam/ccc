@@ -144,8 +144,8 @@ applies would, and left no person with a grant to trim:
    (`hostingOrganizations`), from which that organization keeps the boot
    identity's grants on the shared secrets rendered.
 
-One thing stays by hand, by a billing administrator, after the creation: the
-spend budget ("The spend budget" below). The consent screen of each environment
+Nothing on the billing account stays by hand: the spend budget is the
+creation's ("The spend budget" below). The consent screen of each environment
 project and the role groups follow as the root `README.md` says ("Created by
 the root organization" there).
 
@@ -159,7 +159,22 @@ one of this organization's projects. After a creation there is none; one
 means the creating identity's withdrawal did not finish, or somebody granted
 by hand.
 
-### The spend budget, by a billing administrator
+### The spend budget
+
+The spend budget `imp organization` stands on the billing account
+`012345-6789AB-CDEF01`, on this organization's folder: the amount the record
+names (`monthlyBudget`, whole units of the account's currency a month), with
+alerts at 50, 90 and 100 percent of it, on actual spend, by mail to the billing
+account's administrators and users. The creation made it, as the root
+organization's creating identity, before this organization's first apply, and
+the root organization's apply keeps it, so a change made in the console is
+undone on its next merge: the amount changes by pull request there, in the
+record (`organizations/imp/placement.json`). A budget sends alerts and
+stops nothing. Nothing in the layers renders it: it belongs to the billing
+account, where no layer identity holds a role that manages budgets. The root
+organization also holds the account's billing export, from which this
+organization's cost is reported by application and environment (its
+`README.md`, "Spend budgets and the billing export").
 
 The two layer identities, `imp-boot-gbl-tofu` and `imp-org-gbl-tofu`,
 hold `roles/billing.user` on the billing account `012345-6789AB-CDEF01` since the
@@ -170,14 +185,6 @@ creates; the creation linked the six. `manage_billing_iam = false` in
 which the identity applying it may not do; set it to `true` once that identity
 is a billing administrator, and the two `google_billing_account_iam_member`
 resources assert them.
-
-In the Billing console, as a billing administrator, set the spend budget:
-Billing, the billing account `012345-6789AB-CDEF01`, Budgets & alerts, Create
-budget. Scope it to every project of the billing account, give it a monthly
-amount, and keep the alert thresholds (50%, 90% and 100% of the actual spend)
-and the email to the billing account's administrators and users. A budget
-sends alerts and stops nothing. Nothing in the layers renders it: it belongs to
-the billing account, where no layer identity holds a role that manages budgets.
 
 ## Inputs
 

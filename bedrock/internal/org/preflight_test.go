@@ -78,7 +78,7 @@ func TestPreflight(t *testing.T) {
 			wantOut: []string{
 				"Organization Administrator (roles/resourcemanager.organizationAdmin), on organization 123456789012: holds resourcemanager.organizations.getIamPolicy, resourcemanager.organizations.setIamPolicy\n",
 				"Folder Creator (roles/resourcemanager.folderCreator), on organization 123456789012: holds resourcemanager.folders.create\n",
-				"Billing Account Administrator (roles/billing.admin), on billing account 012345-6789AB-CDEF01: holds billing.accounts.getIamPolicy, billing.accounts.setIamPolicy, billing.resourceAssociations.create\n",
+				"Billing Account Administrator (roles/billing.admin), on billing account 012345-6789AB-CDEF01: holds billing.accounts.getIamPolicy, billing.accounts.setIamPolicy, billing.budgets.create, billing.budgets.list, billing.resourceAssociations.create\n",
 				"These credentials hold every permission bedrock org bootstrap needs at the organization node and on the billing account (README.md, \"Bootstrapped by one command\").\n",
 			},
 			wantAbsent: []string{"missing"},

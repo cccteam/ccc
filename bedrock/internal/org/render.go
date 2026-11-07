@@ -108,6 +108,12 @@ func (v *view) BootProjectID() string {
 	return v.Prefix + "-boot-gbl-core-" + replaceMe
 }
 
+// ExportDataset is the dataset the billing export lands in (ExportDataset), for the root
+// README.
+func (*view) ExportDataset() string {
+	return ExportDataset
+}
+
 // OrganizationFolderID is the organization's folder id for 0-bootstrap's seeded tfvars:
 // the creation's, else REPLACEME.
 func (v *view) OrganizationFolderID() string {

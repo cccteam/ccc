@@ -2542,9 +2542,11 @@ pull request both as the infrastructure app, whose declaration carries Pull requ
 it. Every step looks before it makes, so a creation
 that stopped
 finishes on the next push, and a created organization is left alone. `org plan` says on
-the pull request what its merge creates. Left by hand, after the creation: the spend
-budget, by a billing administrator; the consent screens and the role groups as the
-hosting README says. `org check` in any organization
+the pull request what its merge creates. Left by hand, after the creation: the consent
+screens and the role groups as the hosting README says; its spend budget the creation made
+on its folder from its record (`monthlyBudget`), and the root organization's apply keeps it
+beside its own on the whole billing account, with the billing export's dataset in the root
+project (the root `README.md`, "Spend budgets and the billing export"). `org check` in any organization
 lists each grant on the organization's folder to a principal outside it (neither the
 break-glass account nor an identity in one of its projects), beside the leftover grants of
 a hand setup, in a root organization too. A domain is a bare lowercase name, none under another
@@ -2584,18 +2586,22 @@ organization"; a hosting organization's `README.md`, "Created by the root organi
    Cloud Build GitHub App installed on the organization for all repositories as the Bot
    Account (GitHub prerequisites, below).
 3. In a terminal, as the break-glass account: `gcloud auth application-default login`,
-   then `bedrock org bootstrap <dir> --prefix <prefix> --github-organization <login>`,
-   with the token in `GITHUB_TOKEN` or typed when asked, and a browser for the three
-   GitHub Apps. From here the root organization's two triggers run on its repository,
-   and the delegation of each domain is the customer's (`bedrock domain check`).
-4. In the Workspace Admin console: one team group per environment of the hosting
+   then `bedrock org bootstrap <dir> --prefix <prefix> --github-organization <login>
+   --monthly-budget <units>`, with the token in `GITHUB_TOKEN` or typed when asked, and
+   a browser for the three GitHub Apps. From here the root organization's two triggers
+   run on its repository, and the delegation of each domain is the customer's (`bedrock
+   domain check`).
+4. In the Billing console, as the break-glass account, once per billing account: the
+   billing export (standard usage cost, detailed usage cost and pricing), pointed at the
+   dataset `billing` in the root project, which the bootstrap made; `bedrock org check`
+   reports a finding until the tables land.
+5. In the Workspace Admin console: one team group per environment of the hosting
    organization to come (`teamGroups`).
-5. In the root organization's repository: `bedrock org create <prefix>`, the record
-   filled in, `bedrock org create <prefix>` again, and the pull request. The merge
-   creates the organization, repository and all, and opens the hand-off pull request,
-   whose merge records its folder.
-6. In the Billing console, as a billing administrator: the new organization's spend
-   budget, which nothing renders.
+6. In the root organization's repository: `bedrock org create <prefix>`, the record
+   filled in (its spend budget among the rest, `monthlyBudget`), `bedrock org create
+   <prefix>` again, and the pull request. The merge creates the organization, repository
+   and all, budget included, and opens the hand-off pull request, whose merge records
+   its folder.
 7. In each environment project's Google Cloud console: the consent screen, with the
    audience Internal, before the first application's OAuth client is made there.
 8. In the Workspace Admin console, for each application before its first sign-in: its

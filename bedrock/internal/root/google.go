@@ -3,7 +3,8 @@
 // grants): the root project's secrets with their versions and aliases, its custom role,
 // its zones and record sets, its Cloud Build connection, repository link and triggers,
 // the IAM policies the engine compares and sets, and the lock in the state bucket. Each
-// is an interface the real clients implement and roottest fakes.
+// is an interface the real clients implement and roottest fakes; the spend budgets go
+// through the budgets package's client, which the creation shares.
 
 package root
 
@@ -11,6 +12,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/cccteam/ccc/bedrock/internal/budgets"
 	"github.com/cccteam/ccc/bedrock/internal/create"
 	"github.com/cccteam/ccc/bedrock/internal/deploy"
 	"github.com/cccteam/ccc/bedrock/internal/org"
@@ -241,6 +243,26 @@ type Locks interface {
 	Close() error
 }
 
+// TableInfo is one table of the billing export's dataset: its id and when it was last
+// written.
+type TableInfo struct {
+	ID           string
+	LastModified time.Time
+}
+
+// Datasets is BigQuery in the root project: the dataset the billing export lands in and
+// its tables, which say whether the export landed and still lands.
+type Datasets interface {
+	// Dataset is whether the dataset (by project and id) exists, and its location when it
+	// does.
+	Dataset(ctx context.Context, project, id string) (location string, exists bool, err error)
+	// CreateDataset makes the dataset in the location with the labels.
+	CreateDataset(ctx context.Context, project, id, location string, labels map[string]string) error
+	// Tables lists the dataset's tables with when each was last written.
+	Tables(ctx context.Context, project, dataset string) ([]TableInfo, error)
+	Close() error
+}
+
 // Each opener opens one seam with the run's Application Default Credentials.
 type (
 	// SecretsFunc opens Secret Manager.
@@ -260,6 +282,15 @@ type (
 	// its calls to the root project: the API wants a quota project when the caller is a
 	// person's application default credentials (bedrock org check at a terminal).
 	OrgPoliciesFunc func(ctx context.Context, quotaProject string) (OrgPolicies, error)
+	// BudgetsFunc opens the Budgets API, billing its calls to the root project like the
+	// Org Policy client: the bootstrap's and a check's credentials are a person's.
+	BudgetsFunc func(ctx context.Context, quotaProject string) (budgets.Client, error)
+	// BudgetsAsFunc opens the Budgets API as an identity the credentials impersonate: an
+	// apply trigger's run holds nothing on the billing account and keeps the budgets as
+	// the creating identity, a Billing Account Administrator.
+	BudgetsAsFunc func(ctx context.Context, identity string) (budgets.Client, error)
+	// DatasetsFunc opens BigQuery.
+	DatasetsFunc func(ctx context.Context) (Datasets, error)
 )
 
 // Clients are the engine's seams: Google Cloud as the run's own credentials (the
@@ -279,8 +310,13 @@ type Clients struct {
 	Builds   BuildsFunc
 	IAM      IAMFunc
 	Locks    LocksFunc
-	GitHub   deploy.GitHubFunc
-	Store    deploy.StoreFunc
+	// Budgets and BudgetsAs open the Budgets API as the run's credentials and as the
+	// creating identity; Datasets opens BigQuery, for the billing export's dataset.
+	Budgets   BudgetsFunc
+	BudgetsAs BudgetsAsFunc
+	Datasets  DatasetsFunc
+	GitHub    deploy.GitHubFunc
+	Store     deploy.StoreFunc
 	// Create are the creation's seams, for the hosting organizations the apply creates;
 	// nil when the run creates none (check, plan).
 	Create *create.Clients

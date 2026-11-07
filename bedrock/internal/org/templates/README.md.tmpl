@@ -191,18 +191,14 @@ What is done by hand, each where it happens:
    release waits for an approval, and its members ask for its entitlements
    (`2-env/README.md`, "The team group"). Every render names them, and `2-env`
    grants to them, so they exist before the creation.
-2. **The spend budget**, after the creation. In the Billing console, a billing
-   administrator sets the spend budget (`0-bootstrap/README.md`, "The spend
-   budget"); the two layer identities' Billing Account User, which `1-org`
-   needs the day it links a project it creates, is the creation's.
-3. **The consent screen.** In each environment project's Google Cloud
+2. **The consent screen.** In each environment project's Google Cloud
    console, before the first application's OAuth client is made there: APIs &
    Services, OAuth consent screen, with the audience **Internal**, so only the
    organization's own users sign in. The project has one consent screen, which
    every application's client in it shares, so it carries the organization's
    name, not an application's. Each application's README ("Hand steps") then
    makes its client.
-4. **The role groups.** In the Workspace Admin console, for each application
+3. **The role groups.** In the Workspace Admin console, for each application
    before its first sign-in: one group per role its sign-in grants, named
    `<group prefix><role>@{{.OrganizationDomain}}`, where the group prefix is the
    application's own (its stack's `<sign-in>_oidc_group_prefix` variable,
@@ -213,7 +209,9 @@ What is done by hand, each where it happens:
    membership, and the role it grants, is lost.
 
 Nothing of a person's is left behind: no creator's grant to trim, no first
-apply on local state. The break-glass account `{{.BreakGlassAccount}}` holds
+apply on local state, no spend budget to set (the creation made it from the
+record's `monthlyBudget`; `0-bootstrap/README.md`, "The spend budget"). The
+break-glass account `{{.BreakGlassAccount}}` holds
 Folder Admin on the organization's folder, its key for a recovery by hand
 (`0-bootstrap/README.md`, "Recovery, by hand"), and `bedrock org check` lists
 each grant of a person's it finds and any grant on that folder to a principal

@@ -43,6 +43,9 @@ const (
 	roleObjectUser           = "roles/storage.objectUser"
 	roleFolderCreator        = "roles/resourcemanager.folderCreator"
 	roleBillingAdmin         = "roles/billing.admin"
+	roleBigQueryAdmin        = "roles/bigquery.admin"
+	roleBigQueryMetadata     = "roles/bigquery.metadataViewer"
+	roleBigQueryUser         = "roles/bigquery.user"
 	rolePolicyAdmin          = "roles/orgpolicy.policyAdmin"
 	rolePolicyViewer         = "roles/orgpolicy.policyViewer"
 )
@@ -54,7 +57,7 @@ const (
 // their billing links and budgets, Cloud Storage for the state bucket, Cloud Logging
 // for the triggers' logs, Site Verification for the domains' ownership.
 var Services = []string{
-	"billingbudgets.googleapis.com", "cloudbilling.googleapis.com", "cloudbuild.googleapis.com", "cloudresourcemanager.googleapis.com",
+	"bigquery.googleapis.com", "bigquerydatatransfer.googleapis.com", "billingbudgets.googleapis.com", "cloudbilling.googleapis.com", "cloudbuild.googleapis.com", "cloudresourcemanager.googleapis.com",
 	"dns.googleapis.com", "iam.googleapis.com", "iamcredentials.googleapis.com", "logging.googleapis.com", "orgpolicy.googleapis.com",
 	"secretmanager.googleapis.com", "serviceusage.googleapis.com", "siteverification.googleapis.com", "storage.googleapis.com",
 }
@@ -144,10 +147,27 @@ func (d *Desired) Identities() []Identity {
 // and triggers; the planner and the creating identity read and use.
 func (d *Desired) ProjectRoles() map[string][]string {
 	return map[string][]string{
-		member(d.Planner()): {roleBuildsViewer, roleConnectionViewer, roleDNSReader, roleLogWriter, roleSecretViewer, roleServiceUsageConsumer},
-		member(d.Applier()): {roleBuildsEditor, roleBuildsViewer, roleConnectionAdmin, roleDNSAdmin, roleLogWriter, roleProjectIAMAdmin, roleRoleAdmin, roleSecretAdmin, roleServiceAccountAdmin, roleServiceUsageAdmin},
+		member(d.Planner()): {roleBigQueryMetadata, roleBuildsViewer, roleConnectionViewer, roleDNSReader, roleLogWriter, roleSecretViewer, roleServiceUsageConsumer},
+		member(d.Applier()): {roleBigQueryMetadata, roleBigQueryUser, roleBuildsEditor, roleBuildsViewer, roleConnectionAdmin, roleDNSAdmin, roleLogWriter, roleProjectIAMAdmin, roleRoleAdmin, roleSecretAdmin, roleServiceAccountAdmin, roleServiceUsageAdmin},
 		member(d.Creator()): {roleServiceUsageConsumer},
 	}
+}
+
+// ExportOperatorGrant is the break-glass account's BigQuery Admin on the root project,
+// which the apply keeps beside its Folder Admin on the folder: pointing the billing
+// account's pricing export at the dataset makes a transfer configuration in the project,
+// which takes that role of whoever does it, and the break-glass account is the one
+// principal that holds the Billing Account Administrator the step takes too. It reaches
+// nothing the Folder Admin does not already: that role sets any project's policy under
+// the folder.
+func (d *Desired) ExportOperatorGrant() Grant {
+	return Grant{Resource: d.Project(), Role: roleBigQueryAdmin, Member: "user:" + d.p.BreakGlassAccount}
+}
+
+// TotalBudget is the root organization's spend budget, on every project of the billing
+// account: the amount the placement names (monthlyBudget).
+func (d *Desired) TotalBudget() org.Budget {
+	return org.TotalBudget(d.p.Prefix, d.p.MonthlyBudget)
 }
 
 // FolderRoles are the roles the two runners hold on the organization's folder: the reads

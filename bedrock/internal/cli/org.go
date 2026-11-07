@@ -76,7 +76,7 @@ project, that plan the layers on a pull request and apply them on the merge, run
 org plan and bedrock org apply. It then prints the hand steps, each opening with the place
 it happens: a hosting organization is created by its root organization (bedrock org create
 there, then the merge), so its steps are what comes before the record (the team groups) and
-after the creation (the spend budget, the consent screen, the role groups). From then on the
+after the creation (the consent screen, the role groups). From then on the
 triggers plan every layer on a pull request and apply it on the merge, as the layer's own
 identity. A root organization is not rendered here: bedrock org bootstrap makes it, placement
 and files, in one run.
@@ -210,7 +210,9 @@ happens:
      the organization root (%s), the terraform folder under it, the boot project
      %s-boot-gbl-core-<suffix>, the boot identity %s-boot-gbl-tofu with its roles on the
      organization's folder and on the boot project, the break-glass account's (%s) Folder Admin on it and the state
-     bucket %s-boot-gbl-state-<suffix>; the first applies of 0-bootstrap and 1-org against
+     bucket %s-boot-gbl-state-<suffix>; the spend budget the record names (monthlyBudget) on
+     the organization's folder, which the root organization's apply keeps; the first
+     applies of 0-bootstrap and 1-org against
      the bucket (the connection from the recorded authorization, the repository link and the
      two triggers; the folders, the projects and their identities, recorded in
      placement.json as projects and projectNumbers); the repository %s/%s with the rendered
@@ -218,11 +220,7 @@ happens:
      identity; then the creating identity's grants off everything it made, and a pull
      request in the root organization's repository that records the folder. Nothing of the
      organization's sits at the organization node, and nobody applies by hand.
-  3. In the Billing console, as a billing administrator of %s: the spend budget on the
-     account (0-bootstrap/README.md, "The spend budget"); nothing renders it. The boot and
-     org identities (%s-boot-gbl-tofu, %s-org-gbl-tofu) hold Billing Account User on it
-     already, granted by the creation, for the projects 1-org links.
-  4. In each environment project's Google Cloud console, before the first application's
+  3. In each environment project's Google Cloud console, before the first application's
      OAuth client is made there: the consent screen (APIs & Services, OAuth consent
      screen), with the audience Internal, the organization's own users.
 From then on the two Cloud Build triggers in the boot project (%s and %s)
@@ -235,7 +233,7 @@ any grant on the organization's folder to a principal outside the organization.
 After the first apply of 2-net: bedrock domain check prints what the apps domain, and each vanity domain, still needs, and where.
 `, p.RootOrganization(), p.OrganizationDomain, p.GithubOrganization, p.GithubBotAccount, p.RootProject(), p.Prefix, p.Prefix,
 		p.OrganizationID, p.Prefix, p.Prefix, p.BreakGlassAccount, p.Prefix, p.GithubOrganization, p.SourceRepo,
-		p.BillingAccount, p.Prefix, p.Prefix, p.PlanTriggerName(), p.ApplyTriggerName())
+		p.PlanTriggerName(), p.ApplyTriggerName())
 }
 
 // hostingOnly refuses a command that acts on applications or environments in a root

@@ -120,6 +120,13 @@ type Placement struct {
 	DirectoryCustomerID string `json:"directoryCustomerId,omitempty"`
 	// BillingAccount is the billing account projects are linked to.
 	BillingAccount string `json:"billingAccount"`
+	// MonthlyBudget is the spend budget, in whole units of the billing account's currency
+	// a month: a hosting organization's own, on its folder, made by the creation; a root
+	// organization's, on the whole billing account, made by the bootstrap; both kept by the
+	// root organization's apply, with alerts at half, nine tenths and the whole of it to
+	// the billing account's administrators and users. Required: a budget nobody set is
+	// what the hand step it replaces existed to prevent.
+	MonthlyBudget int64 `json:"monthlyBudget,omitempty"`
 	// AppsDomain is the domain the applications' hostnames hang under, never the
 	// identity domain. A root organization has none.
 	AppsDomain string `json:"appsDomain,omitempty"`
@@ -570,7 +577,7 @@ func (p *Placement) Validate() error {
 	}
 	for _, validate := range []func() error{
 		p.validateDirectoryCustomer, p.validateBotAccount, p.validateGithubApps, p.validateAppNames, p.validateApprovingReviews, p.validateCloudBuild,
-		p.validateBedrockPin, p.validateProjects,
+		p.validateBedrockPin, p.validateProjects, p.validateMonthlyBudget,
 	} {
 		if err := validate(); err != nil {
 			return err
@@ -591,6 +598,22 @@ func (p *Placement) Validate() error {
 	}
 
 	return p.validateHosting()
+}
+
+// validateMonthlyBudget requires the spend budget: a hosting organization's on its
+// folder, a root organization's on the whole billing account, each a positive whole
+// amount in the billing account's currency a month.
+func (p *Placement) validateMonthlyBudget() error {
+	if p.MonthlyBudget <= 0 {
+		where := "its folder"
+		if p.IsRoot() {
+			where = "the whole billing account"
+		}
+
+		return errors.Newf("monthlyBudget is missing or not positive: the spend budget on %s, in whole units of the billing account's currency a month, which the root organization makes and keeps", where)
+	}
+
+	return nil
 }
 
 // validateHosting holds a hosting organization's placement to what the six layers render
