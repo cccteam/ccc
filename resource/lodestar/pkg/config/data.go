@@ -383,9 +383,13 @@ func openMembersAuth(ctx context.Context, db *database.Driver, env *dataConfig, 
 // APP_MAIL_APP_PASSWORD), or, with no mailbox configured, the session library's
 // logging stand-in, which writes each message to the log, link included, and sends
 // nothing: development follows the link from the log. A deployed environment configures
-// the mailbox, since the links are secrets.
+// the mailbox, since the links are secrets. A mailbox configured without its app password
+// is the first environment before an operator adds the secret's version (the stack's
+// secret_versions, where no entry means not yet): the log stands in there too, so the
+// environment runs and its migrations seed, and the relay takes over once the version
+// is pinned; a release to any other environment is refused until it is.
 func openMailSender(env *dataConfig) (mail.Sender, error) {
-	if env.MailMailbox == "" {
+	if env.MailMailbox == "" || env.MailAppPassword == "" {
 		return mail.Log{}, nil
 	}
 	sender, err := workspace.New(&workspace.Settings{Mailbox: env.MailMailbox, From: env.MailFrom, AppPassword: env.MailAppPassword, Name: crew.Application})
