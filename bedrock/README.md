@@ -2255,7 +2255,7 @@ not supported.
 A production application often serves on a domain of its own, the client's brand domain,
 beside its hostname under the apps domain. Such a domain is a vanity domain: the
 organization's placement lists it (`vanityDomains`, bare lowercase domains, none the apps
-domain or the organization's domain, whose mail is on it, nor under or above either or
+domain nor under or above it or
 one another; at most 38 characters, so the names 2-net derives fit), and it is delegated
 whole to the network project, the apex-delegation shape above applied to the application's
 domain, with the same hand step at the registrar, once. 2-net serves each with a zone of
@@ -2547,9 +2547,10 @@ budget, by a billing administrator; the consent screens and the role groups as t
 hosting README says. `org check` in any organization
 lists each grant on the organization's folder to a principal outside it (neither the
 break-glass account nor an identity in one of its projects), beside the leftover grants of
-a hand setup, in a root organization too. A domain is a bare lowercase name, not the organization's own
-domain (whose mail is on it; a label of it is fine) nor above it, none under another
-listed, and at most 46 characters, so the zone's name fits. The placement refuses the
+a hand setup, in a root organization too. A domain is a bare lowercase name, none under another
+listed, and at most 46 characters, so the zone's name fits; the organization's own domain
+is one like any other, and the live domain check decides whether it is delegated whole or
+by a label; each may declare the records its zone carries (`records`, in the root README). The placement refuses the
 fields of the hosting model (`appsDomain`, `spanner.config`, `teamGroups`, `applications`
 and the rest), and a hosting organization's refuses `domains`. `org preflight` checks the
 three roles the bootstrap needs (below), and nothing for a hosting organization, which its

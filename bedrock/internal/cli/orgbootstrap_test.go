@@ -253,7 +253,7 @@ func TestOrgBootstrapRefusals(t *testing.T) {
 			wantErr: "these credentials see no open billing account: the break-glass account holds Billing Account Administrator on the one the organization's projects link to",
 		},
 		{name: "a prefix that breaks the rule", args: []string{"--prefix", "Imr", "--github-organization", "imp-example"}, wantErr: `prefix "Imr" is not 2 to 4 lowercase alphanumeric characters starting with a letter`},
-		{name: "a domain that is the organization's", args: []string{"--prefix", "imr", "--github-organization", "imp-example", "--domain", "imp.example"}, wantErr: `domains names "imp.example", which is the organization's domain`},
+		{name: "a domain that is not bare", args: []string{"--prefix", "imr", "--github-organization", "imp-example", "--domain", "ClientBay.example"}, wantErr: `domains names "ClientBay.example", which is not a bare lowercase domain`},
 		{name: "a region of another shape", args: []string{"--prefix", "imr", "--github-organization", "imp-example", "--region", "global"}, wantErr: `"global" is not a region name of the shape <area>-<direction><number> (us-central1)`},
 		{name: "an app brought without its key", args: []string{"--prefix", "imr", "--github-organization", "imp-example", "--deployer-app", "5001"}, wantErr: "--deployer-app and --deployer-key go together: the App ID of the deployer app and the file holding its private key"},
 		{

@@ -43,8 +43,10 @@ Its placement lists the domains delegated to it (`domains` in
 `placement.json`: `clientbay.example`, `impapps.example` and `zones.imp.example`) and, under each, the labels
 handed onward, each naming the hosting organization and the four name servers
 of the application's zone there. The apply makes one zone per domain, with
-DNSSEC on, and one NS record set per label, an hour's time to live, and nothing
-else: no address, no certificate, no mail record. 3 name(s) are handed
+DNSSEC on, one NS record set per label, an hour's time to live, and the records
+the placement declares for the domain (`records`: a verification record, a mail
+policy, whatever the domain needs at its apex or under it; "Records in a zone",
+below), and nothing else: no address and no certificate. 3 name(s) are handed
 onward today. The hosting organization's side is its
 per-application vanity shape, unchanged: the application's name is a vanity
 domain of that organization, with its zone, wildcard certificate, authorization
@@ -426,10 +428,13 @@ finds it:
 
 A domain that carries other DNS is never delegated whole: the check refuses an
 undelegated domain that answers records that are not the zone's and names a
-label of it to delegate instead. The organization's own domain
-(`imp.example`, whose mail is on it) is refused as a domain here for
-the same reason; a label of it is fine. The apex of a shared domain is never an
-application's name: a zone cannot hand its own apex onward, so a customer
+label of it to delegate instead. That is the live answers' call, not the
+placement's: the organization's own domain (`imp.example`) is a
+domain like any other here, delegated whole when nothing but what its zone
+would carry is on it (a Cloud Identity domain with no mailboxes), or by a label
+when its mail stays where it is. What a domain delegated whole needs at its apex
+or under it is declared in the placement ("Records in a zone", below). The apex
+of a shared domain is never an application's name: a zone cannot hand its own apex onward, so a customer
 whose bare domain is the application delegates it to that application's
 hosting organization alone, as a vanity domain there.
 
@@ -464,6 +469,44 @@ servers, which then go to the registrar as above. The record at the registrar's
 DNS stops being served with the delegation, and by then the apply has put the
 token in the zone here, so the ownership holds. For most domains Cloud DNS
 asks nothing, and the zone is made on the first apply.
+
+## Records in a zone
+
+A zone here carries the labels' NS records, the owners' verification tokens
+(below) and what the person who knows the domain declares under it in
+`placement.json`: `records`, under the domain, a list of record sets, each
+with a `name` (`@` for the apex, else a label, or labels joined with dots, with
+a leading underscore for a service name such as `_dmarc`), a `type` (A, AAAA,
+CAA, CNAME, MX, SRV or TXT; never NS, which is the labels' and the zone's own),
+a `ttl` in seconds (300 unless given) and its `data`, the values as Cloud DNS
+takes them (a TXT value is quoted by the apply when it is not already). A name
+handed onward, or under one, is refused: the hosting organization's zone
+answers for it.
+
+```json
+"domains": {
+  "mydomain.com": {
+    "records": [
+      { "name": "@", "type": "TXT", "data": ["v=spf1 -all"] },
+      { "name": "_dmarc", "type": "TXT", "data": ["v=DMARC1; p=reject"] },
+      { "name": "@", "type": "CAA", "data": ["0 issue \"pki.goog\""] }
+    ]
+  }
+}
+```
+
+`bedrock org plan` says which record a merge writes (`writes mydomain.com TXT
+"v=spf1 -all"`), and the apply writes it as declared, or rewrites the set the
+zone holds when its values or time to live differ. The apex TXT set is shared
+with the owners' tokens: the apply keeps the tokens beside the declared values,
+and anything else the set held goes. A record taken out of `records` stays in
+the zone until a person deletes it (`gcloud dns record-sets delete`), as the
+apply deletes no zone. What a domain delegated whole typically needs: an
+identity domain, the TXT record that verifies it in Search Console for the
+OAuth consent screen's authorized domains; a Workspace domain whose mail is on
+it, its MX records, SPF and DMARC policies and DKIM key, as its Workspace
+console lists them; any domain, a CAA record admitting `pki.goog`, the
+authority that issues the certificates here.
 
 ## Handing a label onward
 

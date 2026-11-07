@@ -1015,23 +1015,23 @@ func (p *Placement) VanityNames(domain string) string {
 }
 
 // validateVanityDomains refuses a vanity domain that is not a bare lowercase domain, the
-// apps domain or the organization's domain (whose mail is on it) or a name under or
-// above either, one listed twice or under another listed (one zone serves a domain and
-// everything under it), and one whose names in 2-net would not fit.
+// apps domain or a name under or above it, one listed twice or under another listed (one
+// zone serves a domain and everything under it), and one whose names in 2-net would not
+// fit. The organization's own domain is a vanity domain like any other: whether it is
+// delegated whole or by a label is the live domain check's call, from what its apex
+// answers, not the placement's.
 func (p *Placement) validateVanityDomains() error {
 	for i, d := range p.VanityDomains {
 		if !derive.HostnameOK(d) {
 			return errors.Newf("vanityDomains names %q, which is not a bare lowercase domain such as example.com", d)
 		}
-		for _, other := range []struct{ name, what string }{{p.AppsDomain, "the apps domain"}, {p.OrganizationDomain, "the organization's domain, whose mail is on it"}} {
-			switch {
-			case d == other.name:
-				return errors.Newf("vanityDomains names %q, which is %s: a vanity domain is a client's own domain, delegated whole to the network project beside it", d, other.what)
-			case strings.HasSuffix(d, "."+other.name):
-				return errors.Newf("vanityDomains names %q, which is under %s %s: its zone already serves every name under it", d, other.what, other.name)
-			case strings.HasSuffix(other.name, "."+d):
-				return errors.Newf("vanityDomains names %q, which is above %s %s: one zone would serve both", d, other.what, other.name)
-			}
+		switch {
+		case d == p.AppsDomain:
+			return errors.Newf("vanityDomains names %q, which is the apps domain: a vanity domain is a client's own domain, delegated whole to the network project beside it", d)
+		case strings.HasSuffix(d, "."+p.AppsDomain):
+			return errors.Newf("vanityDomains names %q, which is under the apps domain %s: its zone already serves every name under it", d, p.AppsDomain)
+		case strings.HasSuffix(p.AppsDomain, "."+d):
+			return errors.Newf("vanityDomains names %q, which is above the apps domain %s: one zone would serve both", d, p.AppsDomain)
 		}
 		for _, earlier := range p.VanityDomains[:i] {
 			switch {

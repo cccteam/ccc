@@ -61,7 +61,38 @@ type Domain struct {
 	// or below another), each with the hosting organization and the four name servers of
 	// the application's zone there.
 	Labels map[string]Delegation `json:"labels,omitempty"`
+	// Records are the record sets the zone carries beside the labels' NS records and the
+	// owners' verification tokens, declared by the person who knows what the domain
+	// needs there: a verification TXT at the apex of a domain delegated whole, the mail
+	// records of a Workspace domain (MX, SPF, DKIM, DMARC), a CAA record. The apply
+	// writes each as declared and rewrites one the zone holds differently; a record
+	// taken out stays until a person deletes it, as the apply deletes no zone.
+	Records []Record `json:"records,omitempty"`
 }
+
+// Record is one record set a zone carries for the person who declared it: its name
+// under the domain ("@" for the apex, else a label, or labels joined with dots), its
+// type, its time to live in seconds (300 unless given) and its values as Cloud DNS
+// takes them, except that a TXT value is quoted by the apply when it is not already.
+type Record struct {
+	Name string   `json:"name"`
+	Type string   `json:"type"`
+	TTL  int64    `json:"ttl,omitempty"`
+	Data []string `json:"data"`
+}
+
+// RecordApex names the domain itself in a record (records[].name).
+const RecordApex = "@"
+
+// recordLabelRE is one part of a declared record's name: a DNS label, which may open
+// with the underscore of a service name (_dmarc, _domainkey, _acme-challenge).
+var recordLabelRE = regexp.MustCompile(`^_?[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$`)
+
+// recordTypes are the types a declared record may have: what a domain needs to prove
+// itself, to send and receive mail, and to answer an address. NS is not among them:
+// the zone's own NS records are Cloud DNS's, and the others are the labels handed
+// onward (labels).
+var recordTypes = []string{"A", "AAAA", "CAA", "CNAME", "MX", "SRV", "TXT"}
 
 // Delegation is where a label is handed: the hosting organization that serves the name
 // (by its prefix) and the four name servers of the zone it serves it from, as Cloud DNS
@@ -230,23 +261,18 @@ func (p *Placement) validateRoot() error {
 	return p.validateDomains()
 }
 
-// validateDomains refuses a domain that is not a bare lowercase domain, the
-// organization's domain (whose mail is on it; a label of it is fine) or a name above it,
-// one under another listed (one zone serves a domain and everything under it), one whose
-// zone's name would not fit, and a label handed onward that breaks the label rule, is
-// above or below another, names no hosting organization or this one, or names other than
-// four name servers as Cloud DNS spells them.
+// validateDomains refuses a domain that is not a bare lowercase domain, one under another
+// listed (one zone serves a domain and everything under it), one whose zone's name would
+// not fit, a label handed onward that breaks the label rule, is above or below another,
+// names no hosting organization or this one, or names other than four name servers as
+// Cloud DNS spells them, and a record that breaks the record rule. The organization's
+// own domain is a domain like any other here: whether it is delegated whole or by a
+// label is the live domain check's call, from what its apex answers, not the placement's.
 func (p *Placement) validateDomains() error {
 	domains := p.DomainNames()
 	for i, d := range domains {
 		if !derive.HostnameOK(d) {
 			return errors.Newf("domains names %q, which is not a bare lowercase domain such as example.com", d)
-		}
-		switch {
-		case d == p.OrganizationDomain:
-			return errors.Newf("domains names %q, which is the organization's domain, whose mail is on it: a root organization holds a label of it (apps.%s) or another domain, and the identity domain stays at its registrar's DNS", d, d)
-		case strings.HasSuffix(p.OrganizationDomain, "."+d):
-			return errors.Newf("domains names %q, which is above the organization's domain %s: one zone would serve both", d, p.OrganizationDomain)
 		}
 		for _, earlier := range domains[:i] {
 			if strings.HasSuffix(d, "."+earlier) || strings.HasSuffix(earlier, "."+d) {
@@ -257,6 +283,9 @@ func (p *Placement) validateDomains() error {
 			return errors.Newf("domains names %q, whose zone %s would be %d characters; Cloud DNS takes at most %d in a zone's name, so a domain here is at most %d characters", d, name, len(name), resourceNameLimit, resourceNameLimit-(len(name)-len(d)))
 		}
 		if err := p.validateLabels(d); err != nil {
+			return err
+		}
+		if err := p.validateRecords(d); err != nil {
 			return err
 		}
 	}
@@ -285,6 +314,47 @@ func (p *Placement) validateLabels(domain string) error {
 		if err := p.validateDelegation(where, p.Domains[domain].Labels[label]); err != nil {
 			return err
 		}
+	}
+
+	return nil
+}
+
+// validateRecords holds the records one domain declares to the rules: a name that is
+// the apex (@) or a label (or labels joined with dots) that is not handed onward nor
+// under one, since the hosting organization's zone answers for those; a type among the
+// ones a person declares (never NS); a time to live that is not negative; at least one
+// value; no CNAME at the apex and none with more than one value; and no name and type
+// twice, since several values go in one record's data.
+func (p *Placement) validateRecords(domain string) error {
+	seen := map[string]bool{}
+	for i, r := range p.Domains[domain].Records {
+		if r.Name != RecordApex {
+			for part := range strings.SplitSeq(r.Name, ".") {
+				if !recordLabelRE.MatchString(part) {
+					return errors.Newf("domains.%s.records[%d]: name %q is not %q for the apex or a DNS label of lowercase letters, digits and hyphens, with a leading underscore for a service name such as _dmarc (joined with dots for a name more than one label below the domain)", domain, i, r.Name, RecordApex)
+				}
+			}
+			for _, label := range p.LabelNames(domain) {
+				if r.Name == label || strings.HasSuffix(r.Name, "."+label) {
+					return errors.Newf("domains.%s.records[%d]: name %q is handed onward (labels.%s): the hosting organization's zone answers for it and everything under it", domain, i, r.Name, label)
+				}
+			}
+		}
+		switch {
+		case !slices.Contains(recordTypes, r.Type):
+			return errors.Newf("domains.%s.records[%d]: type %q is not one of %s (NS records are the labels handed onward, and the zone's own)", domain, i, r.Type, strings.Join(recordTypes, ", "))
+		case r.TTL < 0:
+			return errors.Newf("domains.%s.records[%d]: ttl %d is negative; leave it out for 300 seconds", domain, i, r.TTL)
+		case len(r.Data) == 0:
+			return errors.Newf("domains.%s.records[%d]: data is empty; a record set carries at least one value", domain, i)
+		case r.Type == "CNAME" && r.Name == RecordApex:
+			return errors.Newf("domains.%s.records[%d]: a CNAME at the apex is not allowed by DNS; the apex holds the zone's own records", domain, i)
+		case r.Type == "CNAME" && len(r.Data) > 1:
+			return errors.Newf("domains.%s.records[%d]: a CNAME carries one value, not %d", domain, i, len(r.Data))
+		case seen[r.Name+"/"+r.Type]:
+			return errors.Newf("domains.%s.records[%d]: %s %s is declared twice; several values go in one record's data", domain, i, r.Name, r.Type)
+		}
+		seen[r.Name+"/"+r.Type] = true
 	}
 
 	return nil

@@ -45,6 +45,13 @@ func TestRootPlacementValidate(t *testing.T) {
 		{name: "no domain yet", mutate: func(p *Placement) { p.Domains = nil }},
 		{name: "a domain with no label", mutate: func(p *Placement) { p.Domains = map[string]Domain{"clientbay.example": {}} }},
 		{name: "a label of the organization's domain", mutate: func(p *Placement) { p.Domains = map[string]Domain{"apps.imp.example": {}} }},
+		{name: "the organization's domain, delegated whole, with the records its apex needs", mutate: func(p *Placement) {
+			p.Domains = map[string]Domain{"imp.example": {Records: []Record{{Name: "@", Type: "TXT", Data: []string{"google-site-verification=abc", "v=spf1 -all"}}, {Name: "@", Type: "MX", TTL: 3600, Data: []string{"1 smtp.google.com."}}, {Name: "_dmarc", Type: "TXT", Data: []string{"v=DMARC1; p=reject"}}}}}
+		}},
+		{name: "a domain above the organization's domain", mutate: func(p *Placement) {
+			p.OrganizationDomain = "corp.imp.example"
+			p.Domains = map[string]Domain{"imp.example": {}}
+		}},
 		{name: "two regions", mutate: func(p *Placement) { p.Regions = append(p.Regions, Region{Name: "us-east1", Code: "ue1"}) }, wantErr: "regions has 2 entries; a root organization runs in one, where its connection, its triggers and its state bucket are"},
 		{name: "no Bot Account", mutate: func(p *Placement) { p.GithubBotAccount = "" }, wantErr: "githubBotAccount is empty"},
 		{name: "no organization domain", mutate: func(p *Placement) { p.OrganizationDomain = "" }, wantErr: "organizationDomain is empty"},
@@ -94,7 +101,22 @@ func TestRootPlacementValidate(t *testing.T) {
 		}, wantErr: "hostnames is set, and a root organization has no use for it"},
 		{name: "a project of the hosting model", mutate: func(p *Placement) { p.Projects["tst"] = "imr-tst-gbl-core-c3d4" }, wantErr: `projects names "tst", which is not one of root`},
 		{name: "a project number of the hosting model", mutate: func(p *Placement) { p.ProjectNumbers["net"] = "100000000012" }, wantErr: `projectNumbers names "net", which is not one of root`},
-		{name: "the organization's domain", mutate: func(p *Placement) { p.Domains["imp.example"] = Domain{} }, wantErr: `domains names "imp.example", which is the organization's domain, whose mail is on it: a root organization holds a label of it (apps.imp.example) or another domain, and the identity domain stays at its registrar's DNS`},
+		{name: "a record with an NS type", mutate: func(p *Placement) {
+			p.Domains["imp.example"] = Domain{Records: []Record{{Name: "mail", Type: "NS", Data: []string{"ns1.example."}}}}
+		}, wantErr: `domains.imp.example.records[0]: type "NS" is not one of A, AAAA, CAA, CNAME, MX, SRV, TXT (NS records are the labels handed onward, and the zone's own)`},
+		{name: "a record named for a label handed onward", mutate: func(p *Placement) {
+			p.Domains["clientbay.example"] = Domain{Labels: p.Domains["clientbay.example"].Labels, Records: []Record{{Name: "www.harbor", Type: "A", Data: []string{"192.0.2.1"}}}}
+		}, wantErr: `domains.clientbay.example.records[0]: name "www.harbor" is handed onward (labels.harbor): the hosting organization's zone answers for it and everything under it`},
+		{name: "a record with a bad name", mutate: func(p *Placement) {
+			p.Domains["imp.example"] = Domain{Records: []Record{{Name: "Mail_", Type: "A", Data: []string{"192.0.2.1"}}}}
+		}, wantErr: `domains.imp.example.records[0]: name "Mail_" is not "@" for the apex or a DNS label`},
+		{name: "a record with no value", mutate: func(p *Placement) { p.Domains["imp.example"] = Domain{Records: []Record{{Name: "@", Type: "TXT"}}} }, wantErr: `domains.imp.example.records[0]: data is empty; a record set carries at least one value`},
+		{name: "a CNAME at the apex", mutate: func(p *Placement) {
+			p.Domains["imp.example"] = Domain{Records: []Record{{Name: "@", Type: "CNAME", Data: []string{"www.imp.example."}}}}
+		}, wantErr: `domains.imp.example.records[0]: a CNAME at the apex is not allowed by DNS`},
+		{name: "a record declared twice", mutate: func(p *Placement) {
+			p.Domains["imp.example"] = Domain{Records: []Record{{Name: "@", Type: "TXT", Data: []string{"a"}}, {Name: "@", Type: "TXT", Data: []string{"b"}}}}
+		}, wantErr: `domains.imp.example.records[1]: @ TXT is declared twice; several values go in one record's data`},
 		{name: "a domain in capitals", mutate: func(p *Placement) { p.Domains["ClientBay.example"] = Domain{} }, wantErr: `domains names "ClientBay.example", which is not a bare lowercase domain such as example.com`},
 		{name: "a domain with a trailing dot", mutate: func(p *Placement) { p.Domains["clientbay.example."] = Domain{} }, wantErr: `domains names "clientbay.example.", which is not a bare lowercase domain`},
 		{name: "a domain under another listed", mutate: func(p *Placement) { p.Domains["west.clientbay.example"] = Domain{} }, wantErr: `domains lists "clientbay.example" and "west.clientbay.example", one under the other: the zone of a domain serves everything under it, so the one above is enough`},

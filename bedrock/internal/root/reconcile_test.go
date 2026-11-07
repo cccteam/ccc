@@ -627,3 +627,67 @@ func TestEngineZoneWaitsForTheApplier(t *testing.T) {
 		t.Errorf("zone made %v, verified %v", ok, w.fake.Verified)
 	}
 }
+
+// TestEngineDeclaredRecords: the records a domain declares are written as declared, a
+// TXT value quoted, with the apex TXT set keeping the owners' tokens beside them; a
+// changed value rewrites the set; a record taken out of the placement stays.
+func TestEngineDeclaredRecords(t *testing.T) {
+	t.Parallel()
+
+	w := newWorld(t)
+	if _, out := w.run(t, root.Apply, true); strings.Contains(out, "finding") {
+		t.Fatalf("the first apply:\n%s", out)
+	}
+	project := w.p.Projects[org.RootProjectKey]
+	zone := w.p.ZoneName("clientbay.example")
+	d := w.p.Domains["clientbay.example"]
+	d.Records = []org.Record{
+		{Name: "@", Type: "TXT", Data: []string{"v=spf1 -all"}},
+		{Name: "@", Type: "MX", TTL: 3600, Data: []string{"1 smtp.google.com."}},
+		{Name: "_dmarc", Type: "TXT", Data: []string{`"v=DMARC1; p=reject"`}},
+	}
+	w.p.Domains["clientbay.example"] = d
+	report, _ := w.run(t, root.Check, false)
+	containsAll(t, whats(report),
+		"zones: in the zone "+zone+": writes clientbay.example TXT \"v=spf1 -all\"",
+		"writes clientbay.example MX 1 smtp.google.com.",
+		"writes _dmarc.clientbay.example TXT \"v=DMARC1; p=reject\"",
+	)
+	if _, out := w.run(t, root.Apply, false); strings.Contains(out, "finding") {
+		t.Fatalf("the apply:\n%s", out)
+	}
+	find := func(name, typ string) root.RecordSet {
+		for _, r := range w.fake.Records[project+"/"+zone] {
+			if r.Name == name && r.Type == typ {
+				return r
+			}
+		}
+
+		return root.RecordSet{}
+	}
+	apex := find("clientbay.example.", "TXT")
+	if len(apex.Data) != 3 || apex.Data[0] != `"v=spf1 -all"` || !strings.HasPrefix(apex.Data[1], `"google-site-verification=`) || !strings.HasPrefix(apex.Data[2], `"google-site-verification=`) {
+		t.Errorf("the apex TXT set carries %q, want the declared value and the two owners' tokens", apex.Data)
+	}
+	if got := find("clientbay.example.", "MX"); got.TTL != 3600 || !slices.Equal(got.Data, []string{"1 smtp.google.com."}) {
+		t.Errorf("MX = %+v", got)
+	}
+	if got := find("_dmarc.clientbay.example.", "TXT"); got.TTL != 300 || !slices.Equal(got.Data, []string{`"v=DMARC1; p=reject"`}) {
+		t.Errorf("_dmarc = %+v", got)
+	}
+	d.Records = []org.Record{{Name: "@", Type: "TXT", Data: []string{"v=spf1 include:_spf.google.com ~all"}}}
+	w.p.Domains["clientbay.example"] = d
+	report, _ = w.run(t, root.Apply, false)
+	containsAll(t, whats(report), "zones: in the zone "+zone+": writes clientbay.example TXT \"v=spf1 include:_spf.google.com ~all\"")
+	apex = find("clientbay.example.", "TXT")
+	if len(apex.Data) != 3 || apex.Data[0] != `"v=spf1 include:_spf.google.com ~all"` || slices.Contains(apex.Data, `"v=spf1 -all"`) {
+		t.Errorf("after the change the apex TXT set carries %q, want the new value and the two tokens", apex.Data)
+	}
+	if got := find("clientbay.example.", "MX"); len(got.Data) == 0 {
+		t.Error("the MX record taken out of the placement was deleted; it stays until a person deletes it")
+	}
+	clean, _ := w.run(t, root.Check, false)
+	if got := whats(clean); len(got) != 0 {
+		t.Errorf("changes after the apply: %v", got)
+	}
+}

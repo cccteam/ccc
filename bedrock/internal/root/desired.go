@@ -198,7 +198,44 @@ func (d *Desired) BootstrapGrants() []Grant {
 // identity's token, as Google's webmaster verification looks for it (the value quoted,
 // as Cloud DNS takes TXT data); the engine merges it into the record set the apex holds.
 func VerificationRecord(domain, token string) RecordSet {
-	return RecordSet{Name: domain + ".", Type: "TXT", TTL: 3600, Data: []string{strconv.Quote(token)}}
+	return RecordSet{Name: domain + ".", Type: recordTypeTXT, TTL: 3600, Data: []string{strconv.Quote(token)}}
+}
+
+const (
+	// recordTypeNS is the type of the record sets that hand a label onward.
+	recordTypeNS = "NS"
+	// recordTypeTXT is the type of the apex record set that carries the owners' tokens.
+	recordTypeTXT = "TXT"
+	// defaultRecordTTL is a declared record's time to live when it names none.
+	defaultRecordTTL = 300
+	// verificationTokenPrefix opens a Google webmaster verification token, which the
+	// apex TXT set keeps beside the declared values.
+	verificationTokenPrefix = "google-site-verification="
+)
+
+// DeclaredRecord is the record set a record the placement declares for the domain makes:
+// its name under the domain (the apex for "@"), its type, its time to live (300 seconds
+// unless given) and its values as Cloud DNS takes them, a TXT value quoted when it is
+// not already.
+func DeclaredRecord(domain string, r org.Record) RecordSet {
+	name := domain + "."
+	if r.Name != org.RecordApex {
+		name = r.Name + "." + domain + "."
+	}
+	ttl := r.TTL
+	if ttl == 0 {
+		ttl = defaultRecordTTL
+	}
+	data := slices.Clone(r.Data)
+	if r.Type == recordTypeTXT {
+		for i, v := range data {
+			if !strings.HasPrefix(v, `"`) {
+				data[i] = strconv.Quote(v)
+			}
+		}
+	}
+
+	return RecordSet{Name: name, Type: r.Type, TTL: ttl, Data: data}
 }
 
 // OrganizationGrants are the roles at the organization node, which the bootstrap grants
@@ -322,7 +359,8 @@ type ZoneSpec struct {
 }
 
 // Zones are the zones of the domains delegated to the organization, in domain order,
-// each with one NS record set per label handed onward.
+// each with one NS record set per label handed onward and the records the placement
+// declares for the domain.
 func (d *Desired) Zones() []ZoneSpec {
 	domains := make([]string, 0, len(d.p.Domains))
 	for domain := range d.p.Domains {
@@ -341,7 +379,10 @@ func (d *Desired) Zones() []ZoneSpec {
 		}
 		sort.Strings(labels)
 		for _, label := range labels {
-			spec.Records = append(spec.Records, RecordSet{Name: label + "." + domain + ".", Type: "NS", TTL: 3600, Data: d.p.Domains[domain].Labels[label].NameServers})
+			spec.Records = append(spec.Records, RecordSet{Name: label + "." + domain + ".", Type: recordTypeNS, TTL: 3600, Data: d.p.Domains[domain].Labels[label].NameServers})
+		}
+		for _, r := range d.p.Domains[domain].Records {
+			spec.Records = append(spec.Records, DeclaredRecord(domain, r))
 		}
 		specs = append(specs, spec)
 	}

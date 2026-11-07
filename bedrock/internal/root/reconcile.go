@@ -813,8 +813,13 @@ func (e *engine) zones(ctx context.Context) error {
 	return nil
 }
 
-// records brings the zone's NS record sets to the labels handed onward: the zone's own
-// NS and SOA records are its, and stay.
+// records brings the zone's record sets to the placement: one NS record set per label
+// handed onward, and the records the domain declares (records), each written as declared
+// and rewritten when the zone holds it differently, the apex TXT set keeping the owners'
+// verification tokens beside the declared values. The zone's own NS and SOA records are
+// its, and stay; a label taken out of the placement has its NS record set taken back,
+// and a declared record taken out stays until a person deletes it, as the apply deletes
+// no zone.
 func (e *engine) records(ctx context.Context, spec ZoneSpec) error {
 	current, err := e.dns.RecordSets(ctx, e.d.Project(), spec.Zone.Name)
 	if err != nil {
@@ -823,6 +828,9 @@ func (e *engine) records(ctx context.Context, spec ZoneSpec) error {
 	var additions, deletions []RecordSet
 	for _, want := range spec.Records {
 		i := slices.IndexFunc(current, func(r RecordSet) bool { return r.Name == want.Name && r.Type == want.Type })
+		if i >= 0 && want.Type == recordTypeTXT && want.Name == spec.Zone.DNSName {
+			want.Data = withTokens(want.Data, current[i].Data)
+		}
 		if i < 0 {
 			additions = append(additions, want)
 
@@ -834,10 +842,10 @@ func (e *engine) records(ctx context.Context, spec ZoneSpec) error {
 		}
 	}
 	for _, r := range current {
-		if r.Type != "NS" || r.Name == spec.Zone.DNSName {
+		if r.Type != recordTypeNS || r.Name == spec.Zone.DNSName {
 			continue
 		}
-		if !slices.ContainsFunc(spec.Records, func(w RecordSet) bool { return w.Name == r.Name }) {
+		if !slices.ContainsFunc(spec.Records, func(w RecordSet) bool { return w.Name == r.Name && w.Type == recordTypeNS }) {
 			deletions = append(deletions, r)
 		}
 	}
@@ -846,10 +854,15 @@ func (e *engine) records(ctx context.Context, spec ZoneSpec) error {
 	}
 	var what []string
 	for _, r := range additions {
-		what = append(what, "hands "+strings.TrimSuffix(r.Name, ".")+" onward to "+joined(r.Data))
+		if r.Type == recordTypeNS {
+			what = append(what, "hands "+strings.TrimSuffix(r.Name, ".")+" onward to "+joined(r.Data))
+
+			continue
+		}
+		what = append(what, "writes "+strings.TrimSuffix(r.Name, ".")+" "+r.Type+" "+joined(r.Data))
 	}
 	for _, r := range deletions {
-		if !slices.ContainsFunc(additions, func(a RecordSet) bool { return a.Name == r.Name }) {
+		if r.Type == recordTypeNS && !slices.ContainsFunc(additions, func(a RecordSet) bool { return a.Name == r.Name && a.Type == recordTypeNS }) {
 			what = append(what, "takes back "+strings.TrimSuffix(r.Name, "."))
 		}
 	}
@@ -857,6 +870,20 @@ func (e *engine) records(ctx context.Context, spec ZoneSpec) error {
 	return e.change(ctx, sectionZones, "in the zone "+spec.Zone.Name+": "+strings.Join(what, "; "), func(ctx context.Context) error {
 		return e.dns.ChangeRecordSets(ctx, e.d.Project(), spec.Zone.Name, additions, deletions)
 	})
+}
+
+// withTokens keeps the owners' verification tokens the apex TXT set holds beside the
+// declared values, so a declared record never takes a token out (verification puts a
+// missing one in); anything else the set held is rewritten away.
+func withTokens(declared, current []string) []string {
+	data := slices.Clone(declared)
+	for _, v := range current {
+		if strings.HasPrefix(v, `"`+verificationTokenPrefix) && !slices.Contains(data, v) {
+			data = append(data, v)
+		}
+	}
+
+	return data
 }
 
 // makeZone makes the zone in an apply, and meets Cloud DNS's ownership check when the
