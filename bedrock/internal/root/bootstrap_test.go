@@ -218,6 +218,18 @@ func TestBootstrapBroughtApps(t *testing.T) {
 	if strings.Contains(out.String(), "Rendered the imr root organization") || !strings.Contains(out.String(), "master of imp-example/imr-root-infrastructure carries the foundation already (") {
 		t.Errorf("the second run rendered or pushed:\n%s", out.String())
 	}
+	billedToTheProject(t, fake, project)
+}
+
+// billedToTheProject: the first run's own seam names no quota project (no project yet);
+// every opening after, the engine's and the run again's, bills its calls to the root
+// project.
+func billedToTheProject(t *testing.T, fake *roottest.Fake, project string) {
+	t.Helper()
+
+	if q := fake.QuotaProjects; len(q) < 4 || q[0] != "" || slices.ContainsFunc(q[1:], func(s string) bool { return s != project }) {
+		t.Errorf("the creation seam was opened with the quota projects %q; want none first, then %s every time", q, project)
+	}
 }
 
 // TestBootstrapInAClone: a run again in a clone of the repository, on a branch a pull

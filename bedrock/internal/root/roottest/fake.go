@@ -49,7 +49,10 @@ type Fake struct {
 	// Deletions records each zone and project deletion in order ("zone project/name",
 	// "project id"), so a test sees the zones go ahead of the project.
 	Deletions []string
-	Records   map[string][]root.RecordSet
+	// QuotaProjects records the quota project each opening of the creation seam named
+	// (empty for none), in order.
+	QuotaProjects []string
+	Records       map[string][]root.RecordSet
 
 	// Connections by resource name; Links by resource name to the remote URI; Triggers
 	// by "project/location/name"; ConnectionPolicies by resource name.
@@ -130,7 +133,13 @@ func New() *Fake {
 
 // Clients wires the stand-in into every seam of the engine's clients it stands in for.
 func (f *Fake) Clients(c *root.Clients) {
-	c.Google = func(context.Context, string) (create.Google, error) { return f, nil }
+	c.Google = func(_ context.Context, quotaProject string) (create.Google, error) {
+		f.mu.Lock()
+		defer f.mu.Unlock()
+		f.QuotaProjects = append(f.QuotaProjects, quotaProject)
+
+		return f, nil
+	}
 	c.OrgPolicies = func(context.Context, string) (root.OrgPolicies, error) { return f, nil }
 	c.Secrets = func(context.Context) (root.Secrets, error) { return f, nil }
 	c.DNS = func(context.Context) (root.DNS, error) { return f, nil }

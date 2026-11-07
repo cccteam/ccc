@@ -86,6 +86,18 @@ type bootstrap struct {
 	secrets Secrets
 }
 
+// quotaProject is the project the bootstrap's own calls bill their quota to: the root
+// project, which stands with its APIs on once the placement records its number, on a
+// run again; none on a first run, which has no project yet (the engine's run inside the
+// bootstrap opens its own seam, billed to the project).
+func (b *bootstrap) quotaProject() string {
+	if b.p.ProjectNumbers[org.RootProjectKey] == "" {
+		return ""
+	}
+
+	return b.p.Projects[org.RootProjectKey]
+}
+
 // Bootstrap runs the bootstrap and answers what it left.
 func Bootstrap(ctx context.Context, clients *Clients, req *BootstrapRequest, out io.Writer) (*BootstrapResult, error) {
 	b := &bootstrap{clients: clients, req: req, p: req.Placement, out: out}
@@ -99,9 +111,7 @@ func Bootstrap(ctx context.Context, clients *Clients, req *BootstrapRequest, out
 	if err != nil {
 		return nil, err
 	}
-	// Before the root project exists there is no project to bill the quota to; the
-	// engine's run inside the bootstrap opens its own seam, billed to the project.
-	if b.google, err = clients.Google(ctx, ""); err != nil {
+	if b.google, err = clients.Google(ctx, b.quotaProject()); err != nil {
 		return nil, err
 	}
 	defer b.google.Close()
