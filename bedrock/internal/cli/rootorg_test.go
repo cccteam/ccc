@@ -358,7 +358,7 @@ func TestRootOrgDestroy(t *testing.T) {
 			wantOut: []string{
 				warning,
 				"imr-root-gbl-core-c3d4 (root): the runner identities and the creating identity, the state bucket with the hosting organizations' creation records, the Cloud Build connection and triggers, the GitHub Apps' keys and the Bot Account's token, and the zones with their record sets: every domain delegated to this organization then points at servers that answer nothing",
-				"Also gone: the folder, and the creating identity's grants at the organization node and on the billing account. The repository stays on GitHub with its code, pull requests, settings and ruleset, and the three GitHub Apps stay installed.",
+				"Also gone: the folder, the spend budget \"imr billing account\" on the billing account, and the creating identity's grants at the organization node and on the billing account. The repository stays on GitHub with its code, pull requests, settings and ruleset, and the three GitHub Apps stay installed.",
 			},
 			absent: []string{"Spanner", "registrations", "environment", "layers"},
 		},
@@ -381,7 +381,7 @@ func TestRootOrgDestroy(t *testing.T) {
 				"To start over: bedrock org bootstrap <dir> again, in an empty directory, with the apps brought (--infrastructure-app and --infrastructure-key, and the others) or made anew; every domain delegated here is then delegated again, to the new zones' name servers.",
 			},
 			deleted:     true,
-			wantJournal: "bedrock org destroy deleted the root organization's root project (imr-root-gbl-core-c3d4) and folder, its zones deleted ahead of it (their name servers free at once): Google holds the project for 30 days, its id never returns. The GitHub repository and the apps stay.\n",
+			wantJournal: "bedrock org destroy deleted the root organization's root project (imr-root-gbl-core-c3d4) and folder, its zones deleted ahead of it (their name servers free at once) and its spend budget off the billing account: Google holds the project for 30 days, its id never returns. The GitHub repository and the apps stay.\n",
 		},
 		{
 			name:        "destroys with --yes and no terminal",
@@ -389,7 +389,7 @@ func TestRootOrgDestroy(t *testing.T) {
 			args:        []string{"--yes"},
 			wantOut:     []string{"Deleted the project imr-root-gbl-core-c3d4", "Deleted the folder imr (100)."},
 			deleted:     true,
-			wantJournal: "and folder, its zones deleted ahead of it (their name servers free at once): Google holds the project for 30 days, its id never returns. The GitHub repository and the apps stay.\n",
+			wantJournal: "and folder, its zones deleted ahead of it (their name servers free at once) and its spend budget off the billing account: Google holds the project for 30 days, its id never returns. The GitHub repository and the apps stay.\n",
 		},
 	}
 	for _, tt := range tests {

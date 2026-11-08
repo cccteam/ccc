@@ -6,9 +6,12 @@ package budgets
 
 import (
 	"context"
+	"net/http"
+	"slices"
 
 	"github.com/go-playground/errors/v5"
 	"google.golang.org/api/billingbudgets/v1"
+	"google.golang.org/api/googleapi"
 	"google.golang.org/api/option"
 
 	"github.com/cccteam/ccc/bedrock/internal/org"
@@ -25,6 +28,8 @@ type Client interface {
 	CreateBudget(ctx context.Context, billingAccount string, b *org.Budget) error
 	// UpdateBudget brings the budget's amount, folders and thresholds to b's, by its name.
 	UpdateBudget(ctx context.Context, b *org.Budget) error
+	// DeleteBudget deletes the budget by its name; one gone already is no error.
+	DeleteBudget(ctx context.Context, name string) error
 	// Close releases the connection.
 	Close() error
 }
@@ -76,6 +81,39 @@ func (c *client) UpdateBudget(ctx context.Context, b *org.Budget) error {
 	}
 
 	return nil
+}
+
+func (c *client) DeleteBudget(ctx context.Context, name string) error {
+	_, err := c.svc.BillingAccounts.Budgets.Delete(name).Context(ctx).Do()
+	var apiErr *googleapi.Error
+	if errors.As(err, &apiErr) && apiErr.Code == http.StatusNotFound {
+		return nil
+	}
+	if err != nil {
+		return errors.Wrapf(err, "billingbudgets.BillingAccounts.Budgets.Delete(): %s", name)
+	}
+
+	return nil
+}
+
+// DeleteNamed deletes the budget of the display name on the billing account, which is how
+// bedrock tells the budgets it made, and reports whether one stood. The destroys take
+// their own budget off this way: the root organization's (org.TotalBudgetName) and a
+// hosting organization's (org.HostingBudgetName).
+func DeleteNamed(ctx context.Context, c Client, billingAccount, displayName string) (bool, error) {
+	got, err := c.Budgets(ctx, billingAccount)
+	if err != nil {
+		return false, err
+	}
+	i := slices.IndexFunc(got, func(b org.Budget) bool { return b.DisplayName == displayName })
+	if i < 0 {
+		return false, nil
+	}
+	if err := c.DeleteBudget(ctx, got[i].Name); err != nil {
+		return false, err
+	}
+
+	return true, nil
 }
 
 // Close has nothing to release: the REST client holds no connection of its own.

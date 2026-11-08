@@ -16,6 +16,9 @@ import (
 
 	"github.com/go-playground/errors/v5"
 
+	"github.com/cccteam/ccc/bedrock/internal/budgets"
+	"github.com/cccteam/ccc/bedrock/internal/create"
+	"github.com/cccteam/ccc/bedrock/internal/create/createtest"
 	"github.com/cccteam/ccc/bedrock/internal/deploy"
 	"github.com/cccteam/ccc/bedrock/internal/derive"
 	"github.com/cccteam/ccc/bedrock/internal/domain"
@@ -23,6 +26,8 @@ import (
 	"github.com/cccteam/ccc/bedrock/internal/github/githubtest"
 	"github.com/cccteam/ccc/bedrock/internal/org"
 	"github.com/cccteam/ccc/bedrock/internal/release"
+	rootorg "github.com/cccteam/ccc/bedrock/internal/root"
+	"github.com/cccteam/ccc/bedrock/internal/root/roottest"
 )
 
 const orgFixture = "../org/testdata/imp"
@@ -1614,6 +1619,7 @@ func TestOrgDestroy(t *testing.T) {
 	tests := []struct {
 		name        string
 		registered  bool
+		bootGone    bool
 		interactive func() bool
 		in          string
 		args        []string
@@ -1638,9 +1644,16 @@ func TestOrgDestroy(t *testing.T) {
 			name:        "destroys when the prefix is typed, and writes the journal",
 			interactive: always,
 			in:          "imp\n",
-			wantOut:     []string{warning, "Took github_repository.infrastructure out of 1-org's state", "Destroyed 1-org.", "Destroyed 0-bootstrap.", "Deleted the imp organization's projects; a line went into JOURNAL.md.", "To start over: the organization's entry out of the root organization's placement.json"},
+			wantOut:     []string{warning, `Deleted the spend budget "imp organization" off billing account 012345-6789AB-CDEF01.`, "Took github_repository.infrastructure out of 1-org's state", "Destroyed 1-org.", "Destroyed 0-bootstrap.", "Deleted the imp organization's projects; a line went into JOURNAL.md.", "To start over: the organization's entry out of the root organization's placement.json"},
 			wantRan:     11,
-			wantJournal: "bedrock org destroy deleted the organization's projects (imp-boot-gbl-core-a1b2, imp-shr-gbl-core-7a8b, imp-net-gbl-core-9c0d, imp-spn-gbl-core-2e3f, imp-tst-gbl-core-1a2b, imp-stg-gbl-core-3c4d, imp-prd-gbl-core-5e6f): Google holds them for 30 days, their ids never return. The GitHub repositories stay.\n",
+			wantJournal: "bedrock org destroy deleted the organization's projects (imp-boot-gbl-core-a1b2, imp-shr-gbl-core-7a8b, imp-net-gbl-core-9c0d, imp-spn-gbl-core-2e3f, imp-tst-gbl-core-1a2b, imp-stg-gbl-core-3c4d, imp-prd-gbl-core-5e6f) and its spend budget off the billing account: Google holds them for 30 days, their ids never return. The GitHub repositories stay.\n",
+		},
+		{
+			name:        "a run again with the boot project gone destroys no layer and says so",
+			bootGone:    true,
+			interactive: never,
+			args:        []string{"--yes"},
+			wantOut:     []string{`No spend budget "imp organization" stands on billing account 012345-6789AB-CDEF01: nothing to delete.`, "The boot project imp-boot-gbl-core-a1b2 is gone already, and with it the state bucket and every layer's state (Google holds the project for 30 days): the layers were destroyed on an earlier run, whose line the journal has, and nothing is left to destroy."},
 		},
 		{
 			name:        "keeps the network project when the layer registers a domain, with --yes",
@@ -1653,9 +1666,10 @@ func TestOrgDestroy(t *testing.T) {
 				`Took google_clouddomains_registration.this["example.dev"] out of 2-net's state`,
 				"Destroyed 2-net.",
 				"The network project imp-net-gbl-core-9c0d stays with its registrations and nothing else: 2-net's zones, load balancer and certificates are gone",
+				`No spend budget "imp organization" stands on billing account 012345-6789AB-CDEF01: nothing to delete.`,
 			},
 			wantRan:     15,
-			wantJournal: "(imp-boot-gbl-core-a1b2, imp-shr-gbl-core-7a8b, imp-spn-gbl-core-2e3f, imp-tst-gbl-core-1a2b, imp-stg-gbl-core-3c4d, imp-prd-gbl-core-5e6f): Google holds them for 30 days, their ids never return. The GitHub repositories stay. The network project imp-net-gbl-core-9c0d was kept with its registrations and nothing else: 2-net was destroyed inside it.\n",
+			wantJournal: "(imp-boot-gbl-core-a1b2, imp-shr-gbl-core-7a8b, imp-spn-gbl-core-2e3f, imp-tst-gbl-core-1a2b, imp-stg-gbl-core-3c4d, imp-prd-gbl-core-5e6f) and its spend budget off the billing account: Google holds them for 30 days, their ids never return. The GitHub repositories stay. The network project imp-net-gbl-core-9c0d was kept with its registrations and nothing else: 2-net was destroyed inside it.\n",
 		},
 	}
 	for _, tt := range tests {
@@ -1668,6 +1682,19 @@ func TestOrgDestroy(t *testing.T) {
 			d.interactive = tt.interactive
 			d.deploy = &deploy.Clients{Exec: tofu}
 			d.githubToken = func(context.Context) (string, error) { return "ghs_token", nil }
+			google := createtest.New()
+			google.Projects["imp-boot-gbl-core-a1b2"] = !tt.bootGone
+			d.org.root = &rootorg.Clients{Google: func(context.Context, string) (create.Google, error) { return google, nil }}
+			fake := roottest.New()
+			if !tt.registered && !tt.bootGone {
+				fake.SpendBudgets["012345-6789AB-CDEF01"] = []org.Budget{{Name: "billingAccounts/012345-6789AB-CDEF01/budgets/7", DisplayName: "imp organization", Units: 500, CurrencyCode: "USD", Ancestors: []string{"folders/300"}, Thresholds: org.BudgetThresholds}}
+			}
+			var quota string
+			d.budgets = func(_ context.Context, quotaProject string) (budgets.Client, error) {
+				quota = quotaProject
+
+				return fake, nil
+			}
 			out, err := execute(d, tt.in, append([]string{"org", "destroy", "--dir", dir}, tt.args...)...)
 			switch {
 			case tt.wantErr == "" && err != nil:
@@ -1692,6 +1719,12 @@ func TestOrgDestroy(t *testing.T) {
 			}
 			if tt.wantJournal != "" && !strings.HasSuffix(string(journal), tt.wantJournal) {
 				t.Errorf("the journal is:\n%s\nwant it to end with %q", journal, tt.wantJournal)
+			}
+			if tt.wantJournal != "" && len(fake.SpendBudgets["012345-6789AB-CDEF01"]) != 0 {
+				t.Errorf("the budget stands after the destroy: %v", fake.SpendBudgets["012345-6789AB-CDEF01"])
+			}
+			if tt.wantJournal != "" && quota != "imr-root-gbl-core-c3d4" {
+				t.Errorf("the Budgets API was billed to %q, want the root project, where the API is on", quota)
 			}
 		})
 	}
