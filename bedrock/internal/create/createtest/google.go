@@ -40,6 +40,8 @@ type FakeGoogle struct {
 	Revoked      []string
 	Calls        []string
 	Identities   []string
+	// Agents records each service agent asked for, by "project/service".
+	Agents []string
 	// Refuse names a call (its method name) to answer with the error, for a creation
 	// that stops halfway.
 	Refuse map[string]error
@@ -296,6 +298,29 @@ func (g *FakeGoogle) LinkBilling(_ context.Context, id, billingAccount string) e
 	g.Billing[id] = billingAccount
 
 	return nil
+}
+
+// ServiceAgent records the agent asked for and answers the email Google would, from
+// the project's number.
+func (g *FakeGoogle) ServiceAgent(_ context.Context, project, service string) (string, error) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	if err := g.call("ServiceAgent", project, service); err != nil {
+		return "", err
+	}
+	number, ok := g.Numbers[project]
+	if !ok {
+		return "", errors.Newf("no project %s", project)
+	}
+	g.Agents = append(g.Agents, project+"/"+service)
+
+	return AgentEmail(number, service), nil
+}
+
+// AgentEmail is the email of a project's service agent for the service, as Google names
+// them: service-<number>@gcp-sa-<service>.iam.gserviceaccount.com.
+func AgentEmail(number, service string) string {
+	return "service-" + number + "@gcp-sa-" + strings.TrimSuffix(service, ".googleapis.com") + ".iam.gserviceaccount.com"
 }
 
 // EnableServices records the APIs.

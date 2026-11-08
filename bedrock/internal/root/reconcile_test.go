@@ -905,3 +905,59 @@ func TestDestroyDeletesZonesAheadOfTheProject(t *testing.T) {
 		t.Errorf("no zone deletion recorded: %v", w.fake.Deletions)
 	}
 }
+
+// TestTransferAgentMadeAheadOfTheConsoleStep: the first apply makes the BigQuery Data
+// Transfer Service's agent in the root project and grants it its role, so the console
+// step that points the pricing export at the dataset finds it ready; the next run
+// changes nothing; and a root whose agent Google made and granted already (the console
+// step done before this build) is left as it is, no agent asked for.
+func TestTransferAgentMadeAheadOfTheConsoleStep(t *testing.T) {
+	t.Parallel()
+
+	w := newWorld(t)
+	project := w.p.Projects[org.RootProjectKey]
+	agent := "serviceAccount:service-" + w.p.ProjectNumbers[org.RootProjectKey] + "@gcp-sa-bigquerydatatransfer.iam.gserviceaccount.com"
+	want := "makes the BigQuery Data Transfer Service's agent in project " + project + " and grants it roles/bigquerydatatransfer.serviceAgent, ahead of the pricing export's console step"
+	_, out := w.run(t, root.Apply, true)
+	if !strings.Contains(out, want) {
+		t.Errorf("the apply printed:\n%s\nwant %q", out, want)
+	}
+	if !slices.Contains(w.fake.Agents, project+"/bigquerydatatransfer.googleapis.com") {
+		t.Errorf("agents asked for = %v, want the transfer service's in %s", w.fake.Agents, project)
+	}
+	if !bound(w.fake.Policies["projects/"+project], "roles/bigquerydatatransfer.serviceAgent", agent) {
+		t.Errorf("the project's policy does not hold the agent's role:\n%v", w.fake.Policies["projects/"+project])
+	}
+	again, _ := w.run(t, root.Check, false)
+	for _, c := range again.Changes {
+		if strings.Contains(c.What, "Data Transfer") {
+			t.Errorf("the next run would change %q", c.What)
+		}
+	}
+	if len(w.fake.Agents) != 1 {
+		t.Errorf("agents asked for after the check = %v, want the one", w.fake.Agents)
+	}
+
+	made := newWorld(t)
+	madeProject := made.p.Projects[org.RootProjectKey]
+	madeAgent := "serviceAccount:service-" + made.p.ProjectNumbers[org.RootProjectKey] + "@gcp-sa-bigquerydatatransfer.iam.gserviceaccount.com"
+	made.fake.Policies["projects/"+madeProject] = append(made.fake.Policies["projects/"+madeProject], org.Binding{Role: "roles/bigquerydatatransfer.serviceAgent", Members: []string{madeAgent}})
+	_, out = made.run(t, root.Apply, true)
+	if strings.Contains(out, "Data Transfer") {
+		t.Errorf("an agent Google made already was touched:\n%s", out)
+	}
+	if len(made.fake.Agents) != 0 {
+		t.Errorf("agents asked for = %v, want none", made.fake.Agents)
+	}
+}
+
+// bound reports whether the bindings give the member the role.
+func bound(bindings []org.Binding, role, member string) bool {
+	for _, b := range bindings {
+		if b.Role == role && slices.Contains(b.Members, member) {
+			return true
+		}
+	}
+
+	return false
+}

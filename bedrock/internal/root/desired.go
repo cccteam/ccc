@@ -33,6 +33,7 @@ const (
 	roleRoleAdmin            = "roles/iam.roleAdmin"
 	roleServiceUsageConsumer = "roles/serviceusage.serviceUsageConsumer"
 	roleServiceUsageAdmin    = "roles/serviceusage.serviceUsageAdmin"
+	roleTransferAgent        = "roles/bigquerydatatransfer.serviceAgent"
 	roleServiceAccountAdmin  = "roles/iam.serviceAccountAdmin"
 	roleProjectIAMAdmin      = "roles/resourcemanager.projectIamAdmin"
 	roleFolderIAMAdmin       = "roles/resourcemanager.folderIamAdmin"
@@ -112,6 +113,25 @@ func (d *Desired) Creator() string {
 
 func member(email string) string {
 	return "serviceAccount:" + email
+}
+
+// TransferService is the BigQuery Data Transfer Service, which the pricing export runs
+// on. Google makes its agent at the first transfer rather than as the service is enabled.
+const TransferService = "bigquerydatatransfer.googleapis.com"
+
+// TransferAgent is the root project's BigQuery Data Transfer Service agent, as a member.
+func (d *Desired) TransferAgent() string {
+	return "serviceAccount:service-" + d.ProjectNumber + "@gcp-sa-bigquerydatatransfer.iam.gserviceaccount.com"
+}
+
+// TransferAgentGrant is that agent's own role on the root project. The apply makes the
+// agent and grants it ahead of the console step that points the pricing export at the
+// dataset: the step makes a transfer in the project, and when nothing has made the agent
+// Google makes and grants it at the step itself, seconds in which the step's attempt is
+// refused (the lab, 2026-11-07: the agent's role refused twice with "does not exist", the
+// second attempt through).
+func (d *Desired) TransferAgentGrant() Grant {
+	return Grant{Resource: d.Project(), Role: roleTransferAgent, Member: d.TransferAgent()}
 }
 
 // ServiceAgent is the root project's Cloud Build service agent, which reads the token

@@ -22,6 +22,7 @@ import (
 
 	"github.com/cccteam/ccc/bedrock/internal/budgets"
 	"github.com/cccteam/ccc/bedrock/internal/create"
+	"github.com/cccteam/ccc/bedrock/internal/create/createtest"
 	"github.com/cccteam/ccc/bedrock/internal/deploy"
 	"github.com/cccteam/ccc/bedrock/internal/org"
 	"github.com/cccteam/ccc/bedrock/internal/root"
@@ -49,6 +50,8 @@ type Fake struct {
 	// Deletions records each zone and project deletion in order ("zone project/name",
 	// "project id"), so a test sees the zones go ahead of the project.
 	Deletions []string
+	// Agents records each service agent asked for, by "project/service".
+	Agents []string
 	// QuotaProjects records the quota project each opening of the creation seam named
 	// (empty for none), in order.
 	QuotaProjects []string
@@ -907,6 +910,23 @@ func (f *Fake) EnabledServices(_ context.Context, project string) ([]string, err
 	}
 
 	return slices.Clone(f.Enabled[project]), nil
+}
+
+// ServiceAgent records the agent asked for and answers the email Google would, from
+// the project's number, as the create seam's does.
+func (f *Fake) ServiceAgent(_ context.Context, project, service string) (string, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if err := f.call("ServiceAgent", project, service); err != nil {
+		return "", err
+	}
+	number, ok := f.Numbers[project]
+	if !ok {
+		return "", errors.Newf("no project %s", project)
+	}
+	f.Agents = append(f.Agents, project+"/"+service)
+
+	return createtest.AgentEmail(number, service), nil
 }
 
 // EnableServices records the APIs as enabled, as the create seam's does; a test

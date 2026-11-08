@@ -300,9 +300,13 @@ Administrator on the account, and BigQuery Admin on the root project, which the
 apply keeps for it): Billing, the account `{{.BillingAccount}}`, Billing
 export; under Standard usage cost, Edit settings, the project `{{.RootProject}}`
 and the dataset `{{.ExportDataset}}`, Save; the same under Detailed usage cost
-and under Pricing (whose BigQuery Data Transfer Service API the bootstrap
-enabled). The first rows land within hours, the pricing export's within two
-days, and nothing lands for the days before the step. Every run of the engine,
+and under Pricing. The pricing export runs on the BigQuery Data Transfer
+Service: the bootstrap enabled its API, and the apply makes its service agent
+in the root project and grants it its role ahead of the step, since Google
+would make the agent at the step itself otherwise and refuse an attempt that
+falls in the seconds of its making. The first rows land within hours, the
+pricing export's within two days, and nothing lands for the days before the
+step. Every run of the engine,
 `bedrock org check` included, looks for the three tables
 (`gcp_billing_export_v1_<account>`, `gcp_billing_export_resource_v1_<account>`
 and `cloud_pricing_export`) and reports one missing, or a usage table

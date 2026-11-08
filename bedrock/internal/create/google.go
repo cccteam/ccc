@@ -8,6 +8,7 @@ package create
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"slices"
@@ -30,6 +31,7 @@ import (
 	"google.golang.org/api/iterator"
 	"google.golang.org/api/option"
 	"google.golang.org/api/serviceusage/v1"
+	serviceusagebeta "google.golang.org/api/serviceusage/v1beta1"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
@@ -74,6 +76,11 @@ type Google interface {
 	GrantBillingAccount(ctx context.Context, billingAccount, role, member string) error
 	// EnableServices enables the APIs in the project and waits for them.
 	EnableServices(ctx context.Context, id string, services []string) error
+	// ServiceAgent makes the service's agent in the project and answers its email; an
+	// agent that exists is answered as it is. Google makes most agents as a service is
+	// enabled and some at its first use alone (the BigQuery Data Transfer Service), and
+	// grants no role to one made at a request, so the caller grants it.
+	ServiceAgent(ctx context.Context, project, service string) (string, error)
 	// Zone answers the name servers of the public zone named in the project, and whether
 	// it exists.
 	PublicZone(ctx context.Context, project, name string) (nameServers []string, exists bool, err error)
@@ -113,12 +120,14 @@ type google struct {
 	iam      *admin.IamClient
 	billing  *cloudbilling.APIService
 	services *serviceusage.Service
-	storage  *storage.Client
-	secrets  *secretmanager.Client
-	dns      *dns.Service
-	budgets  budgets.Client
-	opts     []option.ClientOption
-	regional map[string]*secretmanager.Client
+	// servicesBeta is Service Usage's v1beta1 surface, which alone generates a service identity.
+	servicesBeta *serviceusagebeta.APIService
+	storage      *storage.Client
+	secrets      *secretmanager.Client
+	dns          *dns.Service
+	budgets      budgets.Client
+	opts         []option.ClientOption
+	regional     map[string]*secretmanager.Client
 }
 
 // NewGoogleAs opens the Google clients as the identity.
@@ -169,6 +178,9 @@ func newGoogle(ctx context.Context, opts, storageOpts []option.ClientOption) (Go
 	}
 	if g.services, err = serviceusage.NewService(ctx, opts...); err != nil {
 		return nil, errors.Wrap(err, "serviceusage.NewService()")
+	}
+	if g.servicesBeta, err = serviceusagebeta.NewService(ctx, opts...); err != nil {
+		return nil, errors.Wrap(err, "serviceusagebeta.NewService()")
 	}
 	if g.storage, err = storage.NewClient(ctx, storageOpts...); err != nil {
 		return nil, errors.Wrap(err, "storage.NewClient()")
@@ -489,6 +501,39 @@ func (g *google) EnableServices(ctx context.Context, id string, services []strin
 	}
 
 	return nil
+}
+
+// ServiceAgent asks Service Usage for the service's identity in the project
+// (generateServiceIdentity), which makes the agent when there is none and answers it
+// either way, and waits for the operation.
+func (g *google) ServiceAgent(ctx context.Context, project, service string) (string, error) {
+	name := "projects/" + project + "/services/" + service
+	op, err := g.servicesBeta.Services.GenerateServiceIdentity(name).Context(ctx).Do()
+	if err != nil {
+		return "", errors.Wrapf(err, "serviceusage.Services.GenerateServiceIdentity(): %s", name)
+	}
+	for !op.Done {
+		if err := sleep(ctx, enablePoll); err != nil {
+			return "", err
+		}
+		latest, err := g.servicesBeta.Operations.Get(op.Name).Context(ctx).Do()
+		if err != nil {
+			return "", errors.Wrapf(err, "serviceusage.Operations.Get(): %s", op.Name)
+		}
+		op = latest
+	}
+	if op.Error != nil {
+		return "", errors.Newf("making the agent of %s in %s: %s", service, project, op.Error.Message)
+	}
+	var identity serviceusagebeta.ServiceIdentity
+	if err := json.Unmarshal(op.Response, &identity); err != nil {
+		return "", errors.Wrapf(err, "the service identity of %s in %s", service, project)
+	}
+	if identity.Email == "" {
+		return "", errors.Newf("the service identity of %s in %s came without an email", service, project)
+	}
+
+	return identity.Email, nil
 }
 
 func (g *google) ServiceAccountExists(ctx context.Context, email string) (bool, error) {
