@@ -208,6 +208,20 @@ func (f *Fake) CreateBudget(_ context.Context, billingAccount string, b *org.Bud
 	return nil
 }
 
+// DeleteBudget forgets the budget by its name; one not there is no error, as the API's.
+func (f *Fake) DeleteBudget(_ context.Context, name string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if err := f.call("DeleteBudget", name); err != nil {
+		return err
+	}
+	for account, budgets := range f.SpendBudgets {
+		f.SpendBudgets[account] = slices.DeleteFunc(budgets, func(b org.Budget) bool { return b.Name == name })
+	}
+
+	return nil
+}
+
 // UpdateBudget replaces the budget by its name.
 func (f *Fake) UpdateBudget(_ context.Context, b *org.Budget) error {
 	f.mu.Lock()

@@ -18,6 +18,7 @@ import (
 	"github.com/spf13/cobra"
 	"golang.org/x/mod/modfile"
 
+	"github.com/cccteam/ccc/bedrock/internal/budgets"
 	"github.com/cccteam/ccc/bedrock/internal/create"
 	"github.com/cccteam/ccc/bedrock/internal/deploy"
 	"github.com/cccteam/ccc/bedrock/internal/derive"
@@ -1601,6 +1602,7 @@ const (
 	yesFlag        = "yes"
 	journalFile    = "JOURNAL.md"
 	netKey         = "net"
+	bootKey        = "boot"
 )
 
 // projectContents says what each shared project of the organization holds, by the key
@@ -1718,6 +1720,9 @@ func (d deps) destroyOrg(cmd *cobra.Command, dir string, yes bool) error {
 		if d.deploy != nil {
 			exec = d.deploy.Exec
 		}
+		if err := d.deleteHostingBudget(cmd.Context(), p, out); err != nil {
+			return err
+		}
 		req := &layers.DestroyRequest{Dir: dir, Placement: p, GithubToken: d.githubToken, KeepNet: keepNet, Pause: layers.DestroyPause}
 		if err := layers.Destroy(cmd.Context(), exec, req, out); err != nil {
 			return err
@@ -1727,6 +1732,36 @@ func (d deps) destroyOrg(cmd *cobra.Command, dir string, yes bool) error {
 		return err
 	}
 	fmt.Fprint(out, destroyEpilogue(p, keepNet))
+
+	return nil
+}
+
+// deleteHostingBudget takes the organization's spend budget (org.HostingBudgetName, the
+// one the creation made on its folder) off the billing account, as the person running
+// the destroy, who holds Billing Account Administrator as the break-glass account does.
+// The Budgets API bills a person's calls to a quota project, the boot project, which
+// stands until the layers go. No budget is said and is no error; a read refused (a run
+// again with the boot project gone, or a caller without the role) leaves the budget to
+// the Billing console, named.
+func (d deps) deleteHostingBudget(ctx context.Context, p *org.Placement, out io.Writer) error {
+	if d.budgets == nil {
+		return errors.New("no Budgets client is wired: the destroy takes the spend budget off the billing account")
+	}
+	name := org.HostingBudgetName(p.Prefix)
+	client, err := d.budgets(ctx, p.Projects[bootKey])
+	if err != nil {
+		return err
+	}
+	defer client.Close()
+	deleted, err := budgets.DeleteNamed(ctx, client, p.BillingAccount, name)
+	switch {
+	case err != nil:
+		fmt.Fprintf(out, "The spend budgets of billing account %s could not be read (%v): if the budget %q still stands, it is deleted in the Billing console.\n", p.BillingAccount, err, name)
+	case deleted:
+		fmt.Fprintf(out, "Deleted the spend budget %q off billing account %s.\n", name, p.BillingAccount)
+	default:
+		fmt.Fprintf(out, "No spend budget %q stands on billing account %s: nothing to delete.\n", name, p.BillingAccount)
+	}
 
 	return nil
 }
@@ -1742,7 +1777,7 @@ func destroyWarning(p *org.Placement, registered []string) string {
 	if p.IsRoot() {
 		fmt.Fprintf(&b, "bedrock org destroy deletes the root project of the %s root organization, and with it everything the bootstrap and the applies made:\n\n", p.Prefix)
 		fmt.Fprintf(&b, "  %s (%s): %s\n", p.RootProject(), org.RootProjectKey, rootProjectContents)
-		b.WriteString("\nAlso gone: the folder, and the creating identity's grants at the organization node and on the billing account. The repository stays on GitHub with its code, pull requests, settings and ruleset, and the three GitHub Apps stay installed.\n")
+		fmt.Fprintf(&b, "\nAlso gone: the folder, the spend budget %q on the billing account, and the creating identity's grants at the organization node and on the billing account. The repository stays on GitHub with its code, pull requests, settings and ruleset, and the three GitHub Apps stay installed.\n", org.TotalBudgetName(p.Prefix))
 		b.WriteString("\nGoogle keeps a deleted project for 30 days, in which the console can restore it; its id never returns after. Nothing here is undone by bedrock.\n\n")
 
 		return b.String()
@@ -1754,7 +1789,7 @@ func destroyWarning(p *org.Placement, registered []string) string {
 		}
 		fmt.Fprintf(&b, "  %s (%s): %s\n", p.Projects[key], key, projectContentsOf(key))
 	}
-	b.WriteString("\nAlso gone: the folders, the custom roles and the tags, the org policies, the entitlements, the audit log sink, and on GitHub the rulesets, the operations environments, the runner group and the organization variable. The repositories stay, with their code, pull requests and releases.\n")
+	fmt.Fprintf(&b, "\nAlso gone: the folders, the spend budget %q on the organization's folder, the custom roles and the tags, the org policies, the entitlements, the audit log sink, and on GitHub the rulesets, the operations environments, the runner group and the organization variable. The repositories stay, with their code, pull requests and releases.\n", org.HostingBudgetName(p.Prefix))
 	if len(registered) > 0 {
 		fmt.Fprintf(&b, "\nKept: the network project %s, with its folder and the organization's, since 2-net registers %s there (registrations in 2-net/terraform.tfvars) and a registration cannot move to another project. Everything else in it goes: 2-net is destroyed inside it first, so its zones and records, the load balancer and its address and the certificates are gone, and %s stop resolving until a zone stands elsewhere and each registration is pointed at it. The registrations are a person's: transfer each out (sixty days after it was registered, after an unlock, with a year added at the new registrar's price), or give it up by deleting the registration or the project (Google's thirty-day restore window, then nothing but the registrant contact and support).\n", p.Projects[netKey], strings.Join(registered, ", "), strings.Join(registered, ", "))
 	}
@@ -1806,7 +1841,7 @@ func projectContentsOf(key string) string {
 // destroyJournalLine is the line the destroy adds to the journal.
 func destroyJournalLine(p *org.Placement, keepNet bool, now time.Time) string {
 	if p.IsRoot() {
-		return fmt.Sprintf("- %s: bedrock org destroy deleted the root organization's root project (%s) and folder, its zones deleted ahead of it (their name servers free at once): Google holds the project for 30 days, its id never returns. The GitHub repository and the apps stay.\n", now.Format("2006-01-02 15:04Z"), p.RootProject())
+		return fmt.Sprintf("- %s: bedrock org destroy deleted the root organization's root project (%s) and folder, its zones deleted ahead of it (their name servers free at once) and its spend budget off the billing account: Google holds the project for 30 days, its id never returns. The GitHub repository and the apps stay.\n", now.Format("2006-01-02 15:04Z"), p.RootProject())
 	}
 	var ids []string
 	for _, key := range destroyedProjectKeys(p) {
@@ -1815,7 +1850,7 @@ func destroyJournalLine(p *org.Placement, keepNet bool, now time.Time) string {
 		}
 		ids = append(ids, p.Projects[key])
 	}
-	line := fmt.Sprintf("- %s: bedrock org destroy deleted the organization's projects (%s): Google holds them for 30 days, their ids never return. The GitHub repositories stay.", now.Format("2006-01-02 15:04Z"), strings.Join(ids, ", "))
+	line := fmt.Sprintf("- %s: bedrock org destroy deleted the organization's projects (%s) and its spend budget off the billing account: Google holds them for 30 days, their ids never return. The GitHub repositories stay.", now.Format("2006-01-02 15:04Z"), strings.Join(ids, ", "))
 	if keepNet {
 		line += fmt.Sprintf(" The network project %s was kept with its registrations and nothing else: 2-net was destroyed inside it.", p.Projects[netKey])
 	}

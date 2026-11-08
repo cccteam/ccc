@@ -885,6 +885,22 @@ func TestDestroyDeletesZonesAheadOfTheProject(t *testing.T) {
 	if !strings.Contains(buf.String(), "Deleted the zone ") || !strings.Contains(buf.String(), "ahead of the project") {
 		t.Errorf("Destroy() printed:\n%s\nwant each zone deleted ahead of the project", buf.String())
 	}
+	budgetLine := `Deleted the spend budget "imr billing account" off billing account ` + w.p.BillingAccount + "."
+	if !strings.Contains(buf.String(), budgetLine) {
+		t.Errorf("Destroy() printed:\n%s\nwant %q", buf.String(), budgetLine)
+	}
+	for _, b := range w.fake.SpendBudgets[w.p.BillingAccount] {
+		if b.DisplayName == "imr billing account" {
+			t.Errorf("the budget %q stands after the destroy", b.DisplayName)
+		}
+	}
+	var again bytes.Buffer
+	if err := root.Destroy(ctx, w.clients, &root.DestroyRequest{Placement: w.p, GithubToken: token}, &again); err != nil {
+		t.Fatalf("Destroy() again = %v\n%s", err, again.String())
+	}
+	if !strings.Contains(again.String(), `No spend budget "imr billing account" stands on billing account `+w.p.BillingAccount+": nothing to delete.") {
+		t.Errorf("Destroy() again printed:\n%s\nwant the budget said gone", again.String())
+	}
 	if n := len(w.fake.ZoneMap[project]); n != 0 {
 		t.Errorf("%d zone(s) left in %s after the destroy", n, project)
 	}

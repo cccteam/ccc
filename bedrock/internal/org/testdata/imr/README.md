@@ -254,7 +254,8 @@ break-glass account's Folder Admin. Recovery by hand is `bedrock org bootstrap`
 again, in a clone: it finds everything that stands and makes the rest.
 Destroying the organization, project and all, is `bedrock org destroy`, by
 hand, refused while a hosting organization is recorded as created; it deletes
-the zones ahead of the project ("Making a zone again" says why); it leaves
+the zones ahead of the project ("Making a zone again" says why) and takes the
+spend budget `imr billing account` off the billing account; it leaves
 this repository and the three apps on GitHub, takes the plan trigger's check
 out of the repository's ruleset (the trigger is gone with the project, and the
 journal line's pull request merges on the review alone until a bootstrap again

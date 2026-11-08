@@ -17,6 +17,7 @@ import (
 
 	"github.com/go-playground/errors/v5"
 
+	"github.com/cccteam/ccc/bedrock/internal/budgets"
 	"github.com/cccteam/ccc/bedrock/internal/github"
 	"github.com/cccteam/ccc/bedrock/internal/org"
 )
@@ -76,11 +77,16 @@ func Destroy(ctx context.Context, clients *Clients, req *DestroyRequest, out io.
 	}
 	fmt.Fprintf(out, "Took the creating identity's and the runners' grants off the organization node, and the creating identity's off billing account %s.\n", p.BillingAccount)
 	project := p.Projects[org.RootProjectKey]
+	exists := false
 	if project != "" {
-		exists, err := google.ProjectExists(ctx, project)
-		if err != nil {
+		if exists, err = google.ProjectExists(ctx, project); err != nil {
 			return err
 		}
+	}
+	if err := deleteBudget(ctx, clients, p, project, exists, out); err != nil {
+		return err
+	}
+	if project != "" {
 		if exists {
 			if err := deleteZones(ctx, clients, project, out); err != nil {
 				return err
@@ -105,6 +111,40 @@ func Destroy(ctx context.Context, clients *Clients, req *DestroyRequest, out io.
 	}
 
 	return dropPlanCheck(ctx, clients, req, out)
+}
+
+// deleteBudget takes the root organization's spend budget (Desired.TotalBudget, told by
+// its name) off the billing account, as the break-glass account running the destroy, a
+// Billing Account Administrator. The Budgets API bills a person's calls to a quota
+// project, the root project while it stands; a run again after the project is gone asks
+// with none, and a refusal then leaves the budget to the Billing console, named.
+func deleteBudget(ctx context.Context, clients *Clients, p *org.Placement, project string, exists bool, out io.Writer) error {
+	if clients.Budgets == nil {
+		return errors.New("no Budgets client is wired: the destroy takes the spend budget off the billing account")
+	}
+	quota := ""
+	if exists {
+		quota = project
+	}
+	name := org.TotalBudgetName(p.Prefix)
+	client, err := clients.Budgets(ctx, quota)
+	if err != nil {
+		return err
+	}
+	defer client.Close()
+	deleted, err := budgets.DeleteNamed(ctx, client, p.BillingAccount, name)
+	switch {
+	case err != nil && !exists:
+		fmt.Fprintf(out, "The spend budgets of billing account %s could not be read with the root project gone (%v): if the budget %q still stands, it is deleted in the Billing console.\n", p.BillingAccount, err, name)
+	case err != nil:
+		return err
+	case deleted:
+		fmt.Fprintf(out, "Deleted the spend budget %q off billing account %s.\n", name, p.BillingAccount)
+	default:
+		fmt.Fprintf(out, "No spend budget %q stands on billing account %s: nothing to delete.\n", name, p.BillingAccount)
+	}
+
+	return nil
 }
 
 // deleteZones deletes the project's zones ahead of the project, each zone's record sets

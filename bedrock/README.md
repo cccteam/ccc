@@ -2578,8 +2578,8 @@ root organization creates; `org new`, `org register`, `org place`, `org teardown
 serve`, `org hostnames` and `org retire` refuse a root organization, since there is
 nothing for them to act on; `org destroy` deletes the root project, and with it the
 secrets, the zones, the connection, the triggers, the identities and the state bucket,
-takes the creating identity's grants off the organization node and the billing account,
-and deletes the folder, refused while a hosting organization is recorded as created
+takes the creating identity's grants off the organization node and the billing account
+and its spend budget off the account, and deletes the folder, refused while a hosting organization is recorded as created
 (destroyed first, in its own repository, and its entry taken out), so a root organization
 is destroyed once no domain is delegated to it; and `domain check` reads its domains and
 labels (bedrock domain, above). Handing a label onward is two pull requests: the hosting
@@ -2903,8 +2903,8 @@ stands in an environment (`bedrock destroy --all` from its checkout, which takes
 backups of its databases and the data down). The code typed back gates the run (`--yes`
 stands in for it). A retired application is registered again as a new one.
 
-`org destroy` deletes every project of the organization, by a person at their own computer
-with their own sign-in (the break-glass account, holding Owner on the organization's folder
+`org destroy` deletes every project of the organization and takes its spend budget off the
+billing account, by a person at their own computer with their own sign-in (the break-glass account, holding Owner on the organization's folder
 for the run; `GITHUB_TOKEN`, or gh's token, for
 1-org's GitHub provider: the infrastructure GitHub App's installation token, or an
 organization owner's). It says what goes, project by project, and asks for the prefix typed

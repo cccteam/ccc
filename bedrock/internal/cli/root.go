@@ -94,6 +94,9 @@ type deps struct {
 	// principal names the account the command's credentials sign as, for the records a
 	// teardown or a destroy leaves (nil: the computer's user at its host).
 	principal func(ctx context.Context) (string, error)
+	// budgets opens the Budgets API as the run's credentials, billed to the quota project:
+	// a hosting organization's destroy takes its spend budget off the billing account.
+	budgets rootorg.BudgetsFunc
 }
 
 // orgClients are what the org commands open in Google Cloud: Cloud Resource Manager's
@@ -147,6 +150,7 @@ func newRoot() *cobra.Command {
 		version:     version,
 		lookups:     domain.DefaultLookups(),
 		principal:   deploy.Principal,
+		budgets:     rootorg.NewBudgets,
 	})
 }
 
