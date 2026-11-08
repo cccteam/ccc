@@ -1675,7 +1675,12 @@ func TestOrgDestroy(t *testing.T) {
 			if !tt.registered {
 				fake.SpendBudgets["012345-6789AB-CDEF01"] = []org.Budget{{Name: "billingAccounts/012345-6789AB-CDEF01/budgets/7", DisplayName: "imp organization", Units: 500, CurrencyCode: "USD", Ancestors: []string{"folders/300"}, Thresholds: org.BudgetThresholds}}
 			}
-			d.budgets = func(context.Context, string) (budgets.Client, error) { return fake, nil }
+			var quota string
+			d.budgets = func(_ context.Context, quotaProject string) (budgets.Client, error) {
+				quota = quotaProject
+
+				return fake, nil
+			}
 			out, err := execute(d, tt.in, append([]string{"org", "destroy", "--dir", dir}, tt.args...)...)
 			switch {
 			case tt.wantErr == "" && err != nil:
@@ -1703,6 +1708,9 @@ func TestOrgDestroy(t *testing.T) {
 			}
 			if tt.wantJournal != "" && len(fake.SpendBudgets["012345-6789AB-CDEF01"]) != 0 {
 				t.Errorf("the budget stands after the destroy: %v", fake.SpendBudgets["012345-6789AB-CDEF01"])
+			}
+			if tt.wantJournal != "" && quota != "imr-root-gbl-core-c3d4" {
+				t.Errorf("the Budgets API was billed to %q, want the root project, where the API is on", quota)
 			}
 		})
 	}

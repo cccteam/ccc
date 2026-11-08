@@ -1602,7 +1602,6 @@ const (
 	yesFlag        = "yes"
 	journalFile    = "JOURNAL.md"
 	netKey         = "net"
-	bootKey        = "boot"
 )
 
 // projectContents says what each shared project of the organization holds, by the key
@@ -1739,16 +1738,23 @@ func (d deps) destroyOrg(cmd *cobra.Command, dir string, yes bool) error {
 // deleteHostingBudget takes the organization's spend budget (org.HostingBudgetName, the
 // one the creation made on its folder) off the billing account, as the person running
 // the destroy, who holds Billing Account Administrator as the break-glass account does.
-// The Budgets API bills a person's calls to a quota project, the boot project, which
-// stands until the layers go. No budget is said and is no error; a read refused (a run
-// again with the boot project gone, or a caller without the role) leaves the budget to
-// the Billing console, named.
+// The Budgets API bills a person's calls to a quota project with the API on, which is
+// the root project (root.project in the placement: the root organization enables it and
+// grants the break-glass account Service Usage Consumer there), not the boot project,
+// where it is off (the lab, 2026-11-08: "Cloud Billing Budget API has not been used in
+// project imh-boot-gbl-core-7ed7"). No budget is said and is no error; a read refused (a
+// caller without the role, or a root project gone) leaves the budget to the Billing
+// console, named.
 func (d deps) deleteHostingBudget(ctx context.Context, p *org.Placement, out io.Writer) error {
 	if d.budgets == nil {
 		return errors.New("no Budgets client is wired: the destroy takes the spend budget off the billing account")
 	}
 	name := org.HostingBudgetName(p.Prefix)
-	client, err := d.budgets(ctx, p.Projects[bootKey])
+	quota := ""
+	if p.Root != nil {
+		quota = p.Root.Project
+	}
+	client, err := d.budgets(ctx, quota)
 	if err != nil {
 		return err
 	}
