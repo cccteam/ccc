@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.4.8](https://github.com/cccteam/ccc/compare/bedrock/v0.4.7...bedrock/v0.4.8) (2026-11-08)
+
+
+### Features
+
+* **bedrock:** a vanity domain is declared by the domain (vanityDomains a map), delegated to the network project as before or kept at the customer's DNS provider (dns customer), for which 2-net renders no zone and bedrock domain check verifies the records the customer adds, an A record per hostname on the domain and the certificate's authorization CNAME, printed paste-ready, and the refusal of an occupied apex names both ways out ([#1302](https://github.com/cccteam/ccc/issues/1302)) ([9e7af76](https://github.com/cccteam/ccc/commit/9e7af76df962761508f45bfbe094f3700bea4892))
+* **bedrock:** the root organization makes and keeps the spend budgets, one on the whole billing account from the placement's monthlyBudget (which bedrock org bootstrap asks for) and one per hosting organization on its folder from its record, makes the dataset the billing export lands in and reports an export that has not landed or has stopped, and the hand step of setting a budget goes ([#1302](https://github.com/cccteam/ccc/issues/1302)) ([9e7af76](https://github.com/cccteam/ccc/commit/9e7af76df962761508f45bfbe094f3700bea4892))
+
+
+### Bug Fixes
+
+* **bedrock:** bedrock org destroy destroys 2-net inside the network project kept for its registrations, so the project holds the registrations and nothing else, its epilogue names the two ways out (a transfer after sixty days, or giving the domain up), and bedrock org check reports where each registration points and whether a zone answers for it ([#1302](https://github.com/cccteam/ccc/issues/1302)) ([9e7af76](https://github.com/cccteam/ccc/commit/9e7af76df962761508f45bfbe094f3700bea4892))
+* **bedrock:** the creation sets compute.skipDefaultNetworkCreation on the hosting organization's own folder right after the seed, before its first applies, so no project of the new organization is made with a default network, and the root organization's apply compares it with the baseline ([#1302](https://github.com/cccteam/ccc/issues/1302)) ([9e7af76](https://github.com/cccteam/ccc/commit/9e7af76df962761508f45bfbe094f3700bea4892))
+* **bedrock:** the root organization's apply makes the BigQuery Data Transfer Service's agent in the root project and grants it its role ahead of the billing export's console step, so the pricing export's first attempt is not refused in the seconds Google takes to make the agent at the step itself ([#1305](https://github.com/cccteam/ccc/issues/1305)) ([dcf2354](https://github.com/cccteam/ccc/commit/dcf2354a9a845ae00b9ea30a30671829407bc5af))
+* **bedrock:** the root organization's commands wire the budgets and BigQuery clients the engine opens and bill a person's calls to the root project but the storage client's (Service Usage Consumer kept for the break-glass account there), the bootstrap run again bills its own calls there too, the leftover report passes over the roles the break-glass account keeps on the root project, and bedrock org destroy deletes the zones ahead of the project so their name servers are free at once ([#1304](https://github.com/cccteam/ccc/issues/1304)) ([099a8ea](https://github.com/cccteam/ccc/commit/099a8ea8b99ab95ff1525ea8981dbb5b3da39f26))
+
 ## [0.4.7](https://github.com/cccteam/ccc/compare/bedrock/v0.4.6...bedrock/v0.4.7) (2026-11-07)
 
 
