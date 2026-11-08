@@ -458,7 +458,10 @@ every environment's services, jobs, secrets, records and files. The folders,
 the custom roles and the tags, the org policies, the entitlements and the audit
 log sink go with them, the spend budget the creation made on the organization's
 folder is taken off the billing account, and on GitHub the rulesets, the
-operations environments, the runner group and the organization variable go. The repositories stay, with
+operations environments, the runner group and the organization variable go.
+Run again after the projects went, it takes a budget left behind off the
+account, finds the boot project held by Google, says the layers went with it,
+and destroys nothing twice. The repositories stay, with
 their code, pull requests and releases. Google keeps a deleted project for 30
 days, in which the console can restore it; its id never returns after.
 

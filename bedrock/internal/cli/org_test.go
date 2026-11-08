@@ -17,6 +17,8 @@ import (
 	"github.com/go-playground/errors/v5"
 
 	"github.com/cccteam/ccc/bedrock/internal/budgets"
+	"github.com/cccteam/ccc/bedrock/internal/create"
+	"github.com/cccteam/ccc/bedrock/internal/create/createtest"
 	"github.com/cccteam/ccc/bedrock/internal/deploy"
 	"github.com/cccteam/ccc/bedrock/internal/derive"
 	"github.com/cccteam/ccc/bedrock/internal/domain"
@@ -24,6 +26,7 @@ import (
 	"github.com/cccteam/ccc/bedrock/internal/github/githubtest"
 	"github.com/cccteam/ccc/bedrock/internal/org"
 	"github.com/cccteam/ccc/bedrock/internal/release"
+	rootorg "github.com/cccteam/ccc/bedrock/internal/root"
 	"github.com/cccteam/ccc/bedrock/internal/root/roottest"
 )
 
@@ -1616,6 +1619,7 @@ func TestOrgDestroy(t *testing.T) {
 	tests := []struct {
 		name        string
 		registered  bool
+		bootGone    bool
 		interactive func() bool
 		in          string
 		args        []string
@@ -1645,6 +1649,13 @@ func TestOrgDestroy(t *testing.T) {
 			wantJournal: "bedrock org destroy deleted the organization's projects (imp-boot-gbl-core-a1b2, imp-shr-gbl-core-7a8b, imp-net-gbl-core-9c0d, imp-spn-gbl-core-2e3f, imp-tst-gbl-core-1a2b, imp-stg-gbl-core-3c4d, imp-prd-gbl-core-5e6f) and its spend budget off the billing account: Google holds them for 30 days, their ids never return. The GitHub repositories stay.\n",
 		},
 		{
+			name:        "a run again with the boot project gone destroys no layer and says so",
+			bootGone:    true,
+			interactive: never,
+			args:        []string{"--yes"},
+			wantOut:     []string{`No spend budget "imp organization" stands on billing account 012345-6789AB-CDEF01: nothing to delete.`, "The boot project imp-boot-gbl-core-a1b2 is gone already, and with it the state bucket and every layer's state (Google holds the project for 30 days): the layers were destroyed on an earlier run, whose line the journal has, and nothing is left to destroy."},
+		},
+		{
 			name:        "keeps the network project when the layer registers a domain, with --yes",
 			registered:  true,
 			interactive: never,
@@ -1671,8 +1682,11 @@ func TestOrgDestroy(t *testing.T) {
 			d.interactive = tt.interactive
 			d.deploy = &deploy.Clients{Exec: tofu}
 			d.githubToken = func(context.Context) (string, error) { return "ghs_token", nil }
+			google := createtest.New()
+			google.Projects["imp-boot-gbl-core-a1b2"] = !tt.bootGone
+			d.org.root = &rootorg.Clients{Google: func(context.Context, string) (create.Google, error) { return google, nil }}
 			fake := roottest.New()
-			if !tt.registered {
+			if !tt.registered && !tt.bootGone {
 				fake.SpendBudgets["012345-6789AB-CDEF01"] = []org.Budget{{Name: "billingAccounts/012345-6789AB-CDEF01/budgets/7", DisplayName: "imp organization", Units: 500, CurrencyCode: "USD", Ancestors: []string{"folders/300"}, Thresholds: org.BudgetThresholds}}
 			}
 			var quota string

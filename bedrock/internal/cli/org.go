@@ -1602,6 +1602,7 @@ const (
 	yesFlag        = "yes"
 	journalFile    = "JOURNAL.md"
 	netKey         = "net"
+	bootKey        = "boot"
 )
 
 // projectContents says what each shared project of the organization holds, by the key
@@ -1722,6 +1723,15 @@ func (d deps) destroyOrg(cmd *cobra.Command, dir string, yes bool) error {
 		if err := d.deleteHostingBudget(cmd.Context(), p, out); err != nil {
 			return err
 		}
+		stands, err := d.bootProjectStands(cmd.Context(), p.Projects[bootKey])
+		if err != nil {
+			return err
+		}
+		if !stands {
+			fmt.Fprintf(out, "The boot project %s is gone already, and with it the state bucket and every layer's state (Google holds the project for 30 days): the layers were destroyed on an earlier run, whose line the journal has, and nothing is left to destroy.\n", p.Projects[bootKey])
+
+			return nil
+		}
 		req := &layers.DestroyRequest{Dir: dir, Placement: p, GithubToken: d.githubToken, KeepNet: keepNet, Pause: layers.DestroyPause}
 		if err := layers.Destroy(cmd.Context(), exec, req, out); err != nil {
 			return err
@@ -1770,6 +1780,25 @@ func (d deps) deleteHostingBudget(ctx context.Context, p *org.Placement, out io.
 	}
 
 	return nil
+}
+
+// bootProjectStands reports whether the organization's boot project is active. A destroy
+// run again after the projects went would find the state bucket gone with the boot
+// project and fail at the first layer's init (the lab, 2026-11-08), so the layers are not
+// destroyed twice: a project Google holds for its thirty days counts as gone, as the
+// root organization's destroy counts it. Read as the person running the destroy.
+func (d deps) bootProjectStands(ctx context.Context, project string) (bool, error) {
+	clients := d.rootOrg()
+	if clients == nil || clients.Google == nil {
+		return false, errors.New("no Google client is wired: the destroy reads whether the boot project stands")
+	}
+	google, err := clients.Google(ctx, "")
+	if err != nil {
+		return false, err
+	}
+	defer google.Close()
+
+	return google.ProjectExists(ctx, project)
 }
 
 // rootProjectContents says what a root organization's root project holds, for the
