@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.9](https://github.com/cccteam/ccc/compare/bedrock/v0.4.8...bedrock/v0.4.9) (2026-11-08)
+
+
+### Bug Fixes
+
+* **bedrock:** bedrock org destroy takes the spend budget it made off the billing account, the root organization's on the whole account and a hosting organization's on its folder, so no budget outlives what it watched ([#1306](https://github.com/cccteam/ccc/issues/1306)) ([11a33be](https://github.com/cccteam/ccc/commit/11a33bec97884196255f15b6ed0f6a4b0f9e72da))
+
 ## [0.4.8](https://github.com/cccteam/ccc/compare/bedrock/v0.4.7...bedrock/v0.4.8) (2026-11-08)
 
 
