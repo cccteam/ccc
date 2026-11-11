@@ -130,6 +130,10 @@ func newClient(ctx context.Context, resourcePackageDir string, migrationSourceUR
 	c.resource = packageDir(resourcePackageDir)
 	c.migrationSourceURLs = migrationSourceURL
 
+	if c.resolvedEmulatorVersion() == latestEmulatorVersion {
+		log.Printf("\x1b[33mThe Spanner emulator version is %q, so the schema cache cannot tell when the image changes. Pin a version with WithSpannerEmulatorVersion() for reproducible output.\x1b[39m\n", latestEmulatorVersion)
+	}
+
 	isSchemaClean, err := c.isSchemaClean()
 	if err != nil {
 		return nil, err
@@ -155,6 +159,15 @@ func newClient(ctx context.Context, resourcePackageDir string, migrationSourceUR
 			if err := c.genCache.DeleteSubpath(migrationCachePath); err != nil {
 				return nil, errors.Wrap(err, "cache.Cache.DeleteSubpath()")
 			}
+		}
+
+		// Drops the schemas cached for these migrations under other versions.
+		schemaCachePath, err := c.spannerSchemaCachePath()
+		if err != nil {
+			return nil, err
+		}
+		if err := c.genCache.DeleteSubpath(schemaCachePath); err != nil {
+			return nil, errors.Wrap(err, "cache.Cache.DeleteSubpath()")
 		}
 
 		if err := c.runSpanner(ctx, c.spannerEmulatorVersion, migrationSourceURL); err != nil {

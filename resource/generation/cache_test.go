@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"runtime/debug"
 	"slices"
 	"strings"
 	"sync"
@@ -160,6 +161,193 @@ func Test_NewResourceGenerator_failureReleasesCache(t *testing.T) {
 				t.Fatal("cache.New() still waits: the failed construction left the cache locked")
 			}
 		})
+	}
+}
+
+// Test_client_spannerCachePath pins that a cached schema is reused only by the emulator
+// and generator versions that read it: a newer emulator can report an unchanged schema
+// differently, and a cache from the older one would hide that change.
+func Test_client_spannerCachePath(t *testing.T) {
+	// readBuildInfo is package state: no t.Parallel here.
+	migrations := []string{"file://schema/migrations", "file://schema/draft_migrations"}
+	pathFor := func(t *testing.T, emulator, generator string, migrations []string) (path, schemaPath string) {
+		t.Helper()
+
+		setGeneratorVersion(t, generator)
+		c := &client{migrationSourceURLs: migrations, spannerEmulatorVersion: emulator}
+		path, err := c.spannerCachePath()
+		if err != nil {
+			t.Fatalf("spannerCachePath() error = %v", err)
+		}
+		schemaPath, err = c.spannerSchemaCachePath()
+		if err != nil {
+			t.Fatalf("spannerSchemaCachePath() error = %v", err)
+		}
+
+		return path, schemaPath
+	}
+	basePath, baseSchemaPath := pathFor(t, "1.5.59", "v0.16.11", migrations)
+
+	tests := []struct {
+		name       string
+		emulator   string
+		generator  string
+		migrations []string
+		// wantSamePath means the cached schema is reused; wantSameSchemaPath means a
+		// rebuild deletes the base entry as one cached for the same migrations.
+		wantSamePath       bool
+		wantSameSchemaPath bool
+	}{
+		{name: "same migrations and versions", emulator: "1.5.59", generator: "v0.16.11", migrations: migrations, wantSamePath: true, wantSameSchemaPath: true},
+		{name: "another emulator version", emulator: "1.5.44", generator: "v0.16.11", migrations: migrations, wantSameSchemaPath: true},
+		{name: "another generator version", emulator: "1.5.59", generator: "v0.16.12", migrations: migrations, wantSameSchemaPath: true},
+		{name: "other migrations", emulator: "1.5.59", generator: "v0.16.11", migrations: []string{"file://other/migrations"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			path, schemaPath := pathFor(t, tt.emulator, tt.generator, tt.migrations)
+
+			if got := path == basePath; got != tt.wantSamePath {
+				t.Errorf("spannerCachePath() equal to the base = %v, want %v", got, tt.wantSamePath)
+			}
+			if got := schemaPath == baseSchemaPath; got != tt.wantSameSchemaPath {
+				t.Errorf("spannerSchemaCachePath() equal to the base = %v, want %v", got, tt.wantSameSchemaPath)
+			}
+			if !strings.HasPrefix(path, schemaPath+string(filepath.Separator)) {
+				t.Errorf("spannerCachePath() = %q, want it under spannerSchemaCachePath() %q", path, schemaPath)
+			}
+		})
+	}
+}
+
+// Test_newClient_versionChangeRebuildsCache pins that a generator of another version reads
+// the schema again over an unchanged schema, and that the rebuild leaves only its own
+// entry for those migrations. Requires the Spanner emulator (podman/docker).
+func Test_newClient_versionChangeRebuildsCache(t *testing.T) {
+	if testing.Short() {
+		t.Skip("reading the schema requires the Spanner emulator")
+	}
+	// The cache lives at the root of the module found from the working directory, and
+	// readBuildInfo is package state: no t.Parallel here.
+	dir := newCacheTestModule(t)
+	t.Chdir(dir)
+	migrations := []string{copyFixtureMigrations(t)}
+
+	entriesAfter := func(t *testing.T, generator string) (path string, entries []string) {
+		t.Helper()
+
+		setGeneratorVersion(t, generator)
+		if _, err := generateOnce(t.Context(), migrations); err != nil {
+			t.Fatalf("generateOnce() with generator %s error = %v", generator, err)
+		}
+		c := &client{migrationSourceURLs: migrations, spannerEmulatorVersion: cacheTestEmulatorVersion}
+		path, err := c.spannerCachePath()
+		if err != nil {
+			t.Fatalf("spannerCachePath() error = %v", err)
+		}
+		schemaPath, err := c.spannerSchemaCachePath()
+		if err != nil {
+			t.Fatalf("spannerSchemaCachePath() error = %v", err)
+		}
+		dirEntries, err := os.ReadDir(filepath.Join(dir, ".ccc-cache", schemaPath))
+		if err != nil {
+			t.Fatalf("os.ReadDir() error = %v", err)
+		}
+		for _, e := range dirEntries {
+			entries = append(entries, filepath.Join(schemaPath, e.Name()))
+		}
+
+		return path, entries
+	}
+
+	oldPath, entries := entriesAfter(t, "v0.16.11")
+	if diff := cmp.Diff([]string{oldPath}, entries); diff != "" {
+		t.Fatalf("cache entries after the first generator (-want +got):\n%s", diff)
+	}
+
+	newPath, entries := entriesAfter(t, "v0.16.12")
+	if newPath == oldPath {
+		t.Fatalf("spannerCachePath() = %q for both generator versions", newPath)
+	}
+	if diff := cmp.Diff([]string{newPath}, entries); diff != "" {
+		t.Errorf("cache entries after the newer generator (-want +got):\n%s", diff)
+	}
+}
+
+func Test_client_cacheFingerprint_latest(t *testing.T) {
+	setGeneratorVersion(t, "v0.16.11")
+
+	unset := (&client{}).cacheFingerprint()
+	latest := (&client{spannerEmulatorVersion: latestEmulatorVersion}).cacheFingerprint()
+	if unset != latest {
+		t.Errorf("cacheFingerprint() with no emulator version = %q, want %q as for %q", unset, latest, latestEmulatorVersion)
+	}
+}
+
+func Test_generatorVersion(t *testing.T) {
+	// readBuildInfo is package state: no t.Parallel here.
+	tests := []struct {
+		name string
+		info *debug.BuildInfo
+		ok   bool
+		want string
+	}{
+		{
+			name: "a required version",
+			info: &debug.BuildInfo{Deps: []*debug.Module{{Path: generatorModulePath, Version: "v0.16.11", Sum: "h1:abc="}}},
+			ok:   true,
+			want: "v0.16.11h1:abc=",
+		},
+		{
+			name: "a module replace",
+			info: &debug.BuildInfo{Deps: []*debug.Module{{
+				Path: generatorModulePath, Version: "v0.16.11",
+				Replace: &debug.Module{Path: "github.com/fork/ccc/resource", Version: "v0.16.12", Sum: "h1:def="},
+			}}},
+			ok:   true,
+			want: "v0.16.12h1:def=",
+		},
+		{
+			name: "a directory replace",
+			info: &debug.BuildInfo{Deps: []*debug.Module{{
+				Path: generatorModulePath, Version: "v0.16.11",
+				Replace: &debug.Module{Path: "../ccc/resource"},
+			}}},
+			ok:   true,
+			want: develVersion,
+		},
+		{
+			name: "the module is the main module",
+			info: &debug.BuildInfo{Main: debug.Module{Path: generatorModulePath, Version: "(devel)"}},
+			ok:   true,
+			want: develVersion,
+		},
+		{
+			name: "no build information",
+			want: develVersion,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			original := readBuildInfo
+			t.Cleanup(func() { readBuildInfo = original })
+			readBuildInfo = func() (*debug.BuildInfo, bool) { return tt.info, tt.ok }
+
+			if got := generatorVersion(); got != tt.want {
+				t.Errorf("generatorVersion() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+// setGeneratorVersion makes generatorVersion() answer version until the test ends.
+func setGeneratorVersion(t *testing.T, version string) {
+	t.Helper()
+
+	original := readBuildInfo
+	t.Cleanup(func() { readBuildInfo = original })
+	readBuildInfo = func() (*debug.BuildInfo, bool) {
+		return &debug.BuildInfo{Deps: []*debug.Module{{Path: generatorModulePath, Version: version}}}, true
 	}
 }
 
