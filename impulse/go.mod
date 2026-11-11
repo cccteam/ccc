@@ -1,6 +1,6 @@
 module github.com/cccteam/ccc/impulse
 
-go 1.27.3
+go 1.27.4
 
 require (
 	github.com/cccteam/access v0.12.0

@@ -1,6 +1,6 @@
 module github.com/cccteam/ccc/securehash
 
-go 1.27.3
+go 1.27.4
 
 require (
 	github.com/go-playground/errors/v5 v5.4.0

@@ -1,6 +1,6 @@
 module github.com/cccteam/ccc/resource
 
-go 1.27.3
+go 1.27.4
 
 require (
 	aidanwoods.dev/go-paseto v1.6.0
