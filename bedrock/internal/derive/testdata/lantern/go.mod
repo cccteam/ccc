@@ -1,6 +1,6 @@
 module github.com/impulseframework/lantern
 
-go 1.27.3
+go 1.27.4
 
 require (
 	cloud.google.com/go/spanner v1.96.1

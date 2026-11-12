@@ -388,7 +388,7 @@ resource "google_cloudbuild_trigger" "check" {
 
     step {
       id         = "BuildBedrockCommit"
-      name       = "cgr.dev/chainguard/go@sha256:04df3e7738e9caea8a5830142ad01cb484bd9790a931bdd7b5d0462538f9f305"
+      name       = "cgr.dev/chainguard/go@sha256:2ed63c9db04ba7d7e4d426ffd17afe1793df837f18194ddc251d15e90977a00b"
       entrypoint = "sh"
       args       = ["-c", local.build_bedrock_commit]
       env        = local.go_install_env
@@ -487,7 +487,7 @@ resource "google_cloudbuild_trigger" "pr_stack" {
 
     step {
       id         = "BuildBedrockCommit"
-      name       = "cgr.dev/chainguard/go@sha256:04df3e7738e9caea8a5830142ad01cb484bd9790a931bdd7b5d0462538f9f305"
+      name       = "cgr.dev/chainguard/go@sha256:2ed63c9db04ba7d7e4d426ffd17afe1793df837f18194ddc251d15e90977a00b"
       entrypoint = "sh"
       args       = ["-c", local.build_bedrock_commit]
       env        = local.go_install_env
@@ -581,7 +581,7 @@ resource "google_cloudbuild_trigger" "release" {
 
     step {
       id         = "BuildBedrockCommit"
-      name       = "cgr.dev/chainguard/go@sha256:04df3e7738e9caea8a5830142ad01cb484bd9790a931bdd7b5d0462538f9f305"
+      name       = "cgr.dev/chainguard/go@sha256:2ed63c9db04ba7d7e4d426ffd17afe1793df837f18194ddc251d15e90977a00b"
       entrypoint = "sh"
       args       = ["-c", local.build_bedrock_commit]
       env        = local.go_install_env
