@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.2](https://github.com/cccteam/ccc/compare/accesstypes/v0.7.1...accesstypes/v0.7.2) (2026-11-13)
+
+
+### Code Upgrade
+
+* **deps:** Go 1.27.4 for net/http GO-2026-6859 ([#1296](https://github.com/cccteam/ccc/issues/1296)) ([#1312](https://github.com/cccteam/ccc/issues/1312)) ([1c0d719](https://github.com/cccteam/ccc/commit/1c0d719828abd3623927b2adb8f15eacefecaa84))
+
 ## [0.7.1](https://github.com/cccteam/ccc/compare/accesstypes/v0.7.0...accesstypes/v0.7.1) (2026-10-22)
 
 
