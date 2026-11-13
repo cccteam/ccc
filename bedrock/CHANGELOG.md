@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.4.10](https://github.com/cccteam/ccc/compare/bedrock/v0.4.9...bedrock/v0.4.10) (2026-11-13)
+
+
+### Code Upgrade
+
+* **deps:** bedrock on Go 1.27.4; the Go image moves to go1.27.4 for net/http GO-2026-6859 ([#1296](https://github.com/cccteam/ccc/issues/1296)) ([#1323](https://github.com/cccteam/ccc/issues/1323)) ([77c6149](https://github.com/cccteam/ccc/commit/77c6149a51cdaa9e6d051eba84bfe8757fb8b844))
+* **deps:** bump go-jose to v4.1.6 and chi to v5.5.0 ([#1308](https://github.com/cccteam/ccc/issues/1308)) ([12f792d](https://github.com/cccteam/ccc/commit/12f792d350ce22962052cbdd312de703cc79b023))
+
 ## [0.4.9](https://github.com/cccteam/ccc/compare/bedrock/v0.4.8...bedrock/v0.4.9) (2026-11-08)
 
 
