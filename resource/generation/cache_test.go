@@ -105,27 +105,43 @@ func Test_NewResourceGenerator_failureReleasesCache(t *testing.T) {
 	dir := newCacheTestModule(t)
 	t.Chdir(dir)
 
+	missingMigrations := func(t *testing.T) string {
+		return "file://" + filepath.Join(t.TempDir(), "missing")
+	}
 	tests := []struct {
 		name       string
 		migrations func(t *testing.T) string
 		options    []ResourceOption
+		// emulatorVersion is the version the generator names; none is the refusal's case.
+		emulatorVersion string
 		// emulator marks a case that reads the schema before it fails.
 		emulator bool
 		wantErr  string
 	}{
 		{
-			name: "a migration source that does not exist fails in the client",
-			migrations: func(t *testing.T) string {
-				return "file://" + filepath.Join(t.TempDir(), "missing")
-			},
-			wantErr: "no such file or directory",
+			name:       "no emulator version is refused before anything is read",
+			migrations: copyFixtureMigrations,
+			wantErr:    "no Spanner emulator version is set",
 		},
 		{
-			name:       "an option the generator refuses fails after the client",
-			migrations: copyFixtureMigrations,
-			options:    []ResourceOption{WithRouterOutlet(defaultOutletName, "machine")},
-			emulator:   true,
-			wantErr:    "redeclares the reserved default outlet",
+			name:            "a migration source that does not exist fails in the client",
+			migrations:      missingMigrations,
+			emulatorVersion: cacheTestEmulatorVersion,
+			wantErr:         "no such file or directory",
+		},
+		{
+			name:            "the latest tag is a version a generator may name, so the failure is the migration source's",
+			migrations:      missingMigrations,
+			emulatorVersion: latestEmulatorVersion,
+			wantErr:         "no such file or directory",
+		},
+		{
+			name:            "an option the generator refuses fails after the client",
+			migrations:      copyFixtureMigrations,
+			options:         []ResourceOption{WithRouterOutlet(defaultOutletName, "machine")},
+			emulatorVersion: cacheTestEmulatorVersion,
+			emulator:        true,
+			wantErr:         "redeclares the reserved default outlet",
 		},
 	}
 	for _, tt := range tests {
@@ -134,7 +150,10 @@ func Test_NewResourceGenerator_failureReleasesCache(t *testing.T) {
 				t.Skip("reading the schema requires the Spanner emulator")
 			}
 
-			options := append(slices.Clone(tt.options), WithSpannerEmulatorVersion(cacheTestEmulatorVersion))
+			options := slices.Clone(tt.options)
+			if tt.emulatorVersion != "" {
+				options = append(options, WithSpannerEmulatorVersion(tt.emulatorVersion))
+			}
 			g, err := NewResourceGenerator(t.Context(), "pkg/resources", []string{tt.migrations(t)}, options...)
 			if err == nil {
 				_ = g.Close()
@@ -271,16 +290,6 @@ func Test_newClient_versionChangeRebuildsCache(t *testing.T) {
 	}
 	if diff := cmp.Diff([]string{newPath}, entries); diff != "" {
 		t.Errorf("cache entries after the newer generator (-want +got):\n%s", diff)
-	}
-}
-
-func Test_client_cacheFingerprint_latest(t *testing.T) {
-	setGeneratorVersion(t, "v0.16.11")
-
-	unset := (&client{}).cacheFingerprint()
-	latest := (&client{spannerEmulatorVersion: latestEmulatorVersion}).cacheFingerprint()
-	if unset != latest {
-		t.Errorf("cacheFingerprint() with no emulator version = %q, want %q as for %q", unset, latest, latestEmulatorVersion)
 	}
 }
 

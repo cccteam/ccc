@@ -237,15 +237,7 @@ func (c *client) spannerCachePath() (string, error) {
 }
 
 func (c *client) cacheFingerprint() string {
-	return fmt.Sprintf("emulator=%s;generator=%s", c.resolvedEmulatorVersion(), generatorVersion())
-}
-
-func (c *client) resolvedEmulatorVersion() string {
-	if c.spannerEmulatorVersion == "" {
-		return latestEmulatorVersion
-	}
-
-	return c.spannerEmulatorVersion
+	return fmt.Sprintf("emulator=%s;generator=%s", c.spannerEmulatorVersion, generatorVersion())
 }
 
 // generatorVersion is the version of this module in the running binary, or "devel" when the
