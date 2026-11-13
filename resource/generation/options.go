@@ -1144,7 +1144,9 @@ func GenerateEnums() TSOption {
 	})
 }
 
-// WithSpannerEmulatorVersion sets the version of the Spanner image pulled from gcr.io
+// WithSpannerEmulatorVersion sets the version of the Spanner emulator image the generator
+// reads the schema through, pulled from gcr.io. Every generator names one: there is no
+// default, and a generator without it is refused.
 func WithSpannerEmulatorVersion(version string) ResourceOption {
 	return Option(func(g any) error {
 		switch t := g.(type) {
@@ -1364,9 +1366,6 @@ func resolveOptions(generator any, options []option) error {
 		}
 
 	case *typescriptGenerator:
-		if g.spannerEmulatorVersion == "" {
-			g.spannerEmulatorVersion = "latest"
-		}
 		if g.outletName == "" {
 			g.outletName = defaultOutletName
 		}
@@ -1382,9 +1381,6 @@ func resolveOptions(generator any, options []option) error {
 // applied, so defaults that depend on other options (e.g. the collection directory
 // following the routes directory) see the final configuration.
 func applyResourceGeneratorDefaults(g *resourceGenerator) error {
-	if g.spannerEmulatorVersion == "" {
-		g.spannerEmulatorVersion = "latest"
-	}
 	if g.applicationName == "" {
 		g.applicationName = defaultApplicationName
 	}

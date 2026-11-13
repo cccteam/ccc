@@ -7,6 +7,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"runtime/debug"
 	"strings"
 
 	"github.com/go-playground/errors/v5"
@@ -22,7 +23,14 @@ const (
 	// without them under the same schema hash.
 	tableMapCache  string = "tablemap-v5" + genCacheSuffix
 	enumValueCache string = "enumvalues" + genCacheSuffix
+
+	generatorModulePath   string = "github.com/cccteam/ccc/resource"
+	latestEmulatorVersion string = "latest"
+	develVersion          string = "devel"
 )
+
+// readBuildInfo is replaced in tests to simulate another generator version.
+var readBuildInfo = debug.ReadBuildInfo
 
 // Calculate the sha256 checksum of a file
 func hashFile(filePath string) ([]byte, error) {
@@ -197,7 +205,8 @@ func (c *client) loadAllCachedData() (bool, error) {
 	return true, nil
 }
 
-func (c *client) spannerCachePath() (string, error) {
+// spannerSchemaCachePath holds every cached schema read from one set of migration sources.
+func (c *client) spannerSchemaCachePath() (string, error) {
 	var concatenatedPaths strings.Builder
 	for _, migrationSource := range c.migrationSourceURLs {
 		concatenatedPaths.WriteString(migrationSource)
@@ -209,6 +218,51 @@ func (c *client) spannerCachePath() (string, error) {
 	}
 
 	return filepath.Join("spanner", fmt.Sprintf("%x", hashedPaths)), nil
+}
+
+// spannerCachePath is keyed on the emulator and generator versions as well as the migration
+// sources: either version can change what the generator reads from an unchanged schema.
+func (c *client) spannerCachePath() (string, error) {
+	schemaPath, err := c.spannerSchemaCachePath()
+	if err != nil {
+		return "", err
+	}
+
+	hashedFingerprint, err := hashString(c.cacheFingerprint())
+	if err != nil {
+		return "", err
+	}
+
+	return filepath.Join(schemaPath, fmt.Sprintf("%x", hashedFingerprint)), nil
+}
+
+func (c *client) cacheFingerprint() string {
+	return fmt.Sprintf("emulator=%s;generator=%s", c.spannerEmulatorVersion, generatorVersion())
+}
+
+// generatorVersion is the version of this module in the running binary, or "devel" when the
+// build does not record one, as in this module's own tests or under a directory replace.
+func generatorVersion() string {
+	info, ok := readBuildInfo()
+	if !ok {
+		return develVersion
+	}
+
+	for _, dep := range info.Deps {
+		if dep.Path != generatorModulePath {
+			continue
+		}
+		if dep.Replace != nil {
+			dep = dep.Replace
+		}
+		if dep.Version == "" || dep.Version == "(devel)" {
+			return develVersion
+		}
+
+		return dep.Version + dep.Sum
+	}
+
+	return develVersion
 }
 
 func (c *client) populateCache() error {

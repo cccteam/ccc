@@ -36,9 +36,8 @@ type typescriptGenerator struct {
 	manualRegistrations []ManualRegistration
 	// domainRouteSegment/domainRouteParam mirror the resourceGenerator's route pair so
 	// TypeScript route metadata can render the domain segment of domain-scoped routes.
-	domainRouteSegment     string
-	domainRouteParam       string
-	spannerEmulatorVersion string
+	domainRouteSegment string
+	domainRouteParam   string
 	// outletName is the router outlet this target serves (ForOutlet): every emitted
 	// file is filtered to the outlet's members. Empty means the default outlet
 	// (resolveOptions fills the name in; targetOutlet covers directly constructed
