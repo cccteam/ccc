@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.16.12](https://github.com/cccteam/ccc/compare/resource/v0.16.11...resource/v0.16.12) (2026-11-13)
+
+
+### Bug Fixes
+
+* **resource:** a generator that sets no Spanner emulator version is refused with a message that names WithSpannerEmulatorVersion, where the container runtime refused an image with an empty tag ([#1322](https://github.com/cccteam/ccc/issues/1322)) ([cff1046](https://github.com/cccteam/ccc/commit/cff104651deb68aeb4c235bba3938c323a5a9c04))
+* **resource:** rebuild the generator schema cache when the emulator or generator version changes ([#1322](https://github.com/cccteam/ccc/issues/1322)) ([cff1046](https://github.com/cccteam/ccc/commit/cff104651deb68aeb4c235bba3938c323a5a9c04))
+
+
+### Code Upgrade
+
+* **deps:** Go 1.27.4 for net/http GO-2026-6859 ([#1296](https://github.com/cccteam/ccc/issues/1296)) ([#1312](https://github.com/cccteam/ccc/issues/1312)) ([1c0d719](https://github.com/cccteam/ccc/commit/1c0d719828abd3623927b2adb8f15eacefecaa84))
+
 ## [0.16.11](https://github.com/cccteam/ccc/compare/resource/v0.16.10...resource/v0.16.11) (2026-11-07)
 
 
