@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.0.17](https://github.com/cccteam/ccc/compare/middleware/v0.0.16...middleware/v0.0.17) (2026-11-13)
+
+
+### Code Upgrade
+
+* **deps:** bump go-jose to v4.1.6 and chi to v5.5.0 ([#1308](https://github.com/cccteam/ccc/issues/1308)) ([12f792d](https://github.com/cccteam/ccc/commit/12f792d350ce22962052cbdd312de703cc79b023))
+* **deps:** Go 1.27.4 for net/http GO-2026-6859 ([#1296](https://github.com/cccteam/ccc/issues/1296)) ([#1312](https://github.com/cccteam/ccc/issues/1312)) ([1c0d719](https://github.com/cccteam/ccc/commit/1c0d719828abd3623927b2adb8f15eacefecaa84))
+
 ## [0.0.16](https://github.com/cccteam/ccc/compare/middleware/v0.0.15...middleware/v0.0.16) (2026-11-07)
 
 
