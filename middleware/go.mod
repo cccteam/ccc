@@ -3,9 +3,9 @@ module github.com/cccteam/ccc/middleware
 go 1.27.4
 
 require (
-	cloud.google.com/go/auth v0.24.3
+	cloud.google.com/go/auth v0.24.4
 	github.com/cccteam/ccc/tracer v0.3.2
-	github.com/cccteam/httpio v0.7.23
+	github.com/cccteam/httpio v0.7.24
 	github.com/go-playground/errors/v5 v5.4.0
 )
 
@@ -15,8 +15,8 @@ require (
 	cloud.google.com/go/compute/metadata v0.10.0 // indirect
 	cloud.google.com/go/logging v1.20.0 // indirect
 	cloud.google.com/go/longrunning v1.3.0 // indirect
-	github.com/cccteam/ccc v0.3.3 // indirect
-	github.com/cccteam/logger v0.1.27 // indirect
+	github.com/cccteam/ccc v0.3.7 // indirect
+	github.com/cccteam/logger v0.1.31 // indirect
 	github.com/cenkalti/backoff/v5 v5.0.3 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/felixge/httpsnoop v1.1.0 // indirect
@@ -53,6 +53,6 @@ require (
 	google.golang.org/genproto v0.0.0-20261012220534-4341edf3f941 // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20261012220534-4341edf3f941 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20261012220534-4341edf3f941 // indirect
-	google.golang.org/grpc v1.84.0 // indirect
+	google.golang.org/grpc v1.85.0 // indirect
 	google.golang.org/protobuf v1.36.12 // indirect
 )
